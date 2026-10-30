@@ -1,0 +1,7 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": true
+  },
+  "include": ["app", "components", "hooks", "lib", "styles.ts", "app.config.ts"]
+}

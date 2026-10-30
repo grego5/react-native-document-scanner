@@ -1,0 +1,13 @@
+{
+  "uiViewClassName": "ImageViewerView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "uri": true,
+    "onError": true,
+    "onLoad": true,
+    "onZoomChange": true,
+    "hybridRef": true
+  }
+}

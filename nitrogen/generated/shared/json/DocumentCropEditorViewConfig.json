@@ -1,0 +1,15 @@
+{
+  "uiViewClassName": "DocumentCropEditorView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "originalUri": true,
+    "quad": true,
+    "filter": true,
+    "onQuadChange": true,
+    "onLoad": true,
+    "onError": true,
+    "hybridRef": true
+  }
+}

@@ -1,0 +1,16 @@
+node_modules/
+**/node_modules/
+/lib/
+__pycache__/
+*.py[cod]
+
+android/.gradle/
+android/build/
+android/.cxx/
+
+example/.expo/
+example/android/
+example/ios/
+.local/
+.claude/
+.vscode/

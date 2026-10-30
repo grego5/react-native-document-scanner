@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <activity
+      android:name="com.margelo.nitro.documentscanner.CameraValidationActivity"
+      android:exported="false"
+      android:hardwareAccelerated="true"
+      android:configChanges="orientation|screenSize|keyboardHidden"
+      android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    <activity
+      android:name="androidx.activity.ComponentActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+  </application>
+</manifest>

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": ["documentscanner"],
+  "ios": {
+    "iosModuleName": "ReactNativeDocumentScanner"
+  },
+  "android": {
+    "androidNamespace": ["documentscanner"],
+    "androidCxxLibName": "ReactNativeDocumentScanner"
+  },
+  "autolinking": {
+    "DocumentScannerCameraView": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridDocumentScannerCameraView"
+      }
+    },
+    "DocumentScannerProcessor": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridDocumentScannerProcessor"
+      }
+    },
+    "DocumentCropEditorView": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridDocumentCropEditorView"
+      }
+    },
+    "ImageViewerView": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridImageViewerView"
+      }
+    },
+    "ImagePagerView": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridImagePagerView"
+      }
+    },
+    "CameraPermission": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridCameraPermission"
+      }
+    }
+  },
+  "ignorePaths": ["**/node_modules", "lib", "archive"]
+}

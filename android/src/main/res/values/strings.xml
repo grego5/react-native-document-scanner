@@ -1,0 +1,12 @@
+<resources>
+    <string name="document_scanner_camera_activity_unavailable">Camera preview requires an active Android screen.</string>
+    <string name="document_scanner_camera_start_failed">Camera preview could not start on this device.</string>
+    <string name="document_scanner_permission_needed">Camera access is needed for a live preview.</string>
+    <string name="document_scanner_permission_denied">Camera access was denied. Use the permission button to try again.</string>
+    <string name="document_scanner_permission_blocked">Camera access is blocked. Open app settings to allow camera access.</string>
+    <string name="document_scanner_detection_unavailable">Live detection unavailable. You can still take a photo.</string>
+    <string name="document_scanner_wait_document">Point the camera at the page.</string>
+    <string name="document_scanner_wait_focus">Hold still. Focusing…</string>
+    <string name="document_scanner_wait_light">Hold still. Adjusting to the light…</string>
+    <string name="document_scanner_hold_steady">Hold steady to capture.</string>
+</resources>

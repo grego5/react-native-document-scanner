@@ -1,0 +1,295 @@
+import { StyleSheet } from 'react-native'
+
+export const colors = {
+  background: '#090c10',
+  panel: '#101820',
+  surface: '#202b33',
+  border: '#43525e',
+  text: '#f0f5f7',
+}
+
+const GUTTER = 20
+
+export const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  cameraStage: {
+    flex: 1,
+    minHeight: 0,
+    marginVertical: 8,
+  },
+  // Notices float over the camera's bottom edge instead of resizing it.
+  cameraNotices: {
+    alignItems: 'center',
+    bottom: 12,
+    gap: 8,
+    left: 16,
+    position: 'absolute',
+    right: 16,
+  },
+  notice: {
+    backgroundColor: '#000000b3',
+    borderRadius: 12,
+    color: '#ffd4cc',
+    fontSize: 14,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    textAlign: 'center',
+  },
+  optionsPanel: {
+    backgroundColor: colors.panel,
+    borderRadius: 20,
+    gap: 16,
+    padding: 16,
+    flexShrink: 1,
+  },
+  tuningRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  tuningSwitch: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  tuningLabel: {
+    color: '#e8f3f8',
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  controls: {
+    alignItems: 'center',
+    gap: 12,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+  },
+  shutterRow: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+  },
+  shutterSide: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  shutter: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff44',
+    borderColor: '#fff',
+    borderRadius: 40,
+    borderWidth: 3,
+    height: 78,
+    justifyContent: 'center',
+    width: 78,
+  },
+  shutterInner: {
+    backgroundColor: '#fff',
+    borderRadius: 28,
+    height: 54,
+    width: 54,
+  },
+  shutterPressed: {
+    transform: [{ scale: 0.94 }],
+  },
+  shutterDisabled: {
+    opacity: 0.45,
+  },
+  button: {
+    alignItems: 'center',
+    backgroundColor: '#e8f3f8',
+    borderRadius: 14,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  secondaryButton: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  buttonPressed: {
+    opacity: 0.78,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  buttonLabel: {
+    color: colors.panel,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  secondaryButtonLabel: {
+    color: colors.text,
+  },
+  // The photo runs edge to edge; text and buttons keep the side gutter.
+  reviewScreen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  photo: {
+    backgroundColor: '#141a20',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  imageEditor: {
+    backgroundColor: '#141a20',
+    flex: 1,
+    marginBottom: 8,
+    minHeight: 0,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
+  imageHint: {
+    alignSelf: 'center',
+    backgroundColor: '#101820dd',
+    borderRadius: 10,
+    color: colors.text,
+    fontSize: 14,
+    marginTop: 14,
+    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  diagnostics: {
+    color: '#91a2af',
+    fontSize: 11,
+    marginBottom: 7,
+    paddingHorizontal: GUTTER,
+    textAlign: 'center',
+  },
+  actions: {
+    gap: 10,
+    paddingBottom: 20,
+    paddingHorizontal: GUTTER,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  // A zero basis splits the row evenly regardless of label length.
+  actionButton: {
+    flexBasis: 0,
+    flexGrow: 1,
+  },
+  exportField: {
+    flexBasis: 0,
+    flexGrow: 1,
+    gap: 6,
+  },
+  numberInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: colors.text,
+    fontSize: 16,
+    height: 44,
+    paddingHorizontal: 12,
+  },
+  sessionTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    paddingHorizontal: GUTTER,
+    paddingVertical: 12,
+    textAlign: 'center',
+  },
+  hiddenOverlay: {
+    opacity: 0,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  pageCounter: {
+    color: colors.text,
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  reviewTools: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  reviewTool: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  activeTool: {
+    backgroundColor: '#244c49',
+    borderColor: '#83d6bd',
+  },
+  sheet: {
+    backgroundColor: colors.panel,
+    borderRadius: 20,
+    padding: 20,
+    gap: 10,
+  },
+  filterChoice: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pageStrip: {
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 80,
+    marginBottom: 10,
+  },
+  pageStripContent: {
+    paddingHorizontal: 20,
+    gap: 8,
+    alignItems: 'center',
+  },
+  pageThumbnail: {
+    width: 52,
+    height: 72,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  pageThumbnailSelected: {
+    borderColor: '#83d6bd',
+  },
+  pageTileImage: {
+    flex: 1,
+  },
+  pageTileLabel: {
+    backgroundColor: '#101820cc',
+    borderRadius: 10,
+    color: colors.text,
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '700',
+    left: 6,
+    minWidth: 24,
+    overflow: 'hidden',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    position: 'absolute',
+    textAlign: 'center',
+    top: 6,
+  },
+})

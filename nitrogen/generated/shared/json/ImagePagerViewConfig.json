@@ -1,0 +1,15 @@
+{
+  "uiViewClassName": "ImagePagerView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "uris": true,
+    "index": true,
+    "swipeEnabled": true,
+    "onIndexChange": true,
+    "onLoad": true,
+    "onError": true,
+    "hybridRef": true
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "name": "react-native-document-scanner-example",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start --dev-client --port 8088",
+    "start:lan": "expo start --dev-client --host lan --port 8088",
+    "android:prebuild": "expo prebuild --platform android --no-install",
+    "android:clean": "expo prebuild --platform android --clean --no-install",
+    "android": "pwsh -NoProfile -File ../tools/android.ps1",
+    "android:release": "pwsh -NoProfile -File ../tools/android.ps1 -Release",
+    "android:emulator": "pwsh -NoProfile -File ../tools/android.ps1 -Emulator",
+    "android:lifecycle": "pwsh -NoProfile -File ../tools/android-lifecycle.ps1"
+  },
+  "overrides": {
+    "uuid": "14.0.1",
+    "zod": "4.6.7",
+    "deepmerge": "4.1.2"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "typescript"
+      ]
+    },
+    "autolinking": {
+      "exclude": [
+        "react-native-reanimated",
+        "react-native-worklets",
+        "react-native-gesture-handler"
+      ]
+    }
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~58.0.15",
+    "expo": "^58.0.21",
+    "expo-asset": "~58.0.17",
+    "expo-build-properties": "~58.0.11",
+    "expo-constants": "~58.0.13",
+    "expo-dev-client": "~58.0.17",
+    "expo-file-system": "~58.0.10",
+    "expo-linking": "~58.0.15",
+    "expo-media-library": "~58.0.13",
+    "expo-modules-core": "~58.0.12",
+    "expo-router": "~58.0.28",
+    "expo-sharing": "~58.0.21",
+    "expo-system-ui": "~58.0.7",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-document-scanner": "file:../",
+    "react-native-nitro-modules": "0.37.1",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}
+

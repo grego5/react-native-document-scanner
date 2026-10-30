@@ -1,0 +1,52 @@
+{
+  "name": "react-native-document-scanner",
+  "version": "1.0.0",
+  "description": "An offline document scanning camera for React Native, powered by Nitro.",
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "types": "src/index.ts",
+  "source": "src/index.ts",
+  "files": [
+    "android/src",
+    "android/build.gradle",
+    "android/CMakeLists.txt",
+    "android/consumer-rules.pro",
+    "nitrogen/generated",
+    "src",
+    "!src/**/*.test.cjs",
+    "nitro.json",
+    "react-native.config.js",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node tools/check.cjs",
+    "nitrogen": "nitrogen",
+    "typecheck": "node tools/check.cjs --library",
+    "typecheck:example": "node tools/check.cjs --example",
+    "test:contracts": "node --test src/scanner-contracts.test.cjs",
+    "test:native": "pwsh -NoProfile -File tools/test-native.ps1",
+    "test:device": "pwsh -NoProfile -File tools/test-device.ps1"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": ">=0.78.0",
+    "react-native-nitro-modules": "*"
+  },
+  "peerDependenciesMeta": {
+    "react-native-nitro-modules": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "nitrogen": "0.37.1",
+    "react": "^19.3.0",
+    "react-native": "^0.88.1",
+    "react-native-nitro-modules": "0.37.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

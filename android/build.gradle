@@ -1,0 +1,119 @@
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+apply from: '../nitrogen/generated/android/ReactNativeDocumentScanner+autolinking.gradle'
+
+
+def safeExtGet(String property, Object fallback) {
+  rootProject.ext.has(property) ? rootProject.ext.get(property) : fallback
+}
+
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get('reactNativeArchitectures')
+  return value ? value.split(',') : ['arm64-v8a']
+}
+
+android {
+  namespace 'com.margelo.nitro.documentscanner'
+  compileSdkVersion safeExtGet('compileSdkVersion', 36)
+
+  defaultConfig {
+    minSdkVersion safeExtGet('minSdkVersion', 24)
+    targetSdkVersion safeExtGet('targetSdkVersion', 36)
+    testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    consumerProguardFiles 'consumer-rules.pro'
+    externalNativeBuild {
+      cmake {
+        cppFlags '-std=c++20 -frtti -fexceptions'
+        arguments '-DANDROID_STL=c++_shared'
+        abiFilters(*reactNativeArchitectures())
+      }
+    }
+  }
+
+  testOptions {
+    unitTests.returnDefaultValues = true
+    unitTests.all { test ->
+      test.systemProperty 'liveQuadTraceReport', file('build/reports/live-quad-trace').absolutePath
+      // JVM replay of recorded live quad traces: -PliveQuadTrace=<file or directory>, relative to the repository root.
+      def liveQuadTrace = project.findProperty('liveQuadTrace')
+      if (liveQuadTrace) {
+        def trace = new File(liveQuadTrace.toString())
+        if (!trace.absolute) trace = new File(projectDir.parentFile, liveQuadTrace.toString())
+        test.systemProperty 'liveQuadTrace', trace.absolutePath
+        test.inputs.files(trace).withPropertyName('liveQuadTrace')
+      }
+    }
+  }
+
+  // Share the unchanged Kotlin resize oracle between JVM and instrumentation tests only.
+  sourceSets.test.java.srcDir('src/testSupport/java')
+  sourceSets.androidTest.java.srcDir('src/testSupport/java')
+
+  // Explicit instrumentation-only fixtures. Never add private photos to main/release assets.
+  def runtimeFixtures = project.findProperty('docCornerFixtures')
+  if (runtimeFixtures) {
+    sourceSets.androidTest.assets.srcDir(file(runtimeFixtures))
+  }
+
+  packagingOptions {
+    jniLibs {
+      pickFirsts += ['**/libc++_shared.so', '**/libfbjni.so', '**/libjsi.so', '**/libreactnative.so']
+    }
+  }
+
+  buildFeatures {
+    prefab true
+  }
+
+  externalNativeBuild {
+    cmake {
+      path 'CMakeLists.txt'
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+}
+
+def cameraXVersion = '1.5.3'
+def openCvVersion = '4.12.0'
+
+dependencies {
+  testImplementation 'junit:junit:4.13.2'
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+  implementation 'com.facebook.react:react-android'
+  implementation project(':react-native-nitro-modules')
+  implementation 'androidx.activity:activity-ktx:1.13.0'
+  implementation "androidx.camera:camera-core:${cameraXVersion}"
+  implementation "androidx.camera:camera-camera2:${cameraXVersion}"
+  implementation "androidx.camera:camera-lifecycle:${cameraXVersion}"
+  implementation "androidx.camera:camera-view:${cameraXVersion}"
+  implementation 'androidx.exifinterface:exifinterface:1.4.2'
+  implementation 'androidx.recyclerview:recyclerview:1.4.0'
+  implementation "org.opencv:opencv:${openCvVersion}"
+  implementation 'com.google.ai.edge.litert:litert:1.4.2'
+}
+
+tasks.register('verifyDocCornerModelAsset') {
+  def assetFile = file('src/main/assets/doccornernet/model.tflite')
+  def provenance = file('src/main/assets/doccornernet/provenance.json')
+  inputs.files(assetFile, provenance)
+  doLast {
+    if (!assetFile.isFile()) throw new GradleException('DocCornerNet asset is missing. See tools/models/README.md for model export instructions.')
+    def expected = new groovy.json.JsonSlurper().parse(provenance).tfliteSha256
+    def hash = java.security.MessageDigest.getInstance('SHA-256').digest(assetFile.bytes).encodeHex().toString()
+    if (hash != expected) throw new GradleException('DocCornerNet model SHA-256 mismatch.')
+  }
+}
+
+tasks.named('preBuild').configure {
+  dependsOn tasks.named('verifyDocCornerModelAsset')
+}

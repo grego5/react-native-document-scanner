@@ -1,0 +1,2 @@
+-keep class com.margelo.nitro.documentscanner.HybridDocumentScannerCameraView { *; }
+-keep class com.margelo.nitro.documentscanner.processing.NativeTensorPreprocessor { *; }
