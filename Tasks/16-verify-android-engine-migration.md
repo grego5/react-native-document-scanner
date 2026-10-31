@@ -4,7 +4,7 @@
 
 Status: Planned
 Complexity: High
-Dependencies: [06](06-share-model-preprocessing.md), [08](08-share-document-filters.md), [10](10-share-pdf-writer.md), [12](12-share-live-guide-policy.md), [13](13-share-focus-policy.md), [14](14-share-torch-policy.md), [15](15-share-capture-readiness.md)
+Dependencies: [06](06-share-model-preprocessing.md), [08](08-share-document-filters.md), [10](10-share-pdf-writer.md), [12](12-share-live-guide-policy.md), [13](13-share-focus-policy.md), [14](14-share-torch-policy.md)
 
 ## Objective
 

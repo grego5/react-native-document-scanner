@@ -1,7 +1,6 @@
 #pragma once
 #include "Pixels.hpp"
 #include <optional>
-#include <mutex>
 
 namespace document_scanner::focus {
 using Time = int64_t; // Monotonic uptime nanoseconds supplied by the adapter.
@@ -59,16 +58,5 @@ private:
   Snapshot snapshot_;
   Time scanDeadline_ = 0;
   DocumentPolicy document_;
-};
-// Adapter-selected process/session lifetime and unit; Android uses diopters, iOS may use lens positions.
-// Safe for metadata callbacks and main-thread readers. No hardware unit conversion is done here.
-class LearnedPosition {
-public:
-  void learn(std::optional<double> value);
-  std::optional<double> value() const;
-
-private:
-  mutable std::mutex mutex_;
-  std::optional<double> value_;
 };
 } // namespace document_scanner::focus

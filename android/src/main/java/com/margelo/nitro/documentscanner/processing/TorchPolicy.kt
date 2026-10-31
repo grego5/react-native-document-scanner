@@ -15,14 +15,14 @@ internal class TorchPolicy {
   }
 
   /** Returns true on the frame that lights the torch. [iso] is the frame's sensitivity, null when unreported. */
-  fun observe(timestampNs: Long, exposureNs: Long, iso: Int?): Boolean {
+  fun observe(observationNs: Long, exposureNs: Long, iso: Int?): Boolean {
     if (lit) return false
     if (iso == null || iso <= 0 || exposureNs <= 0 || exposureNs / 1e6 * iso < DARK_ISO_MS) {
       darkSince = null
       return false
     }
-    val since = darkSince ?: timestampNs.also { darkSince = it }
-    if (timestampNs - since < SUSTAIN_NS) return false
+    val since = darkSince ?: observationNs.also { darkSince = it }
+    if (observationNs - since < SUSTAIN_NS) return false
     lit = true
     return true
   }

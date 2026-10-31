@@ -3,9 +3,6 @@
 namespace margelo::nitro::documentscanner {
 using namespace facebook::jni;
 namespace f = document_scanner::focus;
-namespace {
-f::LearnedPosition androidLearnedPosition;
-}
 local_ref<NativeFocus::jhybriddata> NativeFocus::initHybrid(alias_ref<jhybridobject>) { return makeCxxInstance(); }
 f::Completion NativeFocus::completion(jint result) {
   switch (result) {
@@ -55,17 +52,6 @@ local_ref<JArrayLong> NativeFocus::deadlinesNative(jlong now) {
   a->setRegion(0, 3, v);
   return a;
 }
-void NativeFocus::learnNative(alias_ref<jclass>, jdouble value, jboolean present) {
-  androidLearnedPosition.learn(present ? std::optional<double>{value} : std::nullopt);
-}
-local_ref<JArrayDouble> NativeFocus::learnedNative(alias_ref<jclass>) {
-  const auto v = androidLearnedPosition.value();
-  if (!v)
-    return nullptr;
-  auto a = JArrayDouble::newArray(1);
-  a->setRegion(0, 1, &*v);
-  return a;
-}
 void NativeFocus::registerNatives() {
   registerHybrid({makeNativeMethod("initHybrid", initHybrid),
                   makeNativeMethod("observeNative", NativeFocus::observeNative),
@@ -80,7 +66,6 @@ void NativeFocus::registerNatives() {
                   makeNativeMethod("unbindNative", NativeFocus::unbindNative),
                   makeNativeMethod("snapshotNative", NativeFocus::snapshotNative),
                   makeNativeMethod("deadlinesNative", NativeFocus::deadlinesNative),
-                  makeNativeMethod("wakeNative", NativeFocus::wakeNative), makeNativeMethod("learnNative", learnNative),
-                  makeNativeMethod("learnedNative", learnedNative)});
+                  makeNativeMethod("wakeNative", NativeFocus::wakeNative)});
 }
 } // namespace margelo::nitro::documentscanner

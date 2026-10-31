@@ -1,60 +1,13 @@
-# 14 — Share automatic torch policy
+# 14 � Keep automatic torch policy platform-native
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
-Complexity: Medium
-Dependencies: [02](02-introduce-portable-core.md)
+Status: Android complete; iOS parity pending Task 27
 
-## Objective
+The threshold-and-latch policy stays in Kotlin and Swift. Its small size does not justify a C++/JNI owner. C++ torch code, registration and build wiring have been removed. Hardware commands, capture deferral, request identity and readiness remain platform-owned.
 
-Use one automatic-light decision policy with platform-owned torch application.
+Preserve exposure-ms times ISO >= 20,000, one second of sustained dark observations, reset on bright/invalid/missing ISO, and latch until camera stop or mode change. Use explicit monotonic observation times separately from exposure durations.
 
-## Non-goals
+Android retains policy boundary/interruption/reset tests and fake-CameraX hardware-controller tests. Shared test vectors live in tests/fixtures/parity/torch.tsv; Android and the future Swift policy must consume them. Task 27 must implement the Swift policy and pass these vectors; Android validation does not establish iOS readiness.
 
-Do not implement later task outcomes, redesign unrelated Android behavior, change the model/thresholds, or perform an optimization/cleanup pass. Do not hand-edit generated sources. Missing environment facts require verification, not guessed substitutions.
-
-## Read before editing
-
-This is a lookup map. Locate symbols and read only the ranges needed for the next implementation decision. Prefer a configured matching LSP project; use focused rg when indexing is unavailable.
-
-- android/src/main/java/com/margelo/nitro/documentscanner/processing/TorchPolicy.kt
-- android/src/test/java/com/margelo/nitro/documentscanner/processing/TorchPolicyTest.kt
-- android/src/main/java/com/margelo/nitro/documentscanner/HybridDocumentScannerCameraView.kt — torch changes and pending capture
-
-## Current behavior and invariants
-
-Auto uses exposure×ISO, waits before enabling, and stays lit until camera stop/mode change. Torch cannot change during a shot.
-
-## Implementation steps
-
-1. Move darkness accumulation and latched auto decisions into a portable state machine that takes observation times explicitly (Task 02's timing convention).
-2. Keep capability checks, hardware commands, and completion evidence in each platform adapter.
-3. Preserve pending-change readiness and defer commands while a capture is in flight.
-
-## Ownership and boundary rules
-
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
-
-## Tests and expected results
-
-- Assert dark delay, interrupted dark runs, latch/reset behavior, unsupported hardware, and mode changes during capture.
-- Do not import Camera2 flash-required metadata into the shared policy.
-
-## Validation commands
-
-- Run shared build and ctest, including migrated TorchPolicyTest assertions.
-- npm run check
-
-Verification prerequisites: establish the exact compiler/OpenCV setup before shared builds and the exact Mac workspace/scheme/destination before Xcode commands. Replace command placeholders only with verified values and record the expanded command. Report each unavailable environment or private fixture as not run with its reason; never report missing tests or compilation as passed. When moving a pure algorithm to C++, move its assertions in the same task so removed JVM tests do not become a false validation signal. Native camera captures always require a human tap.
-
-## Completion criteria
-
-Android torch decisions use the shared state machine and existing timing behavior passes.
-
-Required checks must pass before Status changes to Completed. A prerequisite may be prepared with unavailable validation explicitly recorded, but downstream release readiness must remain incomplete until required evidence exists. Record changed files, executed checks, actual results, and material limitations.
-
-## Proposed commit title
-
-refactor: share automatic torch policy
-
+Validation after rollback: Kotlin TorchPolicyTest JVM suite passed (shared vectors and threshold/latch/reset cases); all 7 TorchControllerTest Android cases passed (0.028 s). Native APK rebuilt successfully without the C++ torch owner. Initial sandboxed JVM attempt failed at Gradle dependency resolution; filesystem-escalated retry passed. Focus files are unchanged; no camera/torch activation occurred. Changes are uncommitted.

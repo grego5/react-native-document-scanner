@@ -59,7 +59,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.Observer
 import com.facebook.proguard.annotations.DoNotStrip
-import com.google.common.util.concurrent.ListenableFuture
 import com.margelo.nitro.core.Promise
 import com.margelo.nitro.documentscanner.CameraPermissionStatus
 import com.margelo.nitro.documentscanner.CapturedPhoto
@@ -95,7 +94,7 @@ import com.margelo.nitro.documentscanner.processing.LiveFocusCandidate
 import com.margelo.nitro.documentscanner.processing.TorchPolicy
 import com.margelo.nitro.documentscanner.processing.canParkFocus
 import com.margelo.nitro.documentscanner.processing.hasAdjustableAutofocus
-import com.margelo.nitro.documentscanner.processing.NativeFocus
+import com.margelo.nitro.documentscanner.processing.LearnedFocusPosition
 import com.margelo.nitro.documentscanner.processing.parkDiopters
 import com.margelo.nitro.documentscanner.processing.LiveCaptureGateSample
 import com.margelo.nitro.documentscanner.processing.FrameRecord
@@ -247,9 +246,9 @@ class HybridDocumentScannerCameraView(
       val changed = synchronized(metadataLock) {
         if (generation != metadataGeneration) return
         // Every lock, a tap's too, moves the parked distance to where the user holds the phone.
-        if (afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED && focusDiopters != null) NativeFocus.learnNative(focusDiopters.toDouble(), true)
+        if (afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED && focusDiopters != null) LearnedFocusPosition.learn(focusDiopters.toDouble())
         exposureIsoMs = if (exposureNs != null && iso != null) exposureNs / 1e6 * iso else null
-        if (torchAuto && timestampNs != null && exposureNs != null) lightTorch = torchPolicy.observe(timestampNs, exposureNs, iso)
+        if (torchAuto && timestampNs != null && exposureNs != null) lightTorch = torchPolicy.observe(SystemClock.uptimeMillis() * 1_000_000, exposureNs, iso)
         if (timestampNs != null && exposureNs != null) liveDetector.frames.add(timestampNs, CameraFrameState(
           exposureNs, result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW) ?: 0L,
           autofocus == AutofocusState.SCAN || autofocus == AutofocusState.UNFOCUSED || manualFocus && lensMoving, afState,
@@ -356,10 +355,9 @@ class HybridDocumentScannerCameraView(
   @Volatile private var torchAuto = false
   /** Latest exposure time (ms) times ISO, for the stats strip. */
   @Volatile private var exposureIsoMs: Double? = null
-  /** What the bound camera confirmed its torch is; main thread, null until confirmed for this binding. */
-  private var torchApplied: Boolean? = null
-  /** Main thread: the torch change the bound camera has not confirmed yet. */
-  private var torchRequest: TorchRequest? = null
+  /** Main-thread hardware requests/completion evidence, independent of the shared auto latch. */
+  private val torchControl = TorchController(ContextCompat.getMainExecutor(themedContext),
+    ::scheduleCaptureEvaluation, ::logLifecycle)
   /** Uptime when [autofocusState] last changed. */
   /** takePhoto calls in flight, until the shot has settled; guarded by this. */
   private val captures = IdentityHashMap<Promise<*>, GatedCapture>()
@@ -857,7 +855,7 @@ class HybridDocumentScannerCameraView(
     // Zero shutter lag saves only frames CameraX finds focused, exposed and balanced; otherwise it takes a new one.
     val waitForZsl = props.qualityGate && binding?.zsl == true && hasAutofocus &&
       !(props.focusTimeoutMs <= 0 && !props.requireFocus)
-    val torchPending = torchRequest?.future?.isDone == false
+    val torchPending = torchControl.pending
     val captureState = CaptureState(
       nowMs, focusCheckEnabled, documentRequired, props.requireFocus, props.focusTimeoutMs,
       documentFound = latest?.guide != null,
@@ -1203,8 +1201,7 @@ class HybridDocumentScannerCameraView(
       torchPolicy.reset()
       exposureIsoMs = null
     }
-    torchApplied = null
-    torchRequest = null
+    torchControl.reset()
     boundCamera = null
     bound = null
     parkRange = null
@@ -1246,7 +1243,7 @@ class HybridDocumentScannerCameraView(
       stats.cameraToAnalysisMs?.let { String.format(Locale.US, "\ncamera to analysis %.1f ms", it) } ?: "") +
       String.format(Locale.US, "\nchecks %.2f ms  %s", stats.checksMsPerFrame, stats.adaptiveStatus) +
       String.format(Locale.US, "\ntorch %s%s  exposure x ISO %s", props.torch.name.lowercase(),
-        if (torchApplied == true) " lit" else "", exposureIsoMs?.let { String.format(Locale.US, "%.0f", it) } ?: "n/a") +
+        if (torchControl.applied == true) " lit" else "", exposureIsoMs?.let { String.format(Locale.US, "%.0f", it) } ?: "n/a") +
       (stats.peakBlurPercent?.let { String.format(Locale.US, "\nblur peak %.2f%%  gated %d", it, stats.gatedFrames) } ?: "") +
       (if (stats.unmatchedFrames > 0) String.format(Locale.US, "  no metadata %d", stats.unmatchedFrames) else "")
     renderStatus()
@@ -1342,31 +1339,10 @@ class HybridDocumentScannerCameraView(
    * retried by the next call.
    */
   private fun applyTorch() {
-    val camera = boundCamera ?: return
-    if (!camera.cameraInfo.hasFlashUnit() || hasPendingCapture()) return
-    val lit = when (props.torch) {
-      TorchMode.ON -> true
-      TorchMode.AUTO -> synchronized(metadataLock) { torchPolicy.lit }
-      TorchMode.OFF -> false
+    torchControl.apply(boundCamera, props.torch, hasPendingCapture()) {
+      synchronized(metadataLock) { torchPolicy.lit }
     }
-    if (lit == (torchRequest?.lit ?: torchApplied)) return
-    logLifecycle("torch lit=$lit mode=${props.torch}")
-    // A newer change cancels this one, and an unbind drops it; only the current request settles.
-    val request = TorchRequest(lit, camera.cameraControl.enableTorch(lit))
-    torchRequest = request
-    request.future.addListener({
-      if (torchRequest !== request) return@addListener
-      torchRequest = null
-      torchApplied = try { request.future.get(); lit } catch (error: Exception) {
-        logLifecycle("torch lit=$lit failed: ${error.message}")
-        null
-      }
-      // A capture waiting for this change can shoot now.
-      scheduleCaptureEvaluation()
-    }, ContextCompat.getMainExecutor(themedContext))
   }
-
-  private class TorchRequest(val lit: Boolean, val future: ListenableFuture<Void>)
 
   /** Main thread: sets the bound camera's AE compensation index from exposureCompensation; a newer call cancels it. */
   private fun applyExposureCompensation() {
@@ -1405,7 +1381,7 @@ class HybridDocumentScannerCameraView(
       )
     }
     // Lifted for every owned scan, whose autofocus these options would otherwise override.
-    val park = parkRange?.takeIf { parksFocus && focus.snapshot.owner == null }?.let { parkDiopters(NativeFocus.learnedNative()?.firstOrNull()?.toFloat(), it) }
+    val park = parkRange?.takeIf { parksFocus && focus.snapshot.owner == null }?.let { parkDiopters(LearnedFocusPosition.value()?.toFloat(), it) }
     logLifecycle("capture options fpsRange=$range centreFocus=${centre != null} parkDiopters=$park")
     val options = CaptureRequestOptions.Builder()
     if (range != null) options.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, range)

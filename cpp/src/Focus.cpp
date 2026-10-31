@@ -157,12 +157,4 @@ Deadlines Policy::deadlines(Time now) const {
 Action Policy::wakeDocument(Time now, bool shot) {
   return document_.wake(now, shot || (snapshot_.owner == Owner::tap && now < snapshot_.heldUntil));
 }
-void LearnedPosition::learn(std::optional<double> value) {
-  std::lock_guard lock(mutex_);
-  value_ = value && std::isfinite(*value) ? value : std::nullopt;
-}
-std::optional<double> LearnedPosition::value() const {
-  std::lock_guard lock(mutex_);
-  return value_;
-}
 } // namespace document_scanner::focus

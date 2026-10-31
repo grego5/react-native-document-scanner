@@ -27,8 +27,6 @@ private:
   facebook::jni::local_ref<facebook::jni::JArrayLong> snapshotNative();
   facebook::jni::local_ref<facebook::jni::JArrayLong> deadlinesNative(jlong);
   jint wakeNative(jlong now, jboolean shot) { return static_cast<jint>(policy_.wakeDocument(now, shot)); }
-  static void learnNative(facebook::jni::alias_ref<jclass>, jdouble, jboolean);
-  static facebook::jni::local_ref<facebook::jni::JArrayDouble> learnedNative(facebook::jni::alias_ref<jclass>);
   static document_scanner::focus::Completion completion(jint);
   document_scanner::focus::Policy policy_;
 };

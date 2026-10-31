@@ -4,6 +4,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TorchPolicyTest {
+  @Test fun sharedPlatformVectors() {
+    val policy = TorchPolicy()
+    val stream = javaClass.classLoader!!.getResourceAsStream("parity/torch.tsv")!!
+    stream.bufferedReader().useLines { lines ->
+      lines.filter { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("reset") }.forEach { line ->
+        val v = line.split('\t')
+        if (v[0] == "1") policy.reset()
+        assertEquals(line, v[4].toBoolean(), policy.observe(v[1].toLong(), v[2].toLong(), v[3].toIntOrNull()))
+        assertEquals(line, v[5].toBoolean(), policy.lit)
+      }
+    }
+  }
+
+  @Test fun exactThresholdAndNanosecondBoundary() {
+    TorchPolicy().let { p ->
+      val time = 9_007_199_254_740_993L
+      assertFalse(p.observe(time,20_000_000,1000))
+      assertFalse(p.observe(time + 999_999_999,20_000_000,1000))
+      assertTrue(p.observe(time + 1_000_000_000,20_000_000,1000))
+      assertFalse(p.observe(time + 2_000_000_000,0,null))
+      assertTrue(p.lit)
+    }
+  }
   @Test fun sustainedDarkFramesLightTheTorchOnceAndItStaysLit() {
     val policy = TorchPolicy()
     // 1/15 s at ISO 1600: a dark room.

@@ -62,3 +62,7 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 
 feat(ios): implement scanner focus torch and exposure controls
 
+
+Torch policy stays in Swift rather than C++. Match the Kotlin policy using `tests/fixtures/parity/torch.tsv`; implement the same threshold, sustain, interruption and latch/reset semantics.
+
+Learned focus position stays platform-owned: use a Swift store with explicit lifetime and synchronization in native lens-position units. No C++ storage or diopter conversion is required.

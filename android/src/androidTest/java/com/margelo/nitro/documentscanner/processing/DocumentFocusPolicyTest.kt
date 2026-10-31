@@ -57,14 +57,14 @@ class DocumentFocusPolicyTest {
     }
   }
   @Test fun learnedPositionSurvivesPolicyRecreationInAdapterSelectedUnits() {
-    val previous = NativeFocus.learnedNative()
+    val previous = LearnedFocusPosition.value()
     try {
-      NativeFocus.learnNative(2.25, true)
+      LearnedFocusPosition.learn(2.25)
       NativeFocus().use { it.unbindNative() }
-      assertEquals(2.25, NativeFocus.learnedNative()!![0], 0.0)
-      NativeFocus.learnNative(Double.NaN, true)
-      assertNull(NativeFocus.learnedNative())
-    } finally { NativeFocus.learnNative(previous?.get(0) ?: 0.0, previous != null) }
+      assertEquals(2.25, LearnedFocusPosition.value()!!, 0.0)
+      LearnedFocusPosition.learn(Double.NaN)
+      assertNull(LearnedFocusPosition.value())
+    } finally { LearnedFocusPosition.learn(previous) }
   }
   @Test fun fixedFocusAndEdofCamerasDoNotWaitForAScan() {
     assertFalse(hasAdjustableAutofocus(null))

@@ -4,7 +4,7 @@ import com.facebook.jni.HybridData
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.documentscanner.ReactNativeDocumentScannerOnLoad
 
-/** Serial main-thread owner; sensor metadata uses only the independent, synchronized learned-position store. */
+/** Serial main-thread owner of the shared focus policy. */
 @DoNotStrip
 internal class NativeFocus : AutoCloseable {
   @DoNotStrip private val mHybridData: HybridData
@@ -24,9 +24,4 @@ internal class NativeFocus : AutoCloseable {
   @DoNotStrip external fun deadlinesNative(now: Long): LongArray
   @DoNotStrip external fun wakeNative(now: Long, shot: Boolean): Int
   override fun close() = mHybridData.resetNative()
-  companion object {
-    init { ReactNativeDocumentScannerOnLoad.initializeNative() }
-    @JvmStatic @DoNotStrip external fun learnNative(value: Double, present: Boolean)
-    @JvmStatic @DoNotStrip external fun learnedNative(): DoubleArray?
-  }
 }

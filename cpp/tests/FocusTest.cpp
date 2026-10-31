@@ -139,17 +139,6 @@ int main() {
   auto token = f.start(Owner::tap, large);
   check(f.deadlines(large).tap == large + 5 * second);
   check(!f.expireTap(token, large + 5 * second - 1, false));
-  LearnedPosition learned;
-  check(!learned.value());
-  learned.learn(3.5);
-  check(learned.value() == 3.5);
   f.unbind();
-  check(learned.value() == 3.5);
-  learned.learn(std::numeric_limits<double>::quiet_NaN());
-  check(!learned.value());
-  learned.learn(.6);
-  check(learned.value() == .6);
-  learned.learn(std::nullopt);
-  check(!learned.value());
   std::cout << "Document/tap focus contracts passed\n";
 }
