@@ -7,6 +7,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(OpenCV REQUIRED CONFIG)
 
+add_subdirectory(../cpp ${CMAKE_CURRENT_BINARY_DIR}/scanner-core)
+
 add_library(ReactNativeDocumentScanner SHARED
   src/main/cpp/cpp-adapter.cpp
   src/main/cpp/NativeTensorPreprocessor.cpp
@@ -15,7 +17,10 @@ add_library(ReactNativeDocumentScanner SHARED
   src/main/cpp/FastCores.cpp
 )
 
+target_include_directories(ReactNativeDocumentScanner PRIVATE ../cpp/src)
+
 target_link_libraries(ReactNativeDocumentScanner
+  document_scanner_core
   android
   jnigraphics
   log
@@ -27,8 +32,3 @@ target_link_libraries(ReactNativeDocumentScanner
 set_source_files_properties(src/main/cpp/NativeTensorPreprocessor.cpp PROPERTIES COMPILE_OPTIONS "-O2;-ffp-contract=off")
 
 include(${CMAKE_SOURCE_DIR}/../nitrogen/generated/android/ReactNativeDocumentScanner+autolinking.cmake)
-
-# A per-pixel loop: optimized in debug builds too, so they time and run like release.
-set_source_files_properties(src/main/cpp/PageEdgesRemap.cpp PROPERTIES COMPILE_OPTIONS "-O2")
-# No fused multiply-add: the kernels round as the OpenCV passes they replaced did, separately per operation.
-set_source_files_properties(src/main/cpp/FieldKernels.cpp PROPERTIES COMPILE_OPTIONS "-O2;-ffp-contract=off")

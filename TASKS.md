@@ -18,7 +18,7 @@ Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating 
 
 ## Execution order
 
-Tasks are numbered sequentially; each task declares its exact prerequisites. Task 04 verifies the iOS toolchain and model run early, so later iOS work does not discover a blocked dependency. Complete the Android migration gate before starting iOS integration. Task 01 establishes fixtures and Android baseline assertions; remaining tasks are Planned. No production migration is implied by the fixture work.
+Tasks are numbered sequentially; each task declares its exact prerequisites. Task 04 verifies the iOS toolchain and model run early, so later iOS work does not discover a blocked dependency. Complete the Android migration gate before starting iOS integration. Task 01 establishes fixtures and Android baseline assertions; Task 02 adds the portable build/pixel boundary and separates existing native kernel bodies from JNI. Tasks 03–33 are Planned; their algorithm and platform migrations remain pending.
 
 | Task | Outcome | Complexity |
 | --- | --- | --- |

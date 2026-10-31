@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Completed
 Complexity: High
 Dependencies: [01](01-establish-parity-fixtures.md)
 
@@ -64,3 +64,38 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 
 build: add portable scanner core and pixel contracts
 
+
+## Implementation and evidence
+
+- Added `cpp/CMakeLists.txt`, portable `include/document_scanner/Pixels.hpp`, validated `src/Pixels.cpp`, standalone `tests/PixelsTest.cpp`, and boundary/timing documentation in `cpp/README.md`.
+- Moved the existing field and page-edge kernel bodies into `cpp/src/`, with OpenCV-only declarations in private `src/internal/Kernels.hpp`. Android wrappers retain JNI registration, extraction and synchronous array leases. Algorithms, thresholds, strip sizing and OpenCV parallel execution remain unchanged. Tensor preprocessing remains Android-owned until Task 06; its existing normalization flag is retained.
+- Android links the static core into its existing shared library and requires its existing `OpenCV::opencv_java4` target. Public headers contain only standard C++20 types. Pixel views validate byte strides, complete spans, overflow, crop and EXIF orientation; owner tokens retain backing storage/locks. Owned publication is immutable. Crop/orientation transforms belong to Task 05.
+- Policy timing is documented as caller-supplied monotonic nanoseconds with explicit camera clock domains, returned absolute deadlines, and generation-cancelled adapter wakeups. Android policy migration uses uptime (preserving current capture/focus semantics); sensor elapsed-realtime requires explicit mapping.
+
+Verified host setup: Windows x64, CMake 3.30.3, Ninja from Android SDK CMake 4.1.2, MSVC 19.51.36256.0 / VS Build Tools 18.9.2, OpenCV 4.12.0 from `.local/opencv-4.12.0/opencv/build/x64/vc16/lib`. VS 2026 generator is unsupported by installed CMake; Ninja works. Initial MSVC `/Zi` probes failed with C1902 database-manager mismatch; embedded `/Z7` debug information resolved it. No repository toolchain setting was weakened.
+
+Host commands (from the repository, in `VsDevCmd.bat -arch=x64 -host_arch=x64` environment):
+
+```text
+cmake -S cpp -B .local/build/core-tests -G "Ninja Multi-Config" -DCMAKE_MAKE_PROGRAM=C:/Users/User/AppData/Local/Android/Sdk/cmake/4.1.2/bin/ninja.exe -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DOpenCV_DIR=C:/dev/react-native-document-scanner/.local/opencv-4.12.0/opencv/build/x64/vc16/lib -DDOCUMENT_SCANNER_BUILD_TESTS=ON
+cmake --build .local/build/core-tests --config Debug
+ctest --test-dir .local/build/core-tests -C Debug --output-on-failure
+```
+
+Build and CTest passed (1 executable covering padded rows, RGBA/BGRA/RGB/gray order, invalid spans/overflow/crop/orientation, coordinate bounds, retained owner lifetime and owned-buffer release). The public header compiles without platform SDK or OpenCV includes. `npm run check` passed both typechecks and all 16 JS contracts.
+
+Android setup: NDK 27.1.12297006 / Clang 18.0.2, CMake 4.1.2, compile SDK/build tools 37, existing OpenCV 4.12.0 prefab runtime. Device `192.168.1.55:5555`, Samsung SM-G998U, API 35, arm64-v8a. The user explicitly authorized fixture transfer and device tests. Initial build/install and field/filter/preprocessor run passed 13 tests (`.local/task02-device.log`).
+
+ELF inspection with NDK `llvm-readelf -d` found exactly one OpenCV NEEDED entry, `libopencv_java4.so`. `llvm-nm -D -C` showed field, page-edge and tensor JNI registrations retained, with OpenCV resize/remap/parallel_for_ imported rather than defined. The arm64 test APK contains only `lib/arm64-v8a/libopencv_java4.so` as its OpenCV runtime.
+
+C++ implementation stage scope: pixel ownership/validation and build/kernel boundary. No optimization or cleanup stage was performed. C++ LSP was unavailable; focused source reads and native compilation were used. No physical camera capture was automated. iOS/Xcode and later algorithm migration evidence remain outside this task.
+
+Final device command (PATH includes `C:/Users/User/AppData/Local/Android/Sdk/platform-tools`; `ORG_GRADLE_PROJECT_docCornerFixtures=C:/dev/react-native-document-scanner/.local/doccornernet-runtime/assets`):
+
+```powershell
+./tools/test-device.ps1 -Device '192.168.1.55:5555' -JavaHome 'C:\Program Files\Android\Android Studio\jbr' -Class @('com.margelo.nitro.documentscanner.processing.FieldKernelsTest','com.margelo.nitro.documentscanner.processing.DocumentFiltersTest','com.margelo.nitro.documentscanner.processing.NativeTensorPreprocessorTest','com.margelo.nitro.documentscanner.processing.DocumentRendererTest')
+```
+
+Passed 22 tests, zero failures or skips, including bent-page flattening and render geometry (`.local/task02-device-final.log`). The CMake flag-owner adjustment removed obsolete flags from JNI wrapper translation units; optimized kernel flags reside on the core sources. Final host build/CTest and `git diff --check` passed after that adjustment.
+
+Final Android build after the flag-owner adjustment passed: from `example/android`, with `JAVA_HOME=C:/Program Files/Android/Android Studio/jbr`, `./gradlew.bat :react-native-document-scanner:assembleDebugAndroidTest -PreactNativeArchitectures=arm64-v8a --console=plain -q` (exit 0, `.local/task02-final-build.log`). Completion covers this portable build/pixel boundary only; Tasks 03–33 remain planned.
