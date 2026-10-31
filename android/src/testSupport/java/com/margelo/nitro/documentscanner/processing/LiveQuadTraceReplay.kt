@@ -2,7 +2,7 @@ package com.margelo.nitro.documentscanner.processing
 
 import kotlin.math.ceil
 
-/** Deterministic JVM replay of recorded raw live candidates, using recorded times only. */
+/** Deterministic native-policy replay of recorded raw live candidates, using recorded times only. */
 internal object LiveQuadTraceReplay {
   /** Feeds a fresh stabilizer, resetting where the recorded generation or frame geometry changes, as the detector does.
    */
@@ -12,14 +12,14 @@ internal object LiveQuadTraceReplay {
   ): List<LiveQuadOutput> {
     val stabilizer = LiveQuadStabilizer(config)
     var previous: LiveQuadObservation? = null
-    return trace.observations.map { o ->
+    return stabilizer.use { trace.observations.map { o ->
       if (previous != null && !sameHistory(previous!!, o)) stabilizer.reset()
       previous = o
       val input = LiveQuadInput(o.rawQuad.takeIf { o.guideEligible || o.trackingOnly }, o.width, o.height,
         o.sensorTimestampNs, o.arrivalNs)
       if (o.trackingOnly) stabilizer.retainTracked(input) ?: stabilizer.update(input.copy(quad = null))
       else stabilizer.update(input)
-    }
+    } }
   }
 
   /** Row differences against the recording. Ids are compared after the recording's starting id offset,
@@ -262,5 +262,6 @@ internal object LiveQuadTraceReplay {
   private fun fmt(value: Double): String = "%.2f".format(java.util.Locale.ROOT, value)
 }
 
+/** Historical report only; core motion is asserted in portable and device tests. */
 private fun referenceMotionBlur(gyro: ReferenceGyroHistory, optics: LiveCameraOptics, from: Long, to: Long, exposure: Long): Double? =
   gyro.peakRate(from, to)?.let { it * exposure * 1e-9 * optics.focalLengthPx / optics.activeWidth }

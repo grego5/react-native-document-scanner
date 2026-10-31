@@ -155,10 +155,8 @@ internal class LiveDocumentDetector(
   private var appliedMinCornerScore = 0.95
   /** Generation of a low-score scene awaiting measured movement; null permits inference. */
   private var scorePausedGeneration: Long? = null
-  private val adaptivePolicy = AdaptiveDetectionPolicy()
+  private val adaptivePolicy = AdaptiveDetectionPolicy(stabilizer)
   private var adaptiveWasEnabled = false
-  /** The last trusted model outline: the shape reference while flow alone tracks the page. */
-  private var adaptiveReference: DocumentQuad? = null
   private var trackedRegionSensorNs = 0L
   private val transformFactory = ImageProxyTransformFactory().apply {
     isUsingCropRect = true
@@ -318,15 +316,14 @@ internal class LiveDocumentDetector(
     val adaptive = adaptiveDetection && inferenceThrottling
     if (adaptive != adaptiveWasEnabled) {
       adaptivePolicy.reset()
-      adaptiveReference = null
       adaptiveWasEnabled = adaptive
     }
     val currentCrop = image.cropRect
     val matchingGeometry = currentCrop == flowRegionCrop && image.imageInfo.rotationDegrees == flowRegionRotation
     val estimate = flow?.estimate
     scorePausedGeneration?.let { generation ->
-      if (!state.isCurrent(generation) || estimate?.status == FlowMotionStatus.MEASURED &&
-        (estimate.speedPxPerSecond ?: 0.0) / estimate.sourceWidth > .01) {
+      if (!NativeLiveGuide.keepScorePauseNative(state.isCurrent(generation), estimate?.speedPxPerSecond ?: 0.0,
+        estimate?.status == FlowMotionStatus.MEASURED, estimate?.sourceWidth ?: 0)) {
         scorePausedGeneration = null
       }
     }
@@ -334,16 +331,10 @@ internal class LiveDocumentDetector(
     // Flow carried the page outline to this frame. Lost regions only degrade it; the policy bounds how long.
     val reliable = matchingGeometry && flowRegion != null && estimate?.status == FlowMotionStatus.MEASURED &&
       estimate.transform != null && flowRegion!!.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) } != null
-    val shapeReference = adaptiveReference
-    val trackedRegion = flowRegion
     val turned = image.imageInfo.rotationDegrees % 180 != 0
-    val doubt = when {
-      !adaptive || !reliable || shapeReference == null || trackedRegion == null -> null
-      AdaptiveDetectionPolicy.changed(shapeReference, trackedRegion, if (turned) currentCrop.height() else currentCrop.width(),
-        if (turned) currentCrop.width() else currentCrop.height()) -> "scene changed"
-      else -> null
-    }
-    val gap = if (!inferenceThrottling) 0L else if (adaptive) adaptivePolicy.interval(startedAt, tracking && shapeReference != null, reliable,
+    val doubt = if (!adaptive || !reliable) null else adaptivePolicy.doubt(flowRegion,
+      if (turned) currentCrop.height() else currentCrop.width(), if (turned) currentCrop.width() else currentCrop.height())
+    val gap = if (!inferenceThrottling) 0L else if (adaptive) adaptivePolicy.interval(startedAt, tracking && adaptivePolicy.hasReference, reliable,
       (estimate?.lostRegions ?: 0) > 0, doubt)
       else if (tracking) LiveDetectionState.TRACKING_GAP_NS else 0L
     val moving = inferenceThrottling && maxInferenceSpeedFraction > 0 && estimate?.status == FlowMotionStatus.MEASURED &&
@@ -404,7 +395,6 @@ internal class LiveDocumentDetector(
           } else {
             // An expired or invalid tracked guide must wake inference instead of remaining paused forever.
             adaptivePolicy.reset()
-            adaptiveReference = null
           }
         }
         return
@@ -414,7 +404,7 @@ internal class LiveDocumentDetector(
       val runtime = session ?: (modelFactory?.invoke(context) ?: CornerInference.acquire(context)).also { session = it }
       val prediction = runtime.analyze(image)
       val score = runtime.lastScore
-      val scoreRejected = minimumScore > 0 && score != null && score < minimumScore
+      val scoreRejected = NativeLiveGuide.scoreRejectedNative(score ?: 0.0, score != null, minimumScore)
       val candidate = prediction.takeUnless { scoreRejected }
       if (scoreRejected) {
         resetTracking()
@@ -471,10 +461,8 @@ internal class LiveDocumentDetector(
       postFocusCandidate(token, startedAt, LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.quad, sourceTransform, width, height,
         output.status == LiveQuadStatus.TRACKING, frame?.outOfFocus == true))
       tracking = output.status != LiveQuadStatus.SEARCHING
-      if (!flowRetained) adaptiveReference = output.accepted.takeIf { output.status == LiveQuadStatus.TRACKING }
-      if (adaptive) adaptiveReference?.takeUnless { flowRetained }?.let {
-        adaptivePolicy.confirmed()
-      }
+      if (!flowRetained) adaptivePolicy.reference(output.accepted.takeIf { output.status == LiveQuadStatus.TRACKING })
+      if (adaptive && !flowRetained && adaptivePolicy.hasReference) adaptivePolicy.confirmed()
       flowRegion = output.accepted
       trackedRegionSensorNs = sensorTimestampNs
       flowRegionCrop.set(crop)
@@ -607,7 +595,6 @@ internal class LiveDocumentDetector(
     stabilizer.reset()
     tracking = false
     adaptivePolicy.reset()
-    adaptiveReference = null
     flowRegion = null
     captureGuide = null
   }
@@ -733,7 +720,7 @@ internal class LiveDocumentDetector(
       clearFlowLocked()
     }
     removeCallbacks()
-    executor.execute { releaseSession(); releaseFlow(); pageMotion.close() }
+    executor.execute { releaseSession(); releaseFlow(); pageMotion.close(); stabilizer.close() }
     executor.shutdown() // Drain the current image and final close; never close interpreter in flight.
   }
 

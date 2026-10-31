@@ -11,7 +11,7 @@ Write edited text files with LF line endings; in Python use `open(..., newline="
 - `npm run test:native -- -Test '*DocumentFocusPolicyTest'` runs JVM tests through `tools/test-native.ps1`, which sets the JDK, ABI and Gradle cache. It may compile Kotlin, resources and Gradle plugins, so never run it, or any compile-only Gradle target, under a no-build instruction. It never builds or installs an APK.
   - Pass several filters as one comma-separated `-Test` list.
   - `-RecompilePlugins` works around stale Expo Gradle plugin output ("Could not find implementation class ..."). Concurrent Gradle runs on this checkout cause the same failure.
-  - `-Trace <path>` selects live-trace replay input.
+  - Guide replay now runs through JNI instrumentation; JVM tests retain format/report checks only.
 
 ## Build and run
 
@@ -51,11 +51,11 @@ adb -s <serial> pull /sdcard/Android/data/com.margelo.nitro.documentscanner.test
 
 Options: `liveQuadCaptures <n>` (user-tapped shutters), `liveQuadKeepPhotos true`, `liveQuadAnalysisWidth <px>`, `liveQuadQualityGate true`, `liveQuadFlow false` (cadence baseline). The trace config stores the acceptance settings.
 
-Replay: `testDebugUnitTest -PliveQuadTrace=<file or dir>`, relative to the repository root, writes `android/build/reports/live-quad-trace/summary.txt`.
+Replay: `npm run test:device -- -Device <verified-adb-id> -Class com.margelo.nitro.documentscanner.processing.LiveQuadTraceReplayTest -Argument liveQuadTrace=<device-file-or-directory>` exercises the shared native guide. It writes `live-quad-trace-reports/summary.txt` under the test application external files directory. Without that optional argument, deterministic synthetic replay tests run and external replay is skipped.
 
 Replay limits:
 
-- Traces are unversioned and must match the current columns and config; older layouts are rejected. Strict row equality applies only when the recorded config equals the current one and the trace has no gyro rows.
+- Traces are unversioned and must match the current columns and config; older layouts are rejected. Strict guide row equality applies only when the recorded config equals the current one. Gyro reports still use the named historical math oracle; guide replay runs through JNI.
 - Pixel-free replay cannot regenerate feature tracks. Recorded transforms belong to the recorded feature regions. Evaluating a different tracking policy needs live recordings.
 - Analysis frames are about 6x smaller than the photo, so only capture rows can test the 0.2% capture blur limit. Record rotation, sideways motion and approach separately.
 

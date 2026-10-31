@@ -16,6 +16,7 @@ add_library(ReactNativeDocumentScanner SHARED
   src/main/cpp/NativeDocumentFilters.cpp
   src/main/cpp/NativeGrayscalePng.cpp
   src/main/cpp/NativePdfWriter.cpp
+  src/main/cpp/NativeLiveGuide.cpp
   src/main/cpp/NativeMotion.cpp
   src/main/cpp/FieldKernels.cpp
   src/main/cpp/FastCores.cpp

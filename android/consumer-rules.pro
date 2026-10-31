@@ -12,3 +12,5 @@
 -keep class com.margelo.nitro.documentscanner.processing.NativeMotion { *; }
 -keep class com.margelo.nitro.documentscanner.processing.NativeFlowEstimator { *; }
 -keep class com.margelo.nitro.documentscanner.processing.NativeFlowHistory { *; }
+
+-keep class com.margelo.nitro.documentscanner.processing.NativeLiveGuide { *; }

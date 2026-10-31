@@ -6,8 +6,16 @@ import java.io.File
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import org.junit.Before
+import androidx.test.platform.app.InstrumentationRegistry
+import com.facebook.soloader.SoLoader
+import com.margelo.nitro.JNIOnLoad
 
 class LiveQuadTraceReplayTest {
+  @Before fun initializeNative() {
+    SoLoader.init(InstrumentationRegistry.getInstrumentation().targetContext, false)
+    JNIOnLoad.initializeNativeNitro()
+  }
   @Test
   fun trackedHeartbeatsBridgeTheModelIntervalWithoutCountingAsInference() {
     val page = rect(.2, .2, .8, .8)
@@ -78,11 +86,11 @@ class LiveQuadTraceReplayTest {
     assertTrue(onSummary, onSummary.contains("inferredAnalysisMs(flow+preprocessing+inference+stabilizer) n=3 median=23.00 p95=25.00"))
   }
 
-  /** Replays `-PliveQuadTrace=<file or directory>` and writes `build/reports/live-quad-trace/summary.txt`. */
+  /** Optional current-format device trace replay, selected with instrumentation argument liveQuadTrace. */
   @Test
   fun recordedTracesReplay() {
-    val path = System.getProperty("liveQuadTrace")
-    assumeTrue("Pass -PliveQuadTrace=<file or directory> to replay recorded traces", path != null)
+    val path = InstrumentationRegistry.getArguments().getString("liveQuadTrace")
+    assumeTrue("Pass instrumentation liveQuadTrace=<device file or directory> to replay recorded traces", path != null)
     val root = File(path!!)
     val files = if (root.isDirectory) root.walkTopDown().filter { it.isFile && it.extension == "tsv" }.sortedBy { it.path }.toList()
     else listOf(root)
@@ -106,7 +114,7 @@ class LiveQuadTraceReplayTest {
 
       }
     }
-    val reportDirectory = File(System.getProperty("liveQuadTraceReport") ?: "build/reports/live-quad-trace").apply { mkdirs() }
+    val reportDirectory = File(InstrumentationRegistry.getInstrumentation().context.getExternalFilesDir(null), "live-quad-trace-reports").apply { mkdirs() }
     File(reportDirectory, "summary.txt").writeText(summary, Charsets.UTF_8)
     println(summary)
     assertEquals(emptyList<String>(), failures)
@@ -123,7 +131,7 @@ class LiveQuadTraceReplayTest {
   )
 
   private fun syntheticTrace(): LiveQuadTrace {
-    val text = requireNotNull(javaClass.classLoader!!.getResource("live-quad-trace/synthetic.tsv")).readText(Charsets.UTF_8)
+    val text = InstrumentationRegistry.getInstrumentation().context.assets.open("live-quad-trace/synthetic.tsv").bufferedReader().use { it.readText() }
     return LiveQuadTraceFormat.read(text)
   }
 }

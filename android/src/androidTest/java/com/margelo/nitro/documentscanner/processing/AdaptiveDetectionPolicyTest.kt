@@ -4,8 +4,28 @@ import com.margelo.nitro.documentscanner.DocumentPoint
 import com.margelo.nitro.documentscanner.DocumentQuad
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
+import androidx.test.platform.app.InstrumentationRegistry
+import com.facebook.soloader.SoLoader
+import com.margelo.nitro.JNIOnLoad
 
 class AdaptiveDetectionPolicyTest {
+  @Before fun initializeNative() {
+    SoLoader.init(InstrumentationRegistry.getInstrumentation().targetContext, false)
+    JNIOnLoad.initializeNativeNitro()
+  }
+  @Test fun confirmationReferenceIsOwnedAndResetWithNativePolicy() {
+    AdaptiveDetectionPolicy().use { p ->
+      val q = quad(.2 to .2,.8 to .2,.8 to .8,.2 to .8)
+      assertFalse(p.hasReference)
+      p.reference(q)
+      assertTrue(p.hasReference)
+      assertNull(p.doubt(quad(.21 to .2,.81 to .2,.81 to .8,.21 to .8),240,320))
+      assertEquals("scene changed",p.doubt(quad(.3 to .2,.9 to .2,.9 to .8,.3 to .8),240,320))
+      p.reset()
+      assertFalse(p.hasReference)
+    }
+  }
   @Test fun reliableTrackingPausesImmediatelyWithoutSettlingTimers() {
     val p=AdaptiveDetectionPolicy()
     assertEquals(Long.MAX_VALUE,p.interval(0,true,true,false))
