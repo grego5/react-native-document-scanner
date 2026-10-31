@@ -32,6 +32,8 @@ class PixelView final {
 public:
   PixelView(std::span<const std::byte> bytes, PixelLayout layout);
   const PixelLayout& layout() const noexcept { return layout_; }
+  // Read-only storage for native library adapters; valid only within the owning lease.
+  std::span<const std::byte> bytes() const noexcept { return bytes_; }
   Rgba at(uint32_t x, uint32_t y) const;
 private:
   std::span<const std::byte> bytes_;

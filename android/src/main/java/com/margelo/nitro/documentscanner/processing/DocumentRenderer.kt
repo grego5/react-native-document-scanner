@@ -21,20 +21,15 @@ import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
 import org.opencv.android.Utils
-import org.opencv.core.Core
-import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfInt
-import org.opencv.core.MatOfPoint2f
-import org.opencv.core.Point
-import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 
 /**
  * Rectifies the upright original so the submitted quad's corners land exactly on the output corners, and bends each
- * side onto the page's own edge where the page curves ([PageEdges]).
+ * side onto the page's own edge where the page curves in the shared geometric stage.
  */
 internal object DocumentRenderer {
   fun render(
@@ -66,58 +61,13 @@ internal object DocumentRenderer {
         val sourceMat = Mat()
         val warped = Mat()
         val bgr = Mat()
-        val sourceMask = Mat(sourceBitmap.height, sourceBitmap.width, CvType.CV_8UC1, Scalar(255.0))
-        val warpedMask = Mat()
-        val sourceQuad = MatOfPoint2f()
-        val destinationQuad = MatOfPoint2f()
-        val homography = Mat()
-        val inverse = Mat()
         val parameters = MatOfInt(Imgcodecs.IMWRITE_JPEG_QUALITY, config.quality)
         try {
           Utils.bitmapToMat(sourceBitmap, sourceMat)
-          val pixelQuad = sharedPixelQuad(sourcePoints, sourceBitmap.width, sourceBitmap.height)
-          // Pixels in the original per pixel of the sampled bitmap, so the output is sized from the original.
+          // Pixels in the original per pixel of the sampled bitmap, so output sizing preserves the original.
           val originalScale = max(upright.encodedWidth, upright.encodedHeight).toDouble() / max(sourceBitmap.width, sourceBitmap.height)
-          val target = targetCanvas(pixelQuad, originalScale, config)
-          sourceQuad.fromArray(*pixelQuad.map { Point(it.x, it.y) }.toTypedArray())
-          destinationQuad.fromArray(*target.destination.map { Point(it.x, it.y) }.toTypedArray())
-          val calculatedHomography = Imgproc.getPerspectiveTransform(sourceQuad, destinationQuad)
-          try {
-            calculatedHomography.copyTo(homography)
-          } finally {
-            calculatedHomography.release()
-          }
-          val inverseStatus = Core.invert(homography, inverse)
-          check(inverseStatus > 0.0 && Core.determinant(homography).isFinite()) {
-            "Document geometry produced an unstable perspective transform."
-          }
-
-          val outputSize = Size(target.width.toDouble(), target.height.toDouble())
-          // Only with every corner in the photo: coverage below comes from the straight warp, which a bend would
-          // move away from where the photo's border lands.
-          val cornersInside = pixelQuad.all { it.x in 0.0..sourceBitmap.width.toDouble() && it.y in 0.0..sourceBitmap.height.toDouble() }
-          val edges = if (config.followPageEdges && cornersInside) {
-            PageEdges.find(sourceMat, homography, target.width, target.height)
-          } else null
-          if (edges != null) edges.remap(sourceMat, inverse, warped) else Imgproc.warpPerspective(
-            sourceMat,
-            warped,
-            homography,
-            outputSize,
-            Imgproc.INTER_LINEAR,
-            Core.BORDER_CONSTANT,
-            Scalar(248.0, 248.0, 248.0, 255.0),
-          )
-          Imgproc.warpPerspective(
-            sourceMask,
-            warpedMask,
-            homography,
-            outputSize,
-            Imgproc.INTER_NEAREST,
-            Core.BORDER_CONSTANT,
-            Scalar(0.0),
-          )
-          check(Core.countNonZero(warpedMask) > 0) { "The selected document contains no captured image pixels." }
+          val target = NativeRenderGeometry.render(sourceMat, warped, sourcePoints.coordinates(), originalScale,
+            config.paperLongEdge, config.followPageEdges)
           // Shadows go first, so the filter's own paper estimate sees an evenly lit page.
           if (config.removeShadows) ShadowRemoval.apply(warped)
           val filtered = DocumentFilters.apply(warped, config.filter)
@@ -147,10 +97,6 @@ internal object DocumentRenderer {
           moveAtomically(temporary, destination)
           moveAtomically(thumbnailTemporary, thumbnail)
 
-          val homographyValues = DoubleArray(9).also { homography.get(0, 0, it) }
-          val validPoints = NativeGeometry.outputPolygon(pixelQuad, sourceBitmap.width, sourceBitmap.height,
-            homographyValues, target.width, target.height)
-          check(validPoints.size >= 3) { "The selected document does not overlap the captured image." }
           val outputUri = Uri.fromFile(destination).toString()
           // Cached before resolving, so a pager shows the new page and its thumbnail together.
           PageThumbnails.put(outputUri, thumbnailBitmap, thumbnail)
@@ -160,18 +106,12 @@ internal object DocumentRenderer {
             thumbnailUri = Uri.fromFile(thumbnail).toString(),
             width = target.width.toDouble(),
             height = target.height.toDouble(),
-            validContentPolygon = validPoints.toTypedArray(),
+            validContentPolygon = target.validContentPolygon.toTypedArray(),
           )
         } finally {
           sourceMat.release()
           warped.release()
           bgr.release()
-          sourceMask.release()
-          warpedMask.release()
-          sourceQuad.release()
-          destinationQuad.release()
-          homography.release()
-          inverse.release()
           parameters.release()
         }
       }
@@ -215,8 +155,6 @@ internal object DocumentRenderer {
     val followPageEdges: Boolean,
   )
 
-  private data class TargetCanvas(val width: Int, val height: Int, val destination: List<ImagePoint>)
-
   private fun validateOptions(options: DocumentRenderOptions?): RenderConfig {
     val paper = options?.paperSize
     requireInput(paper != null || options?.dpi == null) { "dpi requires paperSize." }
@@ -246,17 +184,6 @@ internal object DocumentRenderer {
     bottomRight = ImagePoint(quad.bottomRight.x, quad.bottomRight.y),
     bottomLeft = ImagePoint(quad.bottomLeft.x, quad.bottomLeft.y),
   )
-
-  private fun sharedPixelQuad(quad: ImageQuad, width: Int, height: Int): List<ImagePoint> =
-    NativeGeometry.coordinates(quad.coordinates(), width, height, normalized = false)
-      .asList().chunked(2).map { ImagePoint(it[0], it[1]) }
-
-  private fun targetCanvas(quad: List<ImagePoint>, originalScale: Double, config: RenderConfig): TargetCanvas {
-    val size = NativeGeometry.target(quad, originalScale, config.paperLongEdge)
-    val w = size[0].toDouble()
-    val h = size[1].toDouble()
-    return TargetCanvas(size[0], size[1], listOf(ImagePoint(0.0, 0.0), ImagePoint(w, 0.0), ImagePoint(w, h), ImagePoint(0.0, h)))
-  }
 
   private fun outputDirectoryFor(sourceFile: File): File {
     var current: File? = sourceFile.parentFile

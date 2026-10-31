@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Completed
 Complexity: High
 Dependencies: [05](05-share-image-geometry.md)
 
@@ -18,9 +18,11 @@ Do not implement later task outcomes, redesign unrelated Android behavior, chang
 
 This is a lookup map. Locate symbols and read only the ranges needed for the next implementation decision. Prefer a configured matching LSP project; use focused rg when indexing is unavailable.
 
-- android/src/main/java/com/margelo/nitro/documentscanner/processing/DocumentRenderer.kt — targetCanvas, warp, clipping
-- android/src/main/java/com/margelo/nitro/documentscanner/processing/PageEdges.kt
-- android/src/main/cpp/PageEdgesRemap.cpp
+- android/src/main/java/com/margelo/nitro/documentscanner/processing/DocumentRenderer.kt — platform orchestration
+- cpp/include/document_scanner/RenderGeometry.hpp and cpp/src/RenderGeometry.cpp — target canvas, perspective warp and straight coverage
+- cpp/src/PageEdges.cpp — migrated detection/fitting and source-boundary checks
+- cpp/src/PageEdgesRemap.cpp — existing private curved remap kernel
+- android/src/main/cpp/NativeRenderGeometry.cpp — owning JNI conversion
 - android/src/androidTest/java/com/margelo/nitro/documentscanner/processing/DocumentRendererTest.kt
 
 ## Current behavior and invariants
@@ -59,3 +61,22 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 
 refactor: share perspective and page-edge rendering
 
+
+## Implementation report
+
+- Added `RenderGeometry.hpp` / `RenderGeometry.cpp`: the portable pre-filter stage borrows a full upright RGBA8 pixel lease (padded rows allowed), validates the submitted normalized quad, chooses the existing target dimensions, constructs/inverts the Point2f homography, performs the perspective or curved warp, and returns independent immutable pixels with the normalized straight-warp coverage polygon. Source/output limits, original-scale sizing, paper limits, interpolation, border values, coverage mask and rejection behavior are preserved.
+- Moved Android `PageEdges.kt` detection/fitting/source-boundary logic to private `cpp/src/PageEdges.cpp` / `internal/PageEdges.hpp`, preserving the 800-pixel detection canvas, 6% band, 31 stations, strongest-step tie handling, triple search and least-squares order, thresholds, fixed corners and float32 offset arrays. The existing strip/parallel remap kernel is unchanged. Unsupported sides stay straight; any outside submitted corner disables all bending.
+- Replaced the old `PageEdgesRemap.*` JNI wrapper with `NativeRenderGeometry.*` and a small Kotlin value adapter. JNI retains a source Mat header as the lease owner for its synchronous call and copies the independently owned result into Android's mutable filter input. No Mat, JNI address or platform handle enters the portable headers. Added a read-only span accessor to the validated PixelView for private library adapters.
+- `DocumentRenderer.kt` now delegates its geometric stage while retaining decode, filter/shadow order, encoding, thumbnail registration and atomic file publication. The processor's existing `FastCores.run { DocumentRenderer.render(...) }` scope remains unchanged, using the same Android OpenCV runtime. No public/Nitro API or generated binding changed.
+- Captured five public synthetic pre-filter pixel/geometry goldens from the original Android stage before replacement (flat, bent, a competing middle rule, outside corner, and scaled output). `GeometricRenderTest` checks exact SHA-256, dimensions, bend decisions, polygons and source/error ownership. `RenderGeometryTest` adds portable padded-source identity/ownership, bent-grid/corner/border behavior, straight coverage, outside/unsupported fallback and invalid/no-overlap/source-boundary assertions. The existing nine renderer instrumentation tests remain intact; no JVM assertions were removed.
+- Updated CMake, native registration/keep rules, architecture/core ownership documentation and fixture inventory. iOS integration/execution remains outside this task; no performance or release-parity claim is made. The JNI output copy is intentional ownership conversion, not a performance optimization. C++ and Kotlin changes used the implementation stage only.
+
+### Validation
+
+- Baseline command: `npm run test:device -- -Device 192.168.1.55:5555 -Class 'com.margelo.nitro.documentscanner.processing.GeometricRenderTest'` against the original stage: APK built/installed and the baseline recorder passed (1 test, 35.107 seconds). Only generated synthetic pixels were used; no camera captures or reference-photo transfers occurred.
+- `cmd /c .local\task05\build-core.cmd` invokes the installed Visual Studio developer environment and `cmake --build .local/build/core-tests --config Release`: Windows x64 MSVC 14.51.36231 / C++20 / OpenCV 4.12 build passed. Initial validation caught a temporary-lease access in the new test and a namespace-qualified fbjni registration macro; both were corrected before passing builds.
+- With `.local/opencv-4.12.0/opencv/build/x64/vc16/bin` on PATH: `ctest --test-dir .local/build/core-tests -C Release --output-on-failure` passed all four suites (render geometry, tensor, pixel and geometry contracts).
+- `npm run check`: both TypeScript checks and all 16 JS contract tests passed.
+- Device command: `npm run test:device -- -Device 192.168.1.55:5555 -Class 'com.margelo.nitro.documentscanner.processing.DocumentRendererTest,com.margelo.nitro.documentscanner.processing.GeometricRenderTest'`. The migrated stage APK built/installed; all 11 tests passed in 22.131 seconds, including exact pre-migration pre-filter pixels and geometry at 1e-12.
+- Device: connected Samsung SM-G998U, Android 15, arm64 at `192.168.1.55:5555`; Kotlin 2.2.10, NDK 27.1.12297006, CMake 4.1.2, compile SDK 37, target SDK 36, min SDK 24. No Mac/iOS execution or new JVM run was required/performed for this geometric slice; later cross-platform release evidence remains pending.
+- Final fixture/header verification reran the same Android command: APK built/installed and all 11 tests passed again (22.032 seconds). All five pre-filter pixel hashes remain exact, including the competing-rule fixture's existing bend decision. Final C++ formatting and diff whitespace checks passed.

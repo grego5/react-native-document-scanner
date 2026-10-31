@@ -12,7 +12,7 @@ add_subdirectory(../cpp ${CMAKE_CURRENT_BINARY_DIR}/scanner-core)
 add_library(ReactNativeDocumentScanner SHARED
   src/main/cpp/cpp-adapter.cpp
   src/main/cpp/NativeTensorPreprocessor.cpp
-  src/main/cpp/PageEdgesRemap.cpp
+  src/main/cpp/NativeRenderGeometry.cpp
   src/main/cpp/FieldKernels.cpp
   src/main/cpp/FastCores.cpp
   src/main/cpp/NativeGeometry.cpp

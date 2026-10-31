@@ -1,6 +1,6 @@
 # iOS scanner parity execution plan
 
-Status: Tasks 01–06 completed (Task 04 physical-device checks deferred by user); Tasks 07–33 planned
+Status: Tasks 01–07 completed (Task 04 physical-device checks deferred by user); Tasks 08–33 planned
 
 Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating Android first. This index contains only the current iOS/shared-engine goal; every implementation task is linked below.
 
@@ -18,7 +18,7 @@ Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating 
 
 ## Execution order
 
-Tasks are numbered sequentially; each task declares its exact prerequisites. Task 04 verifies the iOS toolchain and model run early, so later iOS work does not discover a blocked dependency. Complete the Android migration gate before starting iOS integration. Task 01 establishes fixtures and Android baseline assertions; Task 02 adds the portable build/pixel boundary and separates existing native kernel bodies from JNI. Task 03 shares model resources; Task 04 verified x86_64 simulator execution and arm64 device linkage; physical-device checks are deferred until a working sample, preprocessing parity belongs to Task 06, and official OpenCV lacks an arm64 simulator slice. Task 05 moved source/crop/render geometry into the shared core and verified Android JNI integration. Task 06 moved tensor preparation, tensor metadata validation and prediction interpretation into the shared core and verified bitwise Android tensor parity and the existing photo budgets. Tasks 07–33 are Planned; their algorithm and platform migrations remain pending.
+Tasks are numbered sequentially; each task declares its exact prerequisites. Task 04 verifies the iOS toolchain and model run early, so later iOS work does not discover a blocked dependency. Complete the Android migration gate before starting iOS integration. Task 01 establishes fixtures and Android baseline assertions; Task 02 adds the portable build/pixel boundary and separates existing native kernel bodies from JNI. Task 03 shares model resources; Task 04 verified x86_64 simulator execution and arm64 device linkage; physical-device checks are deferred until a working sample, preprocessing parity belongs to Task 06, and official OpenCV lacks an arm64 simulator slice. Task 05 moved source/crop/render geometry into the shared core and verified Android JNI integration. Task 06 moved tensor preparation, tensor metadata validation and prediction interpretation into the shared core and verified bitwise Android tensor parity and the existing photo budgets. Task 07 moved perspective/page-edge rendering and straight-warp coverage into the shared core, with exact Android pre-filter synthetic goldens and portable geometry tests. Tasks 08–33 are Planned; their algorithm and platform migrations remain pending.
 
 | Task | Outcome | Complexity |
 | --- | --- | --- |
