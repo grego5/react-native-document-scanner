@@ -25,7 +25,7 @@ def main():
 
     model=load_float32_model(args.checkpoint,args.layers)
     size=int(model.input_shape[1])
-    asset = root / 'android/src/main/assets/doccornernet/model.tflite'
+    asset = root / 'resources/doccornernet/model.tflite'
     interpreter = tf.lite.Interpreter(model_path=str(asset), num_threads=2)
     interpreter.allocate_tensors()
     destination = args.output / 'doccornernet-runtime'

@@ -1,13 +1,13 @@
 # DocCornerNet model tools
 
-Detection uses `android/src/main/assets/doccornernet/model.tflite`. Python and private photos are offline validation inputs, never app dependencies.
+Detection uses `resources/doccornernet/model.tflite`. Android packages this shared directory at the unchanged APK path `doccornernet/model.tflite`; the bundled input is 224 x 224. The model, provenance, and license live here once for both platforms. Python and private photos are offline validation inputs, never app dependencies.
 
 ## Export and fixtures
 
 The deployed checkpoint is `mobilenetv3_custom_224_v1`: MobileNetV3 Small (alpha 0.75), 224 x 224 ImageNet-normalized RGB, 224 coordinate bins, decoded normalized corners and a sigmoid presence score. Its trained weights are exported with float32 CPU operations.
 
 ```powershell
-./.local/doccornernet-env/Scripts/python.exe tools/models/export_adapted_doccornernet.py --checkpoint .local/models/mobilenetv3_custom_224_v1/best_model_inference.keras --layers .local/models/mobilenetv3_custom_224_v1/model.py --output android/src/main/assets/doccornernet
+./.local/doccornernet-env/Scripts/python.exe tools/models/export_adapted_doccornernet.py --checkpoint .local/models/mobilenetv3_custom_224_v1/best_model_inference.keras --layers .local/models/mobilenetv3_custom_224_v1/model.py --output resources/doccornernet
 ./.local/doccornernet-env/Scripts/python.exe tools/models/prepare_doccornernet_runtime.py --photos C:/Users/User/Downloads/samples
 ```
 

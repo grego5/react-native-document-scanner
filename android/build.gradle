@@ -46,6 +46,9 @@ android {
     }
   }
 
+  // Keep the runtime asset path doccornernet/model.tflite while sharing its canonical source.
+  sourceSets.main.assets.srcDir('../resources')
+
   // Share the unchanged Kotlin resize oracle between JVM and instrumentation tests only.
   sourceSets.test.java.srcDir('src/testSupport/java')
   sourceSets.androidTest.java.srcDir('src/testSupport/java')
@@ -105,8 +108,8 @@ dependencies {
 }
 
 tasks.register('verifyDocCornerModelAsset') {
-  def assetFile = file('src/main/assets/doccornernet/model.tflite')
-  def provenance = file('src/main/assets/doccornernet/provenance.json')
+  def assetFile = file('../resources/doccornernet/model.tflite')
+  def provenance = file('../resources/doccornernet/provenance.json')
   inputs.files(assetFile, provenance)
   doLast {
     if (!assetFile.isFile()) throw new GradleException('DocCornerNet asset is missing. See tools/models/README.md for model export instructions.')

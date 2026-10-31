@@ -1,4 +1,4 @@
-"""Export a trusted local DocCornerNet Keras inference model to the Android tensor contract."""
+"""Export a trusted local DocCornerNet Keras inference model to the shared tensor contract."""
 import argparse
 import hashlib
 import importlib.util
@@ -33,7 +33,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkpoint',type=Path,required=True)
     parser.add_argument('--layers',type=Path,required=True)
-    parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--output',type=Path,default=Path(__file__).resolve().parents[2]/'resources/doccornernet')
     args=parser.parse_args()
     model=load_float32_model(args.checkpoint,args.layers)
     shape=model.input_shape

@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Completed
 Complexity: Medium
 Dependencies: [02](02-introduce-portable-core.md)
 
@@ -60,3 +60,21 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 ## Proposed commit title
 
 build: move the corner model into shared resources
+
+## Completion report
+
+Moved the unchanged model, provenance, and license from `android/src/main/assets/doccornernet/` to `resources/doccornernet/`. Android main assets now include `../resources`; verification reads the shared files. The APK asset name remains `doccornernet/model.tflite`, so `DocCornerSession.BUNDLED_ASSET` and runtime callers need no change. The task lookup's `CornerModels.kt` is absent; the current constant lives in `DocCornerSession.kt`. Its bundled input constant and provenance already correctly specify 224, so no numeric behavior changed.
+
+Updated the npm allowlist, export default and documented command, fixture generator lookup, and architecture reference. No iOS packaging was added. Updated the index to reflect completed Task 02 as well.
+
+Validation on 2026-10-31:
+
+- `npm run check`: library/example typechecks and all 16 JS contracts passed.
+- Android setup: installed NDK `27.1.12297006`, Clang `18.0.2`, SDK CMake `4.1.2`, existing OpenCV prefab `4.12.0`; JDK `C:\Program Files\Android\Android Studio\jbr`. Device confirmed with `C:\Users\User\AppData\Local\Android\Sdk\platform-tools\adb.exe devices`: `192.168.1.55:5555`, Samsung SM-G998U.
+- From `example/android`, with that `JAVA_HOME`: `./gradlew.bat :react-native-document-scanner:assembleDebug -PreactNativeArchitectures=arm64-v8a --console=plain -q` passed. The same build with one model byte deliberately changed failed at `verifyDocCornerModelAsset` with `DocCornerNet model SHA-256 mismatch`; a finally block restored canonical bytes before the passing build. Logs: `.local/task03-tamper.log`, `.local/task03-build.log`.
+- With SDK platform-tools on PATH and `ORG_GRADLE_PROJECT_docCornerFixtures=C:/dev/react-native-document-scanner/.local/doccornernet-runtime/assets`: `./tools/test-device.ps1 -Device '192.168.1.55:5555' -JavaHome 'C:\Program Files\Android\Android Studio\jbr' -Class @('com.margelo.nitro.documentscanner.processing.DocCornerNetRuntimeTest') -Measure` built and installed the APK and passed all 5 tests, including the 13-photo measured parity check. Log: `.local/task03-device.log`. No shutter was automated.
+- Python ZIP inspection of the built debug AAR and instrumentation APK confirmed model bytes equal the canonical source. SHA-256: `830ece3373c3ce6ff67a9023f10f56e3576c257de22d662f985ce27b747f3b35`. All three moved files also match their prior Git bytes exactly.
+- `npm pack --dry-run --json --ignore-scripts --cache .local/npm-cache` and actual `npm pack --json --ignore-scripts --cache .local/npm-cache --pack-destination .local` passed. Tarball inspection found exactly one model and exactly the shared model/provenance/license resource set, with byte equality. The default external npm cache was unwritable in the sandbox, so validation used the ignored local cache.
+- Both updated Python tools parse successfully; model regeneration was not run because the existing canonical bytes must remain unchanged. `git diff --check` passed.
+
+Required Android/package checks passed. iOS bundling remains Task 17.
