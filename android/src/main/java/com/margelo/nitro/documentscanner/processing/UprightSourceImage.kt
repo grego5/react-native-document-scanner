@@ -1,7 +1,6 @@
 package com.margelo.nitro.documentscanner.processing
 
 import android.graphics.Bitmap
-import androidx.exifinterface.media.ExifInterface
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -30,51 +29,19 @@ internal class EncodedToUprightTransform internal constructor(
   private val sampledHeight: Int,
   val exifOrientation: Int,
 ) {
-  val uprightWidth: Int = if (swapsDimensions(exifOrientation)) sampledHeight else sampledWidth
-  val uprightHeight: Int = if (swapsDimensions(exifOrientation)) sampledWidth else sampledHeight
+  private val uprightSize = NativeGeometry.uprightSize(sampledWidth, sampledHeight, exifOrientation)
+  val uprightWidth: Int = uprightSize[0]
+  val uprightHeight: Int = uprightSize[1]
 
   init {
-    require(encodedWidth > 0 && encodedHeight > 0 && sampledWidth > 0 && sampledHeight > 0) {
-      "Image dimensions must be positive."
-    }
-    require(exifOrientation in ExifInterface.ORIENTATION_NORMAL..ExifInterface.ORIENTATION_ROTATE_270 ||
-      exifOrientation == ExifInterface.ORIENTATION_TRANSPOSE ||
-      exifOrientation == ExifInterface.ORIENTATION_TRANSVERSE
-    ) { "EXIF orientation must be between 1 and 8." }
+    require(encodedWidth > 0 && encodedHeight > 0) { "Image dimensions must be positive." }
   }
 
-  fun encodedToUpright(point: ImagePoint): ImagePoint {
-    val x = point.x * sampledWidth / encodedWidth
-    val y = point.y * sampledHeight / encodedHeight
-    return when (exifOrientation) {
-      ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> ImagePoint(sampledWidth - x, y)
-      ExifInterface.ORIENTATION_ROTATE_180 -> ImagePoint(sampledWidth - x, sampledHeight - y)
-      ExifInterface.ORIENTATION_FLIP_VERTICAL -> ImagePoint(x, sampledHeight - y)
-      ExifInterface.ORIENTATION_TRANSPOSE -> ImagePoint(y, x)
-      ExifInterface.ORIENTATION_ROTATE_90 -> ImagePoint(sampledHeight - y, x)
-      ExifInterface.ORIENTATION_TRANSVERSE -> ImagePoint(sampledHeight - y, sampledWidth - x)
-      ExifInterface.ORIENTATION_ROTATE_270 -> ImagePoint(y, sampledWidth - x)
-      else -> ImagePoint(x, y)
-    }
-  }
+  fun encodedToUpright(point: ImagePoint): ImagePoint = NativeGeometry.sourcePoint(
+    point, encodedWidth, encodedHeight, sampledWidth, sampledHeight, exifOrientation, inverse = false,
+  )
 
-  fun uprightToEncoded(point: ImagePoint): ImagePoint {
-    val scaled = when (exifOrientation) {
-      ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> ImagePoint(sampledWidth - point.x, point.y)
-      ExifInterface.ORIENTATION_ROTATE_180 -> ImagePoint(sampledWidth - point.x, sampledHeight - point.y)
-      ExifInterface.ORIENTATION_FLIP_VERTICAL -> ImagePoint(point.x, sampledHeight - point.y)
-      ExifInterface.ORIENTATION_TRANSPOSE -> ImagePoint(point.y, point.x)
-      ExifInterface.ORIENTATION_ROTATE_90 -> ImagePoint(point.y, sampledHeight - point.x)
-      ExifInterface.ORIENTATION_TRANSVERSE -> ImagePoint(sampledWidth - point.y, sampledHeight - point.x)
-      ExifInterface.ORIENTATION_ROTATE_270 -> ImagePoint(sampledWidth - point.y, point.x)
-      else -> point
-    }
-    return ImagePoint(
-      scaled.x * encodedWidth / sampledWidth,
-      scaled.y * encodedHeight / sampledHeight,
-    )
-  }
-
-  private fun swapsDimensions(orientation: Int): Boolean = orientation in
-    ExifInterface.ORIENTATION_TRANSPOSE..ExifInterface.ORIENTATION_ROTATE_270
+  fun uprightToEncoded(point: ImagePoint): ImagePoint = NativeGeometry.sourcePoint(
+    point, encodedWidth, encodedHeight, sampledWidth, sampledHeight, exifOrientation, inverse = true,
+  )
 }

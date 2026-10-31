@@ -4,6 +4,7 @@
 #include "PageEdgesRemap.hpp"
 #include "FieldKernels.hpp"
 #include "FastCores.hpp"
+#include "NativeGeometry.hpp"
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   return facebook::jni::initialize(vm, []() {
@@ -12,5 +13,6 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
     margelo::nitro::documentscanner::PageEdgesRemap::registerNatives();
     margelo::nitro::documentscanner::FieldKernels::registerNatives();
     margelo::nitro::documentscanner::FastCores::registerNatives();
+    margelo::nitro::documentscanner::NativeGeometry::registerNatives();
   });
 }

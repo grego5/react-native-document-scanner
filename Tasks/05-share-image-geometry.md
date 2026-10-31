@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Completed
 Complexity: High
 Dependencies: [02](02-introduce-portable-core.md)
 
@@ -61,4 +61,24 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 ## Proposed commit title
 
 refactor: share scanner source and crop geometry
+
+## Implementation report — 2026-10-31
+
+Moved source orientation, normalized/image conversion, region mapping, photo inference crop selection, crop-edit clamping/validation, render validation/target sizing and valid-content polygon geometry into `cpp/include/document_scanner/Geometry.hpp` and `cpp/src/Geometry.cpp`. The public boundary contains only C++ values. `NativeGeometry.kt` and its fbjni adapter marshal synchronous values; Android retains bitmap allocation/rotation, CameraX viewport negotiation, gesture state, rendering resources and file publication.
+
+Image-edge transforms and pixel-center bitmap matrices are explicit separate conventions. Centered square framing is represented by a region transform, including fractional offsets for odd dimensions, independently of model resizing. Existing photo seed margins, edit rejection thresholds, render extrapolation limits and Point2f projection rounding are preserved. JNI translates argument errors explicitly and preserves `InvalidInputException` for public render validation; consumer rules retain the JNI class and reflected exception constructor.
+
+All assertions from `CropQuadEditingTest.kt` and `PhotoInferenceCropTest.kt` moved into `cpp/tests/GeometryTest.cpp` with production replacement. Added core orientation/region round trips, square framing, render sizing/clipping and normalized polygon checks. Retained Android bitmap and viewport tests; added JNI marshalling/error checks and a real editor gesture sequence that keeps the last valid quad and publishes once on release.
+
+Scope boundary: `DocCornerSession.decodeOutput` / `validNormalizedQuad` and their JVM assertions remain for Task 06's prediction interpretation migration. Photo crop selection preserves that acceptance predicate locally, without applying the editor's distinct minimum-area rule. Perspective warping and page-edge algorithms remain for Task 07. No model, public API or generated bindings changed.
+
+Validation:
+
+- `npm run check`: both typechecks and all 16 JS contracts passed.
+- Windows x64 core: MSVC 14.51.36231, C++20, OpenCV 4.12.0; `cmake --build .local/build/core-tests --config Release` passed after initializing the x64 Visual Studio build environment. `ctest --test-dir .local/build/core-tests -C Release --output-on-failure` passed 2/2 with the verified OpenCV runtime directory on PATH.
+- `npm run test:device -- -Device 192.168.1.55:5555 -Class 'com.margelo.nitro.documentscanner.processing.NativeGeometryTest,com.margelo.nitro.documentscanner.processing.SourceImageLoaderTest,com.margelo.nitro.documentscanner.CropEditorViewTest,com.margelo.nitro.documentscanner.processing.DocumentRendererTest'`: build/install passed, all 17 tests passed on Samsung SM-G998U, Android 15, arm64-v8a. This includes all eight existing EXIF marker fixtures, sampled decoding, crop gestures, outside-image rendering and output polygons. No shutter was invoked.
+- `npm run test:native`: passed; 120 tests reported across 21 suites, zero failures/errors, one optional trace replay skipped without trace input.
+- `git diff --check`: passed.
+
+The first JNI error-path run exposed fbjni's default `CppException` mapping; the final 17-test run passed after explicit translation. No iOS execution was performed for this task; cross-platform release validation remains pending.
 

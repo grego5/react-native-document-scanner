@@ -17,6 +17,24 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class CropEditorViewTest {
   @Test
+  fun edgeDragKeepsLastValidSharedQuadAndPublishesOnceOnRelease() = withEditor(assertUnchanged = false) { editor, touches ->
+    editor.replaceQuad(doubleArrayOf(.1, .1, .9, .1, .9, .9, .1, .9))
+    var edits = 0
+    var published: DoubleArray? = null
+    editor.onQuadEdited = { edits++; published = it }
+    touches.begin(500f, 100f)
+    touches.send(MotionEvent.ACTION_MOVE, 500f, 200f)
+    val valid = doubleArrayOf(.1, .2, .9, .2, .9, .9, .1, .9)
+    assertArrayEquals(valid, editor.quad, 1e-9)
+    touches.send(MotionEvent.ACTION_MOVE, 500f, 950f)
+    assertArrayEquals(valid, editor.quad, 1e-9)
+    assertEquals(0, edits)
+    touches.send(MotionEvent.ACTION_UP, 500f, 950f)
+    assertEquals(1, edits)
+    assertArrayEquals(valid, published, 1e-9)
+  }
+
+  @Test
   fun twoFingerTranslationWorksWithoutPinchingAndStopsWhenOneFingerLifts() = withEditor { editor, touches ->
     touches.zoomIn()
     assertEquals(Color.RED, pixel(editor, 500, 500))
@@ -47,7 +65,7 @@ class CropEditorViewTest {
     touches.send(MotionEvent.ACTION_CANCEL, 80f, 500f, 1080f, 500f)
   }
 
-  private fun withEditor(check: (CropEditorView, Touches) -> Unit) {
+  private fun withEditor(assertUnchanged: Boolean = true, check: (CropEditorView, Touches) -> Unit) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     instrumentation.runOnMainSync {
       val photo = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
@@ -61,8 +79,10 @@ class CropEditorViewTest {
       editor.onQuadEdited = { edits++ }
       try {
         check(editor, Touches(editor))
-        assertArrayEquals(original, editor.quad, 0.0)
-        assertEquals("Viewport gestures do not edit the crop", 0, edits)
+        if (assertUnchanged) {
+          assertArrayEquals(original, editor.quad, 0.0)
+          assertEquals("Viewport gestures do not edit the crop", 0, edits)
+        }
       } finally {
         editor.bitmap = null
         photo.recycle()

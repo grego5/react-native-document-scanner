@@ -13,9 +13,9 @@ import kotlin.math.roundToInt
 
 /** A JPEG's encoded size and EXIF orientation, read without decoding its pixels. */
 internal class SourceImageHeader(val file: File, val encodedWidth: Int, val encodedHeight: Int, val exifOrientation: Int) {
-  private val swapsDimensions = exifOrientation in ExifInterface.ORIENTATION_TRANSPOSE..ExifInterface.ORIENTATION_ROTATE_270
-  val uprightWidth: Int get() = if (swapsDimensions) encodedHeight else encodedWidth
-  val uprightHeight: Int get() = if (swapsDimensions) encodedWidth else encodedHeight
+  private val uprightSize = NativeGeometry.uprightSize(encodedWidth, encodedHeight, exifOrientation)
+  val uprightWidth: Int get() = uprightSize[0]
+  val uprightHeight: Int get() = uprightSize[1]
 }
 
 internal object SourceImageLoader {
@@ -135,20 +135,9 @@ internal object SourceImageLoader {
 
   private fun applyOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
     if (orientation == ExifInterface.ORIENTATION_NORMAL) return bitmap
-    val width = bitmap.width.toFloat()
-    val height = bitmap.height.toFloat()
-    val matrix = Matrix()
-    val values = when (orientation) {
-      ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> floatArrayOf(-1f, 0f, width - 1f, 0f, 1f, 0f, 0f, 0f, 1f)
-      ExifInterface.ORIENTATION_ROTATE_180 -> floatArrayOf(-1f, 0f, width - 1f, 0f, -1f, height - 1f, 0f, 0f, 1f)
-      ExifInterface.ORIENTATION_FLIP_VERTICAL -> floatArrayOf(1f, 0f, 0f, 0f, -1f, height - 1f, 0f, 0f, 1f)
-      ExifInterface.ORIENTATION_TRANSPOSE -> floatArrayOf(0f, 1f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
-      ExifInterface.ORIENTATION_ROTATE_90 -> floatArrayOf(0f, -1f, height - 1f, 1f, 0f, 0f, 0f, 0f, 1f)
-      ExifInterface.ORIENTATION_TRANSVERSE -> floatArrayOf(0f, -1f, height - 1f, -1f, 0f, width - 1f, 0f, 0f, 1f)
-      ExifInterface.ORIENTATION_ROTATE_270 -> floatArrayOf(0f, 1f, 0f, -1f, 0f, width - 1f, 0f, 0f, 1f)
-      else -> throw IOException("Captured JPEG has an unsupported EXIF orientation.")
+    val matrix = Matrix().apply {
+      setValues(NativeGeometry.orientationMatrix(bitmap.width, bitmap.height, orientation))
     }
-    matrix.setValues(values)
     return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, false)
   }
 }

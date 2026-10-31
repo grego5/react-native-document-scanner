@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.margelo.nitro.documentscanner.DocumentFilter
 import com.margelo.nitro.documentscanner.DocumentImageFormat
-import com.margelo.nitro.documentscanner.DocumentPoint
 import com.margelo.nitro.documentscanner.DocumentQuad as NitroDocumentQuad
 import com.margelo.nitro.documentscanner.DocumentRenderOptions
 import com.margelo.nitro.documentscanner.PageThumbnails
@@ -19,11 +18,8 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.UUID
-import kotlin.math.abs
-import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -60,7 +56,7 @@ internal object DocumentRenderer {
     val thumbnail = File(outputDirectory, "thumbnail-${destination.nameWithoutExtension}.jpg")
     val thumbnailTemporary = File(outputDirectory, ".${thumbnail.name}.tmp.jpg")
     val sourcePoints = normalizedQuad(quad)
-    validateQuad(sourcePoints)
+    NativeGeometry.validateRender(sourcePoints)
 
     try {
       // The largest decode, so originals up to MAX_SOURCE_DIMENSION keep every pixel the output may use.
@@ -79,7 +75,7 @@ internal object DocumentRenderer {
         val parameters = MatOfInt(Imgcodecs.IMWRITE_JPEG_QUALITY, config.quality)
         try {
           Utils.bitmapToMat(sourceBitmap, sourceMat)
-          val pixelQuad = sourcePoints.points().map { ImagePoint(it.x * sourceBitmap.width, it.y * sourceBitmap.height) }
+          val pixelQuad = sharedPixelQuad(sourcePoints, sourceBitmap.width, sourceBitmap.height)
           // Pixels in the original per pixel of the sampled bitmap, so the output is sized from the original.
           val originalScale = max(upright.encodedWidth, upright.encodedHeight).toDouble() / max(sourceBitmap.width, sourceBitmap.height)
           val target = targetCanvas(pixelQuad, originalScale, config)
@@ -151,12 +147,10 @@ internal object DocumentRenderer {
           moveAtomically(temporary, destination)
           moveAtomically(thumbnailTemporary, thumbnail)
 
-          val clipped = clipImageToQuad(pixelQuad, sourceBitmap.width, sourceBitmap.height)
-          check(clipped.size >= 3) { "The selected document does not overlap the captured image." }
-          // Captured edges project onto the output edges; clamp floating-point overshoot.
-          val validPoints = projectPoints(clipped, homography).map { point ->
-            DocumentPoint((point.x / target.width).coerceIn(0.0, 1.0), (point.y / target.height).coerceIn(0.0, 1.0))
-          }
+          val homographyValues = DoubleArray(9).also { homography.get(0, 0, it) }
+          val validPoints = NativeGeometry.outputPolygon(pixelQuad, sourceBitmap.width, sourceBitmap.height,
+            homographyValues, target.width, target.height)
+          check(validPoints.size >= 3) { "The selected document does not overlap the captured image." }
           val outputUri = Uri.fromFile(destination).toString()
           // Cached before resolving, so a pager shows the new page and its thumbnail together.
           PageThumbnails.put(outputUri, thumbnailBitmap, thumbnail)
@@ -253,93 +247,15 @@ internal object DocumentRenderer {
     bottomLeft = ImagePoint(quad.bottomLeft.x, quad.bottomLeft.y),
   )
 
-  private fun validateQuad(quad: ImageQuad) {
-    val points = quad.points()
-    requireInput(points.all { it.x.isFinite() && it.y.isFinite() }) { "Document corners must be finite." }
-    requireInput(points.all { it.x in -MAX_EXTRAPOLATION..1.0 + MAX_EXTRAPOLATION && it.y in -MAX_EXTRAPOLATION..1.0 + MAX_EXTRAPOLATION }) {
-      "Document corners exceed the supported extrapolation range."
-    }
-    requireInput(isConvex(points)) { "Document corners must form a convex clockwise quadrilateral." }
-    val area = abs(points.indices.sumOf { index ->
-      val current = points[index]
-      val next = points[(index + 1) % points.size]
-      current.x * next.y - next.x * current.y
-    }) * 0.5
-    requireInput(area in MIN_NORMALIZED_AREA..MAX_NORMALIZED_AREA) { "Document quadrilateral area is outside the supported range." }
-  }
-
-  private fun isConvex(points: List<ImagePoint>): Boolean {
-    val turns = points.indices.map { index -> cross(points[index], points[(index + 1) % 4], points[(index + 2) % 4]) }
-    return turns.all { it > MIN_TURN } && !segmentsIntersect(points[0], points[1], points[2], points[3]) &&
-      !segmentsIntersect(points[1], points[2], points[3], points[0])
-  }
+  private fun sharedPixelQuad(quad: ImageQuad, width: Int, height: Int): List<ImagePoint> =
+    NativeGeometry.coordinates(quad.coordinates(), width, height, normalized = false)
+      .asList().chunked(2).map { ImagePoint(it[0], it[1]) }
 
   private fun targetCanvas(quad: List<ImagePoint>, originalScale: Double, config: RenderConfig): TargetCanvas {
-    val contentWidth = (distance(quad[0], quad[1]) + distance(quad[2], quad[3])) / 2.0
-    val contentHeight = (distance(quad[1], quad[2]) + distance(quad[3], quad[0])) / 2.0
-    requireInput(contentWidth.isFinite() && contentHeight.isFinite() && contentWidth > 1.0 && contentHeight > 1.0) {
-      "Document side lengths are unstable."
-    }
-    val ratio = contentWidth / contentHeight
-    requireInput(ratio in MIN_ASPECT_RATIO..MAX_ASPECT_RATIO) { "Document aspect ratio is outside the supported range." }
-    // The page keeps its proportions and is drawn at the paper's size, never enlarged past its own pixels.
-    val longEdge = min(config.paperLongEdge ?: MAX_OUTPUT_DIMENSION.toDouble(), max(contentWidth, contentHeight) * originalScale)
-    val width = (if (ratio >= 1.0) longEdge else longEdge * ratio).roundToInt().coerceAtLeast(1)
-    val height = (if (ratio >= 1.0) longEdge / ratio else longEdge).roundToInt().coerceAtLeast(1)
-    requireInput(width.toLong() * height <= MAX_OUTPUT_PIXELS) { "Requested output exceeds the maximum pixel count." }
-    val w = width.toDouble()
-    val h = height.toDouble()
-    return TargetCanvas(width, height, listOf(ImagePoint(0.0, 0.0), ImagePoint(w, 0.0), ImagePoint(w, h), ImagePoint(0.0, h)))
-  }
-
-  private fun clipImageToQuad(quad: List<ImagePoint>, width: Int, height: Int): List<ImagePoint> {
-    var clipped = listOf(
-      ImagePoint(0.0, 0.0),
-      ImagePoint(width.toDouble(), 0.0),
-      ImagePoint(width.toDouble(), height.toDouble()),
-      ImagePoint(0.0, height.toDouble()),
-    )
-    for (index in quad.indices) {
-      val edgeStart = quad[index]
-      val edgeEnd = quad[(index + 1) % quad.size]
-      val input = clipped
-      if (input.isEmpty()) break
-      clipped = mutableListOf<ImagePoint>().apply {
-        var previous = input.last()
-        var previousInside = cross(edgeStart, edgeEnd, previous) >= -CLIP_EPSILON
-        for (current in input) {
-          val currentInside = cross(edgeStart, edgeEnd, current) >= -CLIP_EPSILON
-          if (currentInside != previousInside) lineIntersection(previous, current, edgeStart, edgeEnd)?.let(::add)
-          if (currentInside) add(current)
-          previous = current
-          previousInside = currentInside
-        }
-      }
-    }
-    return clipped
-  }
-
-  private fun projectPoints(points: List<ImagePoint>, homography: Mat): List<ImagePoint> {
-    val source = MatOfPoint2f(*points.map { Point(it.x, it.y) }.toTypedArray())
-    val destination = MatOfPoint2f()
-    try {
-      Core.perspectiveTransform(source, destination, homography)
-      return destination.toArray().map { ImagePoint(it.x, it.y) }
-    } finally {
-      source.release()
-      destination.release()
-    }
-  }
-
-  private fun lineIntersection(a: ImagePoint, b: ImagePoint, c: ImagePoint, d: ImagePoint): ImagePoint? {
-    val abX = b.x - a.x
-    val abY = b.y - a.y
-    val cdX = d.x - c.x
-    val cdY = d.y - c.y
-    val determinant = abX * cdY - abY * cdX
-    if (abs(determinant) < 1e-10) return null
-    val t = ((c.x - a.x) * cdY - (c.y - a.y) * cdX) / determinant
-    return ImagePoint(a.x + t * abX, a.y + t * abY)
+    val size = NativeGeometry.target(quad, originalScale, config.paperLongEdge)
+    val w = size[0].toDouble()
+    val h = size[1].toDouble()
+    return TargetCanvas(size[0], size[1], listOf(ImagePoint(0.0, 0.0), ImagePoint(w, 0.0), ImagePoint(w, h), ImagePoint(0.0, h)))
   }
 
   private fun outputDirectoryFor(sourceFile: File): File {
@@ -360,12 +276,6 @@ internal object DocumentRenderer {
     }
   }
 
-  private fun ImageQuad.points() = listOf(topLeft, topRight, bottomRight, bottomLeft)
-  private fun cross(a: ImagePoint, b: ImagePoint, c: ImagePoint) = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-  private fun distance(a: ImagePoint, b: ImagePoint) = hypot(a.x - b.x, a.y - b.y)
-  private fun segmentsIntersect(a: ImagePoint, b: ImagePoint, c: ImagePoint, d: ImagePoint) =
-    cross(a, b, c) * cross(a, b, d) < 0.0 && cross(c, d, a) * cross(c, d, b) < 0.0
-
   private const val CACHE_DIRECTORY_NAME = "react-native-document-scanner"
   private const val DEFAULT_QUALITY = 92
   private const val MAX_OUTPUT_DIMENSION = 4096
@@ -375,14 +285,6 @@ internal object DocumentRenderer {
   private const val MIN_PAPER_CM = 1.0
   private const val MAX_PAPER_CM = 200.0
   private const val CM_PER_INCH = 2.54
-  private const val MAX_OUTPUT_PIXELS = 16_777_216L
   private const val MAX_SOURCE_DIMENSION = 4096
   private const val THUMBNAIL_QUALITY = 85
-  private const val MIN_ASPECT_RATIO = 0.20
-  private const val MAX_ASPECT_RATIO = 5.0
-  private const val MIN_NORMALIZED_AREA = 1e-4
-  private const val MAX_NORMALIZED_AREA = 4.0
-  private const val MAX_EXTRAPOLATION = 0.8
-  private const val MIN_TURN = 1e-8
-  private const val CLIP_EPSILON = 1e-7
 }

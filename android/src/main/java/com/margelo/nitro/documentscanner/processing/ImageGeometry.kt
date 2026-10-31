@@ -27,31 +27,23 @@ internal data class DocumentQuad(
 )
 
 internal object ImageGeometry {
-  fun toNormalized(point: ImagePoint, width: Int, height: Int): NormalizedPoint {
-    requireDimensions(width, height)
-    return NormalizedPoint(point.x / width, point.y / height)
-  }
+  fun toNormalized(point: ImagePoint, width: Int, height: Int): NormalizedPoint =
+    NativeGeometry.coordinates(doubleArrayOf(point.x, point.y), width, height, normalized = true)
+      .let { NormalizedPoint(it[0], it[1]) }
 
-  fun toImage(point: NormalizedPoint, width: Int, height: Int): ImagePoint {
-    requireDimensions(width, height)
-    return ImagePoint(point.x * width, point.y * height)
-  }
+  fun toImage(point: NormalizedPoint, width: Int, height: Int): ImagePoint =
+    NativeGeometry.coordinates(doubleArrayOf(point.x, point.y), width, height, normalized = false)
+      .let { ImagePoint(it[0], it[1]) }
 
-  fun toNormalized(quad: ImageQuad, width: Int, height: Int): DocumentQuad = DocumentQuad(
-    topLeft = toNormalized(quad.topLeft, width, height),
-    topRight = toNormalized(quad.topRight, width, height),
-    bottomRight = toNormalized(quad.bottomRight, width, height),
-    bottomLeft = toNormalized(quad.bottomLeft, width, height),
-  )
+  fun toNormalized(quad: ImageQuad, width: Int, height: Int): DocumentQuad =
+    NativeGeometry.coordinates(quad.coordinates(), width, height, normalized = true).let {
+      DocumentQuad(NormalizedPoint(it[0], it[1]), NormalizedPoint(it[2], it[3]),
+        NormalizedPoint(it[4], it[5]), NormalizedPoint(it[6], it[7]))
+    }
 
-  fun toImage(quad: DocumentQuad, width: Int, height: Int): ImageQuad = ImageQuad(
-    topLeft = toImage(quad.topLeft, width, height),
-    topRight = toImage(quad.topRight, width, height),
-    bottomRight = toImage(quad.bottomRight, width, height),
-    bottomLeft = toImage(quad.bottomLeft, width, height),
-  )
-
-  private fun requireDimensions(width: Int, height: Int) {
-    require(width > 0 && height > 0) { "Image dimensions must be positive." }
-  }
+  fun toImage(quad: DocumentQuad, width: Int, height: Int): ImageQuad =
+    NativeGeometry.coordinates(doubleArrayOf(quad.topLeft.x, quad.topLeft.y, quad.topRight.x, quad.topRight.y,
+      quad.bottomRight.x, quad.bottomRight.y, quad.bottomLeft.x, quad.bottomLeft.y), width, height, normalized = false).let {
+      ImageQuad(ImagePoint(it[0], it[1]), ImagePoint(it[2], it[3]), ImagePoint(it[4], it[5]), ImagePoint(it[6], it[7]))
+    }
 }

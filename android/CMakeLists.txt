@@ -15,6 +15,7 @@ add_library(ReactNativeDocumentScanner SHARED
   src/main/cpp/PageEdgesRemap.cpp
   src/main/cpp/FieldKernels.cpp
   src/main/cpp/FastCores.cpp
+  src/main/cpp/NativeGeometry.cpp
 )
 
 target_include_directories(ReactNativeDocumentScanner PRIVATE ../cpp/src)
