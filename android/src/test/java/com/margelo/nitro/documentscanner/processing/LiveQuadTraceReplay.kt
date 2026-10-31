@@ -159,7 +159,7 @@ internal object LiveQuadTraceReplay {
   private fun motionSummary(trace: LiveQuadTrace): String = buildString {
     val frames = trace.frames
     val optics = trace.camera?.takeIf { it.realtimeTimestamps }?.optics
-    val gyro = if (optics != null && trace.gyro.isNotEmpty()) GyroHistory(trace.gyro.size).apply {
+    val gyro = if (optics != null && trace.gyro.isNotEmpty()) ReferenceGyroHistory(trace.gyro.size).apply {
       trace.gyro.forEach { add(it.sensorNs, it.x, it.y, it.z) }
     } else null
     fun relative(group: List<LiveFrameSample>) = "n=${group.size}"
@@ -174,7 +174,7 @@ internal object LiveQuadTraceReplay {
     val blurPercent = frames.associateWith { f ->
       val exposure = f.exposureNs ?: return@associateWith null
       if (gyro == null || optics == null) return@associateWith null
-      motionBlur(gyro, optics, f.sensorTimestampNs - GYRO_MARGIN_NS,
+      referenceMotionBlur(gyro, optics, f.sensorTimestampNs - GYRO_MARGIN_NS,
         f.sensorTimestampNs + (f.rollingShutterSkewNs ?: 0L) + exposure + GYRO_MARGIN_NS, exposure)?.times(100)
     }
     for ((low, high) in BLUR_BINS_PERCENT.zipWithNext()) {
@@ -223,7 +223,7 @@ internal object LiveQuadTraceReplay {
       val exposure = capture.exposureNs
       // A separate retrospective estimate using JPEG exposure; this was not the gate's decision value.
       val blur = if (fired == null || exposure == null || gyro == null || optics == null) null
-        else motionBlur(gyro, optics, fired - 50_000_000L, fired, exposure)?.times(100)
+        else referenceMotionBlur(gyro, optics, fired - 50_000_000L, fired, exposure)?.times(100)
       appendLine("  captureBlur saved=${capture.saved} delayMs=${fired?.let { fmt((it - tap) / 1e6) } ?: "-"} " +
         "gateEvaluationNs=${capture.gateEvaluationNs ?: "-"} " +
         "gateExposureMs=${capture.gateExposureNs?.let { fmt(it / 1e6) } ?: "-"} " +
@@ -261,3 +261,6 @@ internal object LiveQuadTraceReplay {
 
   private fun fmt(value: Double): String = "%.2f".format(java.util.Locale.ROOT, value)
 }
+
+private fun referenceMotionBlur(gyro: ReferenceGyroHistory, optics: LiveCameraOptics, from: Long, to: Long, exposure: Long): Double? =
+  gyro.peakRate(from, to)?.let { it * exposure * 1e-9 * optics.focalLengthPx / optics.activeWidth }

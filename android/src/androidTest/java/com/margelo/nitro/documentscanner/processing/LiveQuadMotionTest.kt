@@ -4,6 +4,9 @@ import com.margelo.nitro.documentscanner.DocumentPoint
 import com.margelo.nitro.documentscanner.DocumentQuad
 import org.junit.Assert.*
 import org.junit.Test
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assume.assumeTrue
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.tan
@@ -21,7 +24,7 @@ class LiveQuadMotionTest {
     val r = gyro.rotation(10_000_000, 60_000_000)!!
     assertEquals(0.1, acos(r[0]), 1e-9)
     assertEquals(0.1, kotlin.math.asin(r[3]), 1e-9)
-    assertArrayEquals(GyroHistory.transpose(r), gyro.rotation(60_000_000, 10_000_000)!!, 1e-12)
+    assertArrayEquals(doubleArrayOf(r[0], r[3], r[6], r[1], r[4], r[7], r[2], r[5], r[8]), gyro.rotation(60_000_000, 10_000_000)!!, 1e-12)
     // The newest rate holds for 50 ms; before the oldest sample and beyond that there is no answer.
     assertNotNull(gyro.rotation(90_000_000, 150_000_000))
     assertNull(gyro.rotation(90_000_000, 150_000_001))
@@ -100,6 +103,63 @@ class LiveQuadMotionTest {
     val dy = (turned.topLeft.y + turned.bottomRight.y - quad.topLeft.y - quad.bottomRight.y) / 2 * landscape.height
     assertEquals(landscape.focalPx * tan(angle), abs(dx), 0.05)
     assertEquals(0.0, dy, 0.05)
+  }
+
+  @Test
+  fun recordedMotionEvidenceMatchesPreMigrationMath() {
+    val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null), "live-quad-traces")
+    val files = directory.listFiles()?.filter { it.extension == "tsv" }.orEmpty()
+    assumeTrue("Recorded pixel-free motion traces are optional device fixtures", files.isNotEmpty())
+    var flowChecks = 0
+    var gyroChecks = 0
+    var rotationChecks = 0
+    for (file in files) {
+      val lines = file.readLines()
+      val camera = lines.first { it.startsWith("# camera ") }.removePrefix("# camera ")
+        .split(' ').associate { it.substringBefore('=') to it.substringAfter('=') }
+      assertEquals("REALTIME", camera.getValue("timestampSource"))
+      val optics = LiveCameraOptics(camera.getValue("focalLengthPx").toDouble(), camera.getValue("activeWidth").toInt(),
+        camera.getValue("activeHeight").toInt(), camera.getValue("sensorOrientation").toInt())
+      val data = lines.filterNot { it.startsWith('#') }
+      val columns = data.first().split('\t')
+      val rows = data.drop(1).map { columns.zip(it.split('\t')).toMap() }
+      val samples = rows.filter { it.getValue("kind") == "gyro" }
+      val shared = GyroHistory(samples.size)
+      val reference = ReferenceGyroHistory(samples.size)
+      for (sample in samples) {
+        val rates = sample.getValue("rates").split(',').map(String::toDouble)
+        val timestamp = sample.getValue("sensorNs").toLong()
+        shared.add(timestamp, rates[0], rates[1], rates[2]); reference.add(timestamp, rates[0], rates[1], rates[2])
+      }
+      var previous: Long? = null
+      for (row in rows.filter { it.getValue("kind") == "frame" }) {
+        val sensor = row.getValue("sensorNs").toLong()
+        val exposure = row.getValue("exposureNs").toLongOrNull() ?: continue
+        val skew = row.getValue("skewNs").toLongOrNull() ?: continue
+        val from = sensor - GYRO_MARGIN_NS
+        val to = sensor + skew + exposure + GYRO_MARGIN_NS
+        val oldRate = reference.peakRate(from, to)
+        val expected = oldRate?.let { it * exposure * 1e-9 * optics.focalLengthPx / optics.activeWidth }
+        val actual = motionBlur(shared, optics, from, to, exposure)
+        if (expected == null) assertNull(actual) else { assertEquals(expected, actual!!, 1e-12); gyroChecks++ }
+        previous?.let { start ->
+          val oldRotation = reference.rotation(start, sensor)
+          val newRotation = shared.rotation(start, sensor)
+          if (oldRotation == null) assertNull(newRotation) else { assertArrayEquals(oldRotation, newRotation!!, 1e-12); rotationChecks++ }
+        }
+        previous = sensor
+        val speed = row.getValue("flowSpeed").toDoubleOrNull()
+        val width = row.getValue("flowSourceWidth").toIntOrNull()
+        if (speed != null && width != null) {
+          val estimate = FlowMotionEstimate(FlowMotionStatus.MEASURED, speed, width,
+            row.getValue("flowFromNs").toLong(), row.getValue("flowToNs").toLong(), 1.0, 0)
+          assertEquals(speed * exposure * 1e-9 / width, flowBlur(estimate, exposure)!!, 1e-12)
+          flowChecks++
+        }
+      }
+    }
+    assertTrue(flowChecks > 0 && gyroChecks > 0 && rotationChecks > 0)
+    println("Recorded motion parity: files=${files.size} flow=$flowChecks gyro=$gyroChecks rotation=$rotationChecks")
   }
 
   @Test

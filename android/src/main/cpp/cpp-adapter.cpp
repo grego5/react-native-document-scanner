@@ -5,6 +5,7 @@
 #include "NativeDocumentFilters.hpp"
 #include "NativeGrayscalePng.hpp"
 #include "NativePdfWriter.hpp"
+#include "NativeMotion.hpp"
 #include "FieldKernels.hpp"
 #include "FastCores.hpp"
 #include "NativeGeometry.hpp"
@@ -17,6 +18,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
     margelo::nitro::documentscanner::NativeDocumentFilters::registerNatives();
     margelo::nitro::documentscanner::NativeGrayscalePng::registerNatives();
     margelo::nitro::documentscanner::NativePdfWriter::registerNatives();
+    margelo::nitro::documentscanner::NativeFlowEstimator::registerNatives();
+    margelo::nitro::documentscanner::registerMotionMath();
     margelo::nitro::documentscanner::FieldKernels::registerNatives();
     margelo::nitro::documentscanner::FastCores::registerNatives();
     margelo::nitro::documentscanner::NativeGeometry::registerNatives();

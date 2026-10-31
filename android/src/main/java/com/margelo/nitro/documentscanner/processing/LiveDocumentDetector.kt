@@ -733,7 +733,7 @@ internal class LiveDocumentDetector(
       clearFlowLocked()
     }
     removeCallbacks()
-    executor.execute { releaseSession(); releaseFlow() }
+    executor.execute { releaseSession(); releaseFlow(); pageMotion.close() }
     executor.shutdown() // Drain the current image and final close; never close interpreter in flight.
   }
 

@@ -45,8 +45,7 @@ internal class CameraFrameHistory(private val capacity: Int = 8) {
  * [fromNs, toNs] held for [exposureNs]. Translation is not seen. Null without gyroscope samples in the span.
  */
 internal fun motionBlur(gyro: GyroHistory, optics: LiveCameraOptics, fromNs: Long, toNs: Long, exposureNs: Long): Double? {
-  val rate = gyro.peakRate(fromNs, toNs) ?: return null
-  return rate * exposureNs * 1e-9 * optics.focalLengthPx / optics.activeWidth
+  return gyro.blur(fromNs, toNs, exposureNs, optics)
 }
 
 /** One 200 Hz gyroscope period, so a short exposure still spans at least one sample. */
@@ -62,7 +61,8 @@ internal data class GateMotion(val blur: Double, val source: MotionSource, val l
 
 /** Optical-flow blur over [exposureNs] as a fraction of the analysis frame width; null when the speed is unknown. */
 internal fun flowBlur(estimate: FlowMotionEstimate, exposureNs: Long): Double? =
-  estimate.speedPxPerSecond?.let { it * exposureNs * 1e-9 / estimate.sourceWidth }
+  NativeMotion.gateNative(estimate.speedPxPerSecond?.let { doubleArrayOf(it) }, estimate.sourceWidth,
+    estimate.lostRegions, exposureNs, null)?.first()
 
 /** This frame's blur from its measured [flow], otherwise its [gyroBlur]. Both estimates describe the same exposure;
  * capture checks the completed frame record's age separately. Null when neither source knows.
@@ -70,10 +70,7 @@ internal fun flowBlur(estimate: FlowMotionEstimate, exposureNs: Long): Double? =
 internal fun gateMotion(
   flow: FlowMotionEstimate?, exposureNs: Long, gyroBlur: Double?,
 ): GateMotion? {
-  val measured = flow?.let { flowBlur(it, exposureNs) }
-  return when {
-    measured != null -> GateMotion(measured, MotionSource.FLOW, flow.lostRegions)
-    gyroBlur != null -> GateMotion(gyroBlur, MotionSource.GYRO)
-    else -> null
-  }
+  val result = NativeMotion.gateNative(flow?.speedPxPerSecond?.let { doubleArrayOf(it) }, flow?.sourceWidth ?: 1,
+    flow?.lostRegions ?: 0, exposureNs, gyroBlur?.let { doubleArrayOf(it) }) ?: return null
+  return GateMotion(result[0], MotionSource.entries[result[1].toInt()], result[2].toInt())
 }

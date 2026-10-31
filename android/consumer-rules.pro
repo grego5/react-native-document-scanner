@@ -9,3 +9,6 @@
 -keep interface com.margelo.nitro.documentscanner.processing.GrayPngRows { *; }
 -keep class com.margelo.nitro.documentscanner.processing.NativePdfWriter { *; }
 -keep interface com.margelo.nitro.documentscanner.processing.PdfImageAdapter { *; }
+-keep class com.margelo.nitro.documentscanner.processing.NativeMotion { *; }
+-keep class com.margelo.nitro.documentscanner.processing.NativeFlowEstimator { *; }
+-keep class com.margelo.nitro.documentscanner.processing.NativeFlowHistory { *; }

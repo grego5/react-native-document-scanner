@@ -305,6 +305,9 @@ class LiveDocumentDetectorTest {
     val callbacks = mutableListOf<LiveDetectionResult>() // Accessed only on main.
     val detector = LiveDocumentDetector(instrumentation.targetContext, false) { callbacks.add(it) }
     try {
+      // The next frame intentionally fails; neither cadence nor the flat fixture's low score may skip decoding.
+      detector.inferenceThrottling = false
+      detector.minCornerScore = 0.0
       instrumentation.runOnMainSync { detector.begin(false) }
       val paused = Frame()
       detector.executor.submit { detector.analyze(paused.image) }.get(10, TimeUnit.SECONDS)

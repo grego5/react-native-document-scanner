@@ -6,8 +6,20 @@ import kotlin.math.cos
 import kotlin.math.sin
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
+import org.junit.After
+import androidx.test.platform.app.InstrumentationRegistry
+import com.facebook.soloader.SoLoader
+import com.margelo.nitro.JNIOnLoad
 
 class FlowQuadMotionTest {
+  private val histories = mutableListOf<FlowQuadMotion>()
+  @Before fun initializeRuntime() {
+    SoLoader.init(InstrumentationRegistry.getInstrumentation().targetContext, false)
+    JNIOnLoad.initializeNativeNitro()
+  }
+  @After fun release() { histories.forEach { it.close() } }
+
   private val quad = DocumentQuad(DocumentPoint(.2, .2), DocumentPoint(.8, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
 
   @Test fun fitsTranslationRotationAndScaleInNonSquareFrames() {
@@ -63,7 +75,7 @@ class FlowQuadMotionTest {
   }
 
   @Test fun historyComposesOnlyContiguousIntervalsAndClearsOnUnknown() {
-    val history = FlowQuadMotion()
+    val history = FlowQuadMotion().also { histories.add(it) }
     val shift = FlowTransform(1.0, 0.0, 0.0, 1.0, .02, -.01)
     history.add(estimate(0, 33, shift))
     history.add(estimate(33, 66, shift))
@@ -81,7 +93,7 @@ class FlowQuadMotionTest {
   }
 
   @Test fun historyIsBoundedByTime() {
-    val history = FlowQuadMotion()
+    val history = FlowQuadMotion().also { histories.add(it) }
     val identity = FlowTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     for (i in 0..20) history.add(estimate(i * 33L, (i + 1) * 33L, identity))
     assertNull(history.warp(quad, 0, 693_000_000))

@@ -5,6 +5,10 @@ import com.margelo.nitro.documentscanner.DocumentPoint
 import com.margelo.nitro.documentscanner.DocumentQuad
 import java.nio.ByteBuffer
 import kotlin.random.Random
+import androidx.test.platform.app.InstrumentationRegistry
+import com.facebook.soloader.SoLoader
+import com.margelo.nitro.JNIOnLoad
+import org.junit.Before
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -24,7 +28,11 @@ import org.opencv.imgproc.Imgproc
 /** Synthetic text-like pages moved between two frames by a known affine transform. */
 @RunWith(AndroidJUnit4::class)
 class FlowMotionEstimatorTest {
-  private val estimator = FlowMotionEstimator()
+  private val estimator by lazy { FlowMotionEstimator() }
+  @Before fun initializeRuntime() {
+    SoLoader.init(InstrumentationRegistry.getInstrumentation().targetContext, false)
+    JNIOnLoad.initializeNativeNitro()
+  }
   private val page by lazy { texturedPage() }
 
   @After
@@ -153,6 +161,74 @@ class FlowMotionEstimatorTest {
     val without = measure(frame(), frame(dx = 6.0))
     assertNull(without.transform)
     assertNull(without.transformProcessingNs)
+  }
+
+  @Test
+  fun sharedEvidenceMatchesFormerEstimatorAcrossFrameSequences() {
+    val reference = ReferenceFlowMotionEstimator()
+    try {
+      for (rotation in listOf(0, 90, 180, 270)) {
+        estimator.reset(); reference.reset()
+        val sequence = listOf(frame(), frame(dx = 6.0), frame(angleDegrees = 2.0), frame(scale = 1.03),
+          patched(blank()), blank(), frame(), frame(dx = 6.0))
+        sequence.forEachIndexed { i, pixels ->
+          val time = BASE_NS + i * FRAME_NS
+          val actual = update(pixels, time, rotation = rotation, fitTransform = true)
+          val expected = reference.update(pixels, WIDTH * 4, 4, WIDTH, HEIGHT, 0, 0, WIDTH, HEIGHT, rotation, time, null, true)
+          assertEquals("rotation=$rotation frame=$i", expected.status, actual.status)
+          assertEquals(expected.validTracks, actual.validTracks)
+          assertEquals(expected.lostRegions, actual.lostRegions)
+          assertEquals(expected.confidence, actual.confidence, 1e-12)
+          assertEquals(expected.fromSensorNs, actual.fromSensorNs)
+          assertEquals(expected.toSensorNs, actual.toSensorNs)
+          if (expected.speedPxPerSecond == null) assertNull(actual.speedPxPerSecond)
+          else assertEquals(expected.speedPxPerSecond!!, actual.speedPxPerSecond!!, 1e-8)
+          if (expected.transform == null) assertNull(actual.transform)
+          else {
+            val turned = rotation % 180 != 0
+            val direct = FlowTransformFitter.fit(reference.lastTracks!!, if (turned) HEIGHT else WIDTH,
+              if (turned) WIDTH else HEIGHT, reference.lastArea, reference.lastTolerance)!!
+            expected.transform!!.values().zip(direct.values()).forEachIndexed { index, (a, b) ->
+              assertEquals("fit rotation=$rotation frame=$i coefficient=$index", a, b, 1e-8)
+            }
+            expected.transform!!.values().zip(actual.transform!!.values()).forEachIndexed { index, (a, b) ->
+              assertEquals("tracks rotation=$rotation frame=$i coefficient=$index", a, b, 1e-8)
+            }
+          }
+        }
+      }
+    } finally { reference.close() }
+  }
+
+  @Test
+  fun borrowedPaddedPlaneIsCopiedAndCloseIsIdempotent() {
+    val bytes = ByteArray(WIDTH * HEIGHT * 4)
+    frame().get(bytes)
+    val stride = WIDTH * 8 + 20
+    val prefix = 19
+    val padded = ByteBuffer.allocateDirect(prefix + stride * HEIGHT)
+    for (y in 0 until HEIGHT) for (x in 0 until WIDTH) for (c in 0..3) {
+      padded.put(prefix + y * stride + x * 8 + c, bytes[(y * WIDTH + x) * 4 + c])
+    }
+    padded.position(prefix)
+    estimator.update(padded, stride, 8, WIDTH, HEIGHT, 0, 0, WIDTH, HEIGHT, 0, BASE_NS, null)
+    assertEquals(prefix, padded.position())
+    // CameraX may close and reuse its plane as soon as update returns.
+    for (i in 0 until padded.capacity()) padded.put(i, 0)
+    val moved = update(frame(dx = 6.0), BASE_NS + FRAME_NS)
+    assertEquals(180.0, moved.speedPxPerSecond!!, 18.0)
+    estimator.close(); estimator.close()
+    try { update(frame(), BASE_NS + 2 * FRAME_NS); throw AssertionError("Closed estimator accepted a frame") }
+    catch (expected: IllegalStateException) { assertTrue(expected.message!!.contains("closed")) }
+  }
+
+  @Test
+  fun truncatedPlaneFailsAndAValidFrameCanStillBeTracked() {
+    val bad = frame().apply { limit(8) }
+    try { update(bad, BASE_NS); throw AssertionError("Truncated plane accepted") }
+    catch (expected: RuntimeException) { assertTrue(expected.message!!.contains("Pixel span")) }
+    update(frame(), BASE_NS)
+    assertEquals(FlowMotionStatus.MEASURED, update(frame(), BASE_NS + FRAME_NS).status)
   }
 
   private fun measure(
