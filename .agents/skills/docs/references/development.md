@@ -8,7 +8,7 @@ Write edited text files with LF line endings; in Python use `open(..., newline="
 ## Routine checks
 
 - `npm run check`: library and example typechecks, then the JS contract tests, stopping at the first failure. It runs no Gradle, generation, APK, install or device command. `npm run check -- --list` prints the plan; `npm run typecheck`, `typecheck:example` and `test:contracts` run one step.
-- `npm run test:native -- -Test '*DocumentFocusPolicyTest'` runs JVM tests through `tools/test-native.ps1`, which sets the JDK, ABI and Gradle cache. It may compile Kotlin, resources and Gradle plugins, so never run it, or any compile-only Gradle target, under a no-build instruction. It never builds or installs an APK.
+- `npm run test:native -- -Test '*LiveDetectionStateTest'` runs JVM tests through `tools/test-native.ps1`, which sets the JDK, ABI and Gradle cache. It may compile Kotlin, resources and Gradle plugins, so never run it, or any compile-only Gradle target, under a no-build instruction. It never builds or installs an APK.
   - Pass several filters as one comma-separated `-Test` list.
   - `-RecompilePlugins` works around stale Expo Gradle plugin output ("Could not find implementation class ..."). Concurrent Gradle runs on this checkout cause the same failure.
   - Guide replay now runs through JNI instrumentation; JVM tests retain format/report checks only.
@@ -25,6 +25,7 @@ Use Android Studio's JDK and the installed SDK; set `JAVA_HOME` for the command 
 - Render timings, private model parity and scene recordings (`RenderTimingTest`, `DocCornerNetRuntimeTest.privatePhotosMeetNativeParityBudgetAndRecordWarmTimings`, `LiveQuadTraceRecordingTest`) are skipped unless the run passes `-e measure true`, so a plain run checks behaviour only.
 - Tests cover dynamic behaviour, lifecycle and concurrency, non-trivial algorithms, security boundaries and the example's session rules. Do not add a test that only pins a single wiring fix, a passthrough or a basic guarantee the code states plainly.
 - Unattended runs exclude `LiveCameraRuntimeTest`: it needs the phone awake and unlocked, and a human to tap every shutter in `CameraValidationActivity`.
+- Focus policy tests now run through JNI: select `com.margelo.nitro.documentscanner.processing.DocumentFocusPolicyTest` and `com.margelo.nitro.documentscanner.FocusControllerTest` with `test:device`. The latter uses a fake CameraX control, clock and futures; it never opens a camera or takes a photo. Shared `focus_contracts` also covers the migrated pure-policy assertions.
 - Confirm targets with `adb devices`. Report build and device results separately; a build is not a device result.
 
 ## Hand checks

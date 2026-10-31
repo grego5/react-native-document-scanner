@@ -14,3 +14,4 @@
 -keep class com.margelo.nitro.documentscanner.processing.NativeFlowHistory { *; }
 
 -keep class com.margelo.nitro.documentscanner.processing.NativeLiveGuide { *; }
+-keep class com.margelo.nitro.documentscanner.processing.NativeFocus { *; }

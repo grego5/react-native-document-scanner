@@ -4,10 +4,68 @@ import com.margelo.nitro.documentscanner.DocumentPoint
 import com.margelo.nitro.documentscanner.DocumentQuad
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
+import androidx.test.platform.app.InstrumentationRegistry
+import com.facebook.soloader.SoLoader
+import com.margelo.nitro.JNIOnLoad
 
 class DocumentFocusPolicyTest {
+  @Before fun initializeNative() {
+    SoLoader.init(InstrumentationRegistry.getInstrumentation().targetContext, false)
+    JNIOnLoad.initializeNativeNitro()
+  }
   private val page = rect(.2, .2, .8, .8)
 
+  @Test fun nativePolicyMatchesFormerPolicyAcrossRecordedValueSequences() {
+    DocumentFocusPolicy().use { actual ->
+      val expected = ReferenceDocumentFocusPolicy()
+      for (i in 0 until 500) {
+        val now = i * 73L
+        if (i % 67 == 0) { actual.reset(); expected.reset() }
+        if (i % 9 == 0) { actual.settled((i / 9) % 3 != 0, now); expected.settled((i / 9) % 3 != 0, now) }
+        val q = when (i % 11) {
+          0, 1 -> null
+          2 -> rect(.4,.4,.5,.5)
+          3, 4 -> rect(.16,.16,.84,.84)
+          5, 6 -> rect(.24,.24,.76,.76)
+          else -> page
+        }
+        val trusted = i % 4 != 0
+        val failed = i % 20 >= 10
+        val blocked = i % 37 == 0
+        val parked = i % 8 < 4
+        assertEquals("row $i", expected.observe(q,trusted,failed,now,blocked,parked),
+          actual.observe(q,trusted,failed,now,blocked,parked))
+      }
+    }
+  }
+  @Test fun nativeOwnershipDeadlinesAndUnknownCompletionsCrossWithoutClockOrBooleanCoercion() {
+    NativeFocus().use { p ->
+      val time = 9_007_199_254_740_993L
+      val tap = p.startNative(0, time)
+      assertEquals(time + 5_000_000_000, p.deadlinesNative(time)[0])
+      assertTrue(p.completeNative(tap, -1, time + 1))
+      assertEquals(-1L, p.snapshotNative()[2])
+      assertEquals(0L, p.snapshotNative()[5])
+      assertFalse(p.completeNative(tap, 1, time + 2))
+      assertFalse(p.expireTapNative(tap, time + 5_000_000_000, true))
+      assertTrue(p.afterCaptureNative(time + 5_000_000_000, true))
+      val generation = p.snapshotNative()[0]
+      p.unbindNative()
+      assertTrue(p.snapshotNative()[0] > generation)
+      assertFalse(p.completeNative(tap, 1, time + 6_000_000_000))
+    }
+  }
+  @Test fun learnedPositionSurvivesPolicyRecreationInAdapterSelectedUnits() {
+    val previous = NativeFocus.learnedNative()
+    try {
+      NativeFocus.learnNative(2.25, true)
+      NativeFocus().use { it.unbindNative() }
+      assertEquals(2.25, NativeFocus.learnedNative()!![0], 0.0)
+      NativeFocus.learnNative(Double.NaN, true)
+      assertNull(NativeFocus.learnedNative())
+    } finally { NativeFocus.learnNative(previous?.get(0) ?: 0.0, previous != null) }
+  }
   @Test fun fixedFocusAndEdofCamerasDoNotWaitForAScan() {
     assertFalse(hasAdjustableAutofocus(null))
     assertFalse(hasAdjustableAutofocus(intArrayOf(0, 5))) // OFF, EDOF.

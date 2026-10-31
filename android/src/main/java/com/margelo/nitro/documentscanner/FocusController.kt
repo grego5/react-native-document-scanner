@@ -5,7 +5,8 @@ import androidx.camera.core.Camera
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.MeteringPoint
 import com.margelo.nitro.documentscanner.processing.DocumentFocusAction
-import com.margelo.nitro.documentscanner.processing.DocumentFocusPolicy
+import com.margelo.nitro.documentscanner.processing.NativeFocus
+import com.margelo.nitro.documentscanner.processing.motionValues
 import com.margelo.nitro.documentscanner.processing.LiveFocusCandidate
 import java.util.concurrent.Executor
 
@@ -31,184 +32,165 @@ internal data class FocusSnapshot(
   fun scanHolds(nowMs: Long): Boolean = owner != null && nowMs < heldUntilMs
 }
 
-/**
- * The one owner of focus lifecycle on the bound camera: taps, document scans the [DocumentFocusPolicy] asks for, their
- * retries, timeouts and locks, and when the lens returns to continuous autofocus or its parked distance. Every change
- * publishes a new [FocusSnapshot] to [Host.focusChanged]; nothing else writes focus state. While a shot is in flight
- * nothing new moves the lens: taps and retriggers are ignored, and scans that end wait for [afterCapture]. A capture
- * that is only waiting does not freeze focus. Main thread.
+/** Main-thread CameraX adapter. Shared policy owns scan/tap/document state and generations;
+ * this class owns only hardware requests, callback attempts, wakeups and immutable published snapshots.
  */
-internal class FocusController(private val host: Host) {
+internal class FocusController(private val host: Host) : AutoCloseable {
   interface Host {
     val camera: Camera?
     val mainExecutor: Executor
-    /** A shot has been requested; its focus must not change until it settles. */
     fun shotInFlight(): Boolean
-    /** Re-applies the Camera2 options, which depend on whether a scan holds the lens. */
     fun applyCaptureOptions()
     fun postDelayed(delayMs: Long, block: () -> Unit)
     fun log(message: String)
     fun focusChanged(snapshot: FocusSnapshot)
+    fun uptimeNs(): Long = SystemClock.uptimeMillis() * 1_000_000
   }
-
-  private val policy = DocumentFocusPolicy()
+  private val handle = lazy { NativeFocus() }
+  private val policy get() = handle.value
+  private var closed = false
   private var scan: Scan? = null
+  /** Platform timer revision only; it never represents focus ownership. */
+  private var wakeRevision = 0L
   var snapshot = FocusSnapshot(0, null, null, 0, 0, 0)
     private set
 
-  /**
-   * A tap focuses and meters at [point] and takes priority for [TAP_MS], resetting document focus. Ignored while a shot
-   * is in flight. The tap ends here rather than by CameraX's auto-cancel, so its end can wait for a shot.
-   */
   fun tap(camera: Camera, point: MeteringPoint) {
-    if (host.shotInFlight()) return
+    if (closed || host.shotInFlight()) return
     start(camera, FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
       .disableAutoCancel().build(), FocusOwner.TAP)
   }
-
-  /**
-   * A detection result for document focus. [parked] says the lens parks between scans, so only a confirmed page starts
-   * the first one; [point] maps the hint's page centre onto the preview, null when it falls outside.
-   */
   fun onCandidate(hint: LiveFocusCandidate, parked: Boolean, point: (LiveFocusCandidate) -> MeteringPoint?) {
+    if (closed) return
     val camera = host.camera ?: return
-    val now = SystemClock.uptimeMillis()
-    val tapHolds = scan?.let { it.owner == FocusOwner.TAP && now < it.heldUntilMs } == true
-    // A capture waiting for focus relies on this policy; only a shot in flight holds the lens still.
-    val blocked = host.shotInFlight() || tapHolds
-    when (policy.observe(hint.quad, hint.trusted, hint.focusFailed, now, blocked, acquireTrusted = parked)) {
+    when (DocumentFocusAction.entries[policy.observeNative(hint.quad?.motionValues(), hint.trusted, hint.focusFailed,
+      host.uptimeNs(), host.shotInFlight(), parked)]) {
       DocumentFocusAction.NONE -> Unit
       DocumentFocusAction.RELEASE -> releaseDocument()
       DocumentFocusAction.START -> {
         val target = point(hint)
         if (target == null) {
-          policy.settled(false, now)
+          policy.documentSettledNative(0, host.uptimeNs())
           releaseDocument()
-          return
+        } else {
+          host.log("document focus start trusted=${hint.trusted}")
+          start(camera, FocusMeteringAction.Builder(target, FocusMeteringAction.FLAG_AF).disableAutoCancel().build(),
+            FocusOwner.DOCUMENT)
         }
-        host.log("document focus start trusted=${hint.trusted}")
-        start(camera, FocusMeteringAction.Builder(target, FocusMeteringAction.FLAG_AF).disableAutoCancel().build(),
-          FocusOwner.DOCUMENT)
       }
     }
+    scheduleDeadlines()
   }
-
-  /** Ends document focus, returning the lens to continuous autofocus or its parked distance; never ends a tap's. */
   fun releaseDocument() {
-    if (host.shotInFlight()) return
-    val ended = scan?.takeIf { it.owner == FocusOwner.DOCUMENT } ?: return
-    scan = null
-    // Published first: the capture options read the snapshot to park the lens again.
-    publish()
-    if (ended.camera === host.camera) {
-      try { ended.camera.cameraControl.cancelFocusAndMetering() } catch (_: Exception) { }
-      host.applyCaptureOptions()
-    }
+    if (closed) return
+    if (policy.releaseDocumentNative(host.shotInFlight())) released()
+    scheduleDeadlines()
   }
-
-  /** Document focus settings changed: the policy starts afresh, and without [keepDocument] its scan ends. */
   fun resetPolicy(keepDocument: Boolean) {
-    policy.reset()
-    if (!keepDocument) releaseDocument()
+    if (closed) return
+    if (policy.resetNative(keepDocument, host.shotInFlight())) released()
+    scheduleDeadlines()
   }
-
-  /** After a capture: an expired tap, a failed document scan, or one no longer wanted, gives the lens back. */
   fun afterCapture(documentWanted: Boolean) {
-    val current = scan ?: return
-    if (current.owner == FocusOwner.TAP) {
-      if (SystemClock.uptimeMillis() >= current.heldUntilMs) endTap(current)
-      return
-    }
-    if (!documentWanted || current.locked == false) releaseDocument()
+    if (closed) return
+    if (policy.afterCaptureNative(host.uptimeNs(), documentWanted)) released()
+    else if (policy.wakeNative(host.uptimeNs(), false) == DocumentFocusAction.RELEASE.ordinal) releaseDocument()
+    scheduleDeadlines()
   }
-
-  /** The camera was unbound, which cancels every scan. */
   fun unbind() {
+    if (closed) return
     scan = null
-    policy.reset()
+    ++wakeRevision
+    policy.unbindNative()
     publish()
   }
-
   private fun start(camera: Camera, action: FocusMeteringAction, owner: FocusOwner) {
-    val next = Scan(camera, if (owner == FocusOwner.TAP) SystemClock.uptimeMillis() + TAP_MS else Long.MAX_VALUE, owner)
-    if (owner == FocusOwner.TAP) policy.reset()
+    val next = Scan(camera, policy.startNative(owner.ordinal, host.uptimeNs()))
     scan = next
-    // Published first: the capture options read the snapshot to lift the centre area or parked distance, which would
-    // override the scan, until it ends.
-    publish()
+    publish() // Options must see the new owner before touching the lens.
     host.applyCaptureOptions()
-    // A shot in flight keeps the lens; afterCapture ends the tap instead.
-    if (owner == FocusOwner.TAP) host.postDelayed(TAP_MS) { if (!host.shotInFlight()) endTap(next) }
-    if (owner == FocusOwner.DOCUMENT) host.postDelayed(SCAN_TIMEOUT_MS) {
-      if (scan === next && next.locked == null) settle(next, false)
-    }
+    scheduleDeadlines()
     trigger(next, action)
-    // Samsung's autofocus drops a trigger that lands in a passive scan and never reports a lock though the lens
-    // focuses; one repeat after that scan has ended locks.
+    // Android device workaround: repeat once after a passive scan. Eligibility stays with this hardware adapter.
     host.postDelayed(RETRIGGER_MS) {
-      if (scan === next && host.camera === camera && next.locked == null && !host.shotInFlight()) {
+      if (pending(next) && !host.shotInFlight()) {
         host.log("focus retriggered")
         trigger(next, action)
       }
     }
   }
-
-  private fun endTap(ended: Scan) {
-    if (scan !== ended) return
-    scan = null
-    // Published first: the capture options read the snapshot to park the lens again.
-    publish()
-    if (ended.camera === host.camera) {
-      try { ended.camera.cameraControl.cancelFocusAndMetering() } catch (_: Exception) { }
-      host.applyCaptureOptions()
-    }
-  }
-
-  /** Sends [action] for [target]; only the latest trigger's result settles it. */
+  private fun pending(target: Scan): Boolean = !closed && scan === target && host.camera === target.camera &&
+    policy.snapshotNative().let { it[4] == target.token && it[5] != 0L }
   private fun trigger(target: Scan, action: FocusMeteringAction) {
     val attempt = ++target.triggers
     val future = try { target.camera.cameraControl.startFocusAndMetering(action) } catch (_: Exception) {
-      if (scan === target) settle(target, false)
+      if (pending(target)) settle(target, false)
       return
     }
     future.addListener({
-      // A cancel, by a newer scan, an unbind or the auto-cancel, is not a lock.
-      if (scan === target && host.camera === target.camera && target.triggers == attempt && target.locked == null) {
+      if (pending(target) && target.triggers == attempt) {
         settle(target, try { future.get().isFocusSuccessful } catch (_: Exception) { false })
       }
     }, host.mainExecutor)
   }
-
-  private fun settle(target: Scan, success: Boolean) {
-    if (target.locked != null) return
-    target.locked = success
+  /** Null completion is supported by the shared policy; Android interprets its own CameraX result as known success/failure. */
+  private fun settle(target: Scan, success: Boolean?) {
+    if (!pending(target) || !policy.completeNative(target.token, success?.let { if (it) 1 else 0 } ?: -1, host.uptimeNs())) return
     publish()
-    if (target.owner == FocusOwner.DOCUMENT && scan === target && host.camera === target.camera) {
-      policy.settled(success, SystemClock.uptimeMillis())
+    if (snapshot.owner == FocusOwner.DOCUMENT) {
       host.log("document focus settled success=$success")
-      if (!success) releaseDocument()
+      if (success != true) releaseDocument()
+    }
+    // Target loss may already be overdue when an asynchronous scan settles.
+    if (policy.wakeNative(host.uptimeNs(), host.shotInFlight()) == DocumentFocusAction.RELEASE.ordinal) releaseDocument()
+    scheduleDeadlines()
+  }
+  private fun released() {
+    val ended = scan
+    scan = null
+    publish() // Options must see ownership end before parking or restoring continuous AF.
+    if (ended != null && ended.camera === host.camera) {
+      try { ended.camera.cameraControl.cancelFocusAndMetering() } catch (_: Exception) { }
+      host.applyCaptureOptions()
     }
   }
-
   private fun publish() {
-    val current = scan
-    snapshot = FocusSnapshot(snapshot.generation + 1, current?.owner, current?.locked, current?.heldUntilMs ?: 0,
+    val v = policy.snapshotNative()
+    snapshot = FocusSnapshot(v[0], FocusOwner.entries.getOrNull(v[1].toInt()),
+      when (v[2]) { 0L -> false; 1L -> true; else -> null },
+      if (v[3] == Long.MAX_VALUE) Long.MAX_VALUE else v[3] / 1_000_000,
       System.nanoTime(), SystemClock.elapsedRealtimeNanos())
     host.focusChanged(snapshot)
   }
-
-  /** One owned autofocus scan. A tap's auto-cancels at [heldUntilMs]; a document scan holds until released. */
-  private class Scan(val camera: Camera, val heldUntilMs: Long, val owner: FocusOwner) {
-    var locked: Boolean? = null
-    /** How many times the scan was triggered; an earlier trigger, canceled by a repeat, does not settle it. */
-    var triggers = 0
+  private fun scheduleDeadlines() {
+    val revision = ++wakeRevision
+    if (closed) return
+    val now = host.uptimeNs()
+    val deadline = policy.deadlinesNative(now).withIndex().filter {
+      it.value > 0 && (it.value > now || it.index == 1 || it.index == 0 && !host.shotInFlight())
+    }.minOfOrNull { it.value } ?: return
+    host.postDelayed((deadline - now).coerceAtLeast(0).let { (it + 999_999) / 1_000_000 }) {
+      if (closed || revision != wakeRevision) return@postDelayed
+      val current = scan
+      val time = host.uptimeNs()
+      val deadlines = policy.deadlinesNative(time)
+      if (current != null && deadlines[0] != 0L && time >= deadlines[0] &&
+        policy.expireTapNative(current.token, time, host.shotInFlight())) released()
+      if (current != null && deadlines[1] != 0L && time >= deadlines[1] && pending(current)) settle(current, false)
+      if (policy.wakeNative(time, host.shotInFlight()) == DocumentFocusAction.RELEASE.ordinal) releaseDocument()
+      // Retry/sharpness deadlines wake readiness, but a fresh candidate must request the next hardware scan.
+      host.focusChanged(snapshot)
+      scheduleDeadlines()
+    }
   }
-
+  override fun close() {
+    if (closed) return
+    closed = true; ++wakeRevision; scan = null
+    if (handle.isInitialized()) handle.value.close()
+  }
+  private class Scan(val camera: Camera, val token: Long) { var triggers = 0 }
   companion object {
-    const val TAP_MS = 5_000L
-    /** A document scan unsettled this long fails, and the policy decides what follows. */
-    const val SCAN_TIMEOUT_MS = 2_000L
-    /** A scan unsettled this long is triggered once more; recorded passive scans ended within 400 ms of a dropped trigger. */
+    /** Android-only workaround, not a portable focus-policy deadline. */
     const val RETRIGGER_MS = 700L
   }
 }

@@ -95,6 +95,7 @@ import com.margelo.nitro.documentscanner.processing.LiveFocusCandidate
 import com.margelo.nitro.documentscanner.processing.TorchPolicy
 import com.margelo.nitro.documentscanner.processing.canParkFocus
 import com.margelo.nitro.documentscanner.processing.hasAdjustableAutofocus
+import com.margelo.nitro.documentscanner.processing.NativeFocus
 import com.margelo.nitro.documentscanner.processing.parkDiopters
 import com.margelo.nitro.documentscanner.processing.LiveCaptureGateSample
 import com.margelo.nitro.documentscanner.processing.FrameRecord
@@ -246,7 +247,7 @@ class HybridDocumentScannerCameraView(
       val changed = synchronized(metadataLock) {
         if (generation != metadataGeneration) return
         // Every lock, a tap's too, moves the parked distance to where the user holds the phone.
-        if (afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED && focusDiopters != null) learnedFocusDiopters = focusDiopters
+        if (afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED && focusDiopters != null) NativeFocus.learnNative(focusDiopters.toDouble(), true)
         exposureIsoMs = if (exposureNs != null && iso != null) exposureNs / 1e6 * iso else null
         if (torchAuto && timestampNs != null && exposureNs != null) lightTorch = torchPolicy.observe(timestampNs, exposureNs, iso)
         if (timestampNs != null && exposureNs != null) liveDetector.frames.add(timestampNs, CameraFrameState(
@@ -730,6 +731,7 @@ class HybridDocumentScannerCameraView(
     stopCamera("view-dropped")
     clearCapturePreview()
     liveDetector.close()
+    focus.close()
     metadataExecutor.shutdown()
     previewView.previewStreamState.removeObserver(streamObserver)
   }
@@ -1403,7 +1405,7 @@ class HybridDocumentScannerCameraView(
       )
     }
     // Lifted for every owned scan, whose autofocus these options would otherwise override.
-    val park = parkRange?.takeIf { parksFocus && focus.snapshot.owner == null }?.let { parkDiopters(learnedFocusDiopters, it) }
+    val park = parkRange?.takeIf { parksFocus && focus.snapshot.owner == null }?.let { parkDiopters(NativeFocus.learnedNative()?.firstOrNull()?.toFloat(), it) }
     logLifecycle("capture options fpsRange=$range centreFocus=${centre != null} parkDiopters=$park")
     val options = CaptureRequestOptions.Builder()
     if (range != null) options.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, range)
@@ -1730,10 +1732,6 @@ class HybridDocumentScannerCameraView(
 
     const val CACHE_DIRECTORY_NAME = "react-native-document-scanner"
 
-    /** The back camera's last focus lock in diopters, for the process: a remounted camera parks where the last one
-     * focused. Written by capture callbacks.
-     */
-    @Volatile var learnedFocusDiopters: Float? = null
   }
 }
 
