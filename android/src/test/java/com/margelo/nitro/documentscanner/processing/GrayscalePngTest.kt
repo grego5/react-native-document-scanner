@@ -20,33 +20,10 @@ class GrayscalePngTest {
   @get:Rule val directory = TemporaryFolder()
 
   @Test
-  fun roundTripsSixteenLevelsAndOddWidthThroughAnIndependentDecoder() {
-    for (fixture in ParityFixtures.resource("gray-png")) {
-      val width = fixture.getValue("width").toInt()
-      val height = fixture.getValue("height").toInt()
-      val rows = Array(height) { y -> ByteArray(width) { x -> ((x * 13 + y * 7) % 256).toByte() } }
-      val file = write(rows)
-      val bytes = file.readBytes()
-      assertEquals(4, bytes[24].toInt())
-      assertEquals(0, bytes[25].toInt()) // True grayscale, no palette.
-      val decoded = decode(file)
-      assertNotNull(decoded)
-      assertEquals(width, decoded.width)
-      assertEquals(height, decoded.height)
-      val factor = if (decoded.sampleBits == 8) 17 else 1
-      for (y in rows.indices) for (x in rows[y].indices) {
-        assertEquals("pixel $x,$y", (((rows[y][x].toInt() and 255) + 8) / 17) * factor,
-          decoded.sample(x, y))
-      }
-      if (width == 33) assertEquals(16, (0 until width).map { decoded.sample(it, 0) }.toSet().size)
-    }
-  }
-
-  @Test
   fun multipleDataChunksCopyAsOneCompleteZlibStream() {
     val random = Random(7)
     val rows = Array(400) { ByteArray(1025).also(random::nextBytes) }
-    val file = write(rows)
+    val file = fixture("multi-idat.png")
     val metadata = GrayscalePng.read4(file)!!
     val compressed = ByteArrayOutputStream().also(metadata::copyCompressedTo).toByteArray()
     assertEquals(compressed.size.toLong(), metadata.compressedLength)
@@ -74,7 +51,7 @@ class GrayscalePngTest {
 
   @Test
   fun fourBitTransparencyIsExposedForPdfMasking() {
-    val file = write(arrayOf(byteArrayOf(119, 0, 255.toByte())))
+    val file = fixture("transparency-source.png")
     val before = file.readBytes()
     val transparent = byteArrayOf(0, 7)
     val type = "tRNS".toByteArray(Charsets.US_ASCII)
@@ -107,7 +84,7 @@ class GrayscalePngTest {
 
   @Test
   fun aTruncatedPngDoesNotQualifyForPassthrough() {
-    val file = write(arrayOf(byteArrayOf(0, 127, 255.toByte())))
+    val file = fixture("truncated-source.png")
     file.writeBytes(file.readBytes().dropLast(12).toByteArray())
     assertNull(GrayscalePng.read4(file))
   }
@@ -134,9 +111,11 @@ class GrayscalePngTest {
       Int::class.javaPrimitiveType, Int::class.javaPrimitiveType).invoke(raster, x, y, 0) as Int
   }
 
-  private fun write(rows: Array<ByteArray>): File = directory.newFile().also { file ->
-    file.outputStream().use { output ->
-      GrayscalePng.write4(output, rows.first().size, rows.size) { y, row -> rows[y].copyInto(row) }
-    }
+  // Independent synthetic PNGs keep parser/PDF-copy assertions on the JVM after
+  // quantization/packing/compression assertions moved to portable GrayscalePngTest.cpp.
+  private fun fixture(name: String): File = directory.newFile().also { file ->
+    val resource = javaClass.classLoader!!.getResourceAsStream("parity/gray-png/$name")
+      ?: error("Missing PNG parser fixture $name")
+    resource.use { input -> file.outputStream().use { input.copyTo(it) } }
   }
 }
