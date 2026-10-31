@@ -1,3 +1,4 @@
+#include <document_scanner/Tensor.hpp>
 #include <document_scanner/Geometry.hpp>
 #include <algorithm>
 #include <cmath>
@@ -131,15 +132,7 @@ RegionTransform centeredSquare(Size source) {
 }
 std::optional<Crop> photoInferenceCrop(const Quad &q, Size photo) {
   dimensions(photo);
-  // Preserve prediction acceptance (no crop-edit minimum area); model interpretation migrates in Task 06.
-  for (Point p : q)
-    if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1)
-      return std::nullopt;
-  for (size_t i = 0; i < 4; ++i) {
-    const auto a = q[i], b = q[(i + 1) % 4], c = q[(i + 2) % 4];
-    if (!std::isfinite(a.x) || !std::isfinite(a.y) || !((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) > 1e-6))
-      return std::nullopt;
-  }
+  if (!validPredictionQuad(q)) return std::nullopt;
   const auto [lx, rx] = std::minmax_element(q.begin(), q.end(), [](Point a, Point b) { return a.x < b.x; });
   const auto [ty, by] = std::minmax_element(q.begin(), q.end(), [](Point a, Point b) { return a.y < b.y; });
   const double x0 = lx->x * photo.width, x1 = rx->x * photo.width, y0 = ty->y * photo.height, y1 = by->y * photo.height;

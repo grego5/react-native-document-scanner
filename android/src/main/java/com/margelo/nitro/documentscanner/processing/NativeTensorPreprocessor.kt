@@ -62,7 +62,12 @@ internal class NativeTensorPreprocessor(
     right: Int, bottom: Int, rotation: Int, input: ByteBuffer)
 
   companion object {
-    const val INPUT_SIZE = 256
+    @JvmStatic @DoNotStrip external fun decodeOutputNative(values: FloatArray): DoubleArray?
+    @JvmStatic @DoNotStrip external fun validateTensorsNative(inputs: Int, outputs: Int, inputFloat32: Boolean,
+      outputFloat32: Boolean, inputShape: IntArray, outputShape: IntArray): IntArray
+    init { ReactNativeDocumentScannerOnLoad.initializeNative() }
+
+    const val INPUT_SIZE = 224
     const val INPUT_BYTES = INPUT_SIZE * INPUT_SIZE * 3 * 4
   }
 }

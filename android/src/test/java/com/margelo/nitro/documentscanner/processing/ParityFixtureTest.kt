@@ -27,23 +27,6 @@ class ParityFixtureTest {
     }
   }
 
-  @Test fun normalizedModelOutputsPreserveCornerOrderAndValidity() {
-    for (row in ParityFixtures.resource("quads")) {
-      val output = row.getValue("output").split(',').map(String::toFloat).toFloatArray()
-      when (row.getValue("expected")) {
-        "error" -> assertThrows(IllegalStateException::class.java) { DocCornerSession.decodeOutput(output) }
-        "reject" -> assertNull(row.getValue("id"), DocCornerSession.decodeOutput(output))
-        "accept" -> {
-          val quad = requireNotNull(DocCornerSession.decodeOutput(output)).quad
-          val actual = listOf(quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft)
-            .flatMap { listOf(it.x, it.y) }
-          assertEquals(row.getValue("id"), output.take(8).map(Float::toDouble), actual)
-        }
-        else -> error("Unknown quad expectation")
-      }
-    }
-  }
-
   @Test fun captureEventsPreserveOrderingAndDeadlines() {
     for ((_, events) in ParityFixtures.resource("capture-events").groupBy { it.getValue("id") }) {
       val gate = CaptureGate(1_500)

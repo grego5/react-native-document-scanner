@@ -99,6 +99,27 @@ class NativeTensorPreprocessorTest {
     } finally { native.close(); bitmap.recycle() }
   }
 
+  @Test
+  fun sharedDecoderAndMetadataPreserveAndroidContracts() {
+    val dimensions = NativeTensorPreprocessor.validateTensorsNative(1, 1, true, true,
+      intArrayOf(1, 192, 320, 3), intArrayOf(1, 9))
+    assertArrayEquals(intArrayOf(320, 192), dimensions)
+    assertThrows(IllegalStateException::class.java) {
+      NativeTensorPreprocessor.validateTensorsNative(1, 1, true, true, intArrayOf(1, 3, 192, 320), intArrayOf(1, 9))
+    }
+    val values = floatArrayOf(.1f, .2f, .8f, .1f, .9f, .8f, .2f, .9f, 0f)
+    val candidate = DocCornerSession.decodeOutput(values)!!
+    assertEquals(values[0].toDouble(), candidate.quad.topLeft.x, 0.0)
+    assertEquals(values[4].toDouble(), candidate.quad.bottomRight.x, 0.0)
+    assertEquals(0.0, candidate.score, 0.0)
+    assertNull(candidate.a4PageRange)
+    assertNull(DocCornerSession.decodeOutput(values.copyOf().apply { this[4] = 1.01f }))
+    assertThrows(IllegalStateException::class.java) { DocCornerSession.decodeOutput(values.copyOf(8)) }
+    assertThrows(IllegalStateException::class.java) {
+      DocCornerSession.decodeOutput(values.copyOf().apply { this[8] = Float.NaN })
+    }
+  }
+
   private fun buffer() = ByteBuffer.allocateDirect(NativeTensorPreprocessor.INPUT_BYTES).order(ByteOrder.nativeOrder())
   private fun patternedBitmap(width: Int, height: Int): Bitmap {
     val pixels = IntArray(width * height) { i ->

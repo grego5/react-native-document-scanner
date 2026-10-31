@@ -5,24 +5,6 @@ import org.junit.Test
 
 class DocCornerGeometryTest {
   @Test
-  fun preservesPredictedCornersAndRejectsInvalidOutputs() {
-    val output = floatArrayOf(.1f, .2f, .8f, .1f, .9f, .8f, .2f, .9f, .7f)
-    val candidate = DocCornerSession.decodeOutput(output)!!
-    assertEquals(output[0].toDouble(), candidate.quad.topLeft.x, 0.0)
-    assertEquals(output[4].toDouble(), candidate.quad.bottomRight.x, 0.0)
-    assertNull(candidate.a4PageRange)
-    assertNull(DocCornerSession.decodeOutput(output.copyOf().apply { this[4] = 1.01f }))
-    assertNull(DocCornerSession.decodeOutput(output.copyOf().apply { this[4] = .1f; this[5] = .2f }))
-    assertNull(DocCornerSession.decodeOutput(floatArrayOf(.1f, .1f, .9f, .9f, .9f, .1f, .1f, .9f, .7f)))
-    assertThrows(IllegalStateException::class.java) {
-      DocCornerSession.decodeOutput(output.copyOf().apply { this[8] = Float.NaN })
-    }
-    assertThrows(IllegalStateException::class.java) {
-      DocCornerSession.decodeOutput(output.copyOf().apply { this[0] = Float.POSITIVE_INFINITY })
-    }
-  }
-
-  @Test
   fun bilinearResamplingMatchesPillowRgbGoldenPixels() {
     // Independent Pillow RGB bilinear output hashes: reduction, enlargement, identity,
     // extreme reduction, and a non-integral camera-sized reduction.

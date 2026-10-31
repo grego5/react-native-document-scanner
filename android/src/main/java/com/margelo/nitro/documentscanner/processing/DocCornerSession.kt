@@ -39,12 +39,10 @@ internal class DocCornerSession(
     try {
       check(interpreter.inputTensorCount == 1 && interpreter.outputTensorCount == 1) { "Unexpected DocCornerNet tensor count." }
       val tensor = interpreter.getInputTensor(0)
-      val shape = tensor.shape()
-      check(tensor.dataType() == DataType.FLOAT32 && shape.size == 4 && shape[0] == 1 && shape[3] == 3 &&
-        shape[1] > 0 && shape[2] > 0) { "Expected a float32 [1, height, width, 3] quad-model input." }
-      size = CornerModelSize.resolve(shape[2].toDouble(), shape[1].toDouble())
-      check(interpreter.getOutputTensor(0).dataType() == DataType.FLOAT32 &&
-        interpreter.getOutputTensor(0).shape().contentEquals(intArrayOf(1, 9))) { "Unexpected DocCornerNet output." }
+      val outputTensor = interpreter.getOutputTensor(0)
+      val dimensions = NativeTensorPreprocessor.validateTensorsNative(interpreter.inputTensorCount, interpreter.outputTensorCount,
+        tensor.dataType() == DataType.FLOAT32, outputTensor.dataType() == DataType.FLOAT32, tensor.shape(), outputTensor.shape())
+      size = CornerModelSize.resolve(dimensions[0].toDouble(), dimensions[1].toDouble())
       input = ByteBuffer.allocateDirect(size.inputBytes).order(ByteOrder.nativeOrder())
       preprocessor = NativeTensorPreprocessor(size.width, size.height)
     } catch (error: Throwable) {
@@ -96,13 +94,11 @@ internal class DocCornerSession(
     const val MAX_PHOTO_DIMENSION = 2000
 
     fun decodeOutput(values: FloatArray): DocumentCandidate? {
-      check(values.size == 9) { "Unexpected DocCornerNet output size." }
-      check(values.all { it.isFinite() }) { "DocCornerNet returned non-finite output." }
-      val points = (0..3).map { DocumentPoint(values[it * 2].toDouble(), values[it * 2 + 1].toDouble()) }
-      if (!validNormalizedQuad(points)) return null
+      val decoded = NativeTensorPreprocessor.decodeOutputNative(values) ?: return null
+      val points = (0..3).map { DocumentPoint(decoded[it * 2], decoded[it * 2 + 1]) }
       val predicted = DocumentPointProvenance.PREDICTED
       return DocumentCandidate(
-        DocumentQuad(points[0], points[1], points[2], points[3]), values[8].toDouble(),
+        DocumentQuad(points[0], points[1], points[2], points[3]), decoded[8],
         DocumentCornerProvenance(predicted, predicted, predicted, predicted),
         DocumentSideProvenance(predicted, predicted, predicted, predicted), null,
       )
