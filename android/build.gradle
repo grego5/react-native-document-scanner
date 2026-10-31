@@ -49,6 +49,8 @@ android {
   // Share the unchanged Kotlin resize oracle between JVM and instrumentation tests only.
   sourceSets.test.java.srcDir('src/testSupport/java')
   sourceSets.androidTest.java.srcDir('src/testSupport/java')
+  sourceSets.test.resources.srcDir('../tests/fixtures')
+  sourceSets.androidTest.assets.srcDir('../tests/fixtures')
 
   // Explicit instrumentation-only fixtures. Never add private photos to main/release assets.
   def runtimeFixtures = project.findProperty('docCornerFixtures')

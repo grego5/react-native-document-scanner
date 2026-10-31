@@ -21,22 +21,25 @@ class GrayscalePngTest {
 
   @Test
   fun roundTripsSixteenLevelsAndOddWidthThroughAnIndependentDecoder() {
-    val width = 33
-    val rows = Array(3) { y -> ByteArray(width) { x -> ((x * 13 + y * 7) % 256).toByte() } }
-    val file = write(rows)
-    val bytes = file.readBytes()
-    assertEquals(4, bytes[24].toInt())
-    assertEquals(0, bytes[25].toInt()) // True grayscale, no palette.
-    val decoded = decode(file)
-    assertNotNull(decoded)
-    assertEquals(width, decoded.width)
-    assertEquals(3, decoded.height)
-    val factor = if (decoded.sampleBits == 8) 17 else 1
-    for (y in rows.indices) for (x in rows[y].indices) {
-      assertEquals("pixel $x,$y", (((rows[y][x].toInt() and 255) + 8) / 17) * factor,
-        decoded.sample(x, y))
+    for (fixture in ParityFixtures.resource("gray-png")) {
+      val width = fixture.getValue("width").toInt()
+      val height = fixture.getValue("height").toInt()
+      val rows = Array(height) { y -> ByteArray(width) { x -> ((x * 13 + y * 7) % 256).toByte() } }
+      val file = write(rows)
+      val bytes = file.readBytes()
+      assertEquals(4, bytes[24].toInt())
+      assertEquals(0, bytes[25].toInt()) // True grayscale, no palette.
+      val decoded = decode(file)
+      assertNotNull(decoded)
+      assertEquals(width, decoded.width)
+      assertEquals(height, decoded.height)
+      val factor = if (decoded.sampleBits == 8) 17 else 1
+      for (y in rows.indices) for (x in rows[y].indices) {
+        assertEquals("pixel $x,$y", (((rows[y][x].toInt() and 255) + 8) / 17) * factor,
+          decoded.sample(x, y))
+      }
+      if (width == 33) assertEquals(16, (0 until width).map { decoded.sample(it, 0) }.toSet().size)
     }
-    assertEquals(16, (0 until width).map { decoded.sample(it, 0) }.toSet().size)
   }
 
   @Test

@@ -85,20 +85,27 @@ class DocumentFiltersTest {
   @Test
   fun blackWhitePreservesContinuousFaintOnePixelStrokes() {
     OpenCvRuntime.ensureLoaded()
-    val page = Mat(300, 400, CvType.CV_8UC4, Scalar(255.0, 255.0, 255.0, 255.0))
-    try {
-      for ((x, value) in listOf(100 to 180.0, 150 to 225.0, 200 to 235.0)) {
-        val stroke = page.submat(Rect(x, 80, 1, 140))
-        try { stroke.setTo(Scalar(value, value, value, 255.0)) } finally { stroke.release() }
+    val assets = InstrumentationRegistry.getInstrumentation().context.assets
+    for (fixture in ParityFixtures.read(assets.open("parity/filters.tsv"))) {
+      val strokes = fixture.getValue("strokes").split(',').map {
+        val pair = it.split(':'); pair[0].toInt() to pair[1].toDouble()
       }
-      val filtered = DocumentFilters.apply(page, DocumentFilter.BLACKWHITE)
+      val page = Mat(fixture.getValue("height").toInt(), fixture.getValue("width").toInt(),
+        CvType.CV_8UC4, Scalar(255.0, 255.0, 255.0, 255.0))
       try {
-        assertEquals(255, filtered.at(30, 150))
-        for (x in listOf(100, 150, 200)) for (y in 90 until 210) {
-          assertTrue("Faint stroke at $x,$y became ${filtered.at(x, y)}", filtered.at(x, y) in 1..254)
+        for ((x, value) in strokes) {
+          val stroke = page.submat(Rect(x, 80, 1, 140))
+          try { stroke.setTo(Scalar(value, value, value, 255.0)) } finally { stroke.release() }
         }
-      } finally { filtered.release() }
-    } finally { page.release() }
+        val filtered = DocumentFilters.apply(page, DocumentFilter.BLACKWHITE)
+        try {
+          assertEquals(255, filtered.at(fixture.getValue("paperX").toInt(), fixture.getValue("paperY").toInt()))
+          for (x in strokes.map { it.first }) for (y in 90 until 210) {
+            assertTrue("Faint stroke at $x,$y became ${filtered.at(x, y)}", filtered.at(x, y) in 1..254)
+          }
+        } finally { filtered.release() }
+      } finally { page.release() }
+    }
   }
 
   @Test

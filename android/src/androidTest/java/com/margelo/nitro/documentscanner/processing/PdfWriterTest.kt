@@ -39,6 +39,24 @@ class PdfWriterTest {
     directory.deleteRecursively()
   }
 
+
+  @Test
+  fun portablePlacementMatricesPreserveFitClippingAndExif() {
+    val assets = InstrumentationRegistry.getInstrumentation().context.assets
+    for (fixture in ParityFixtures.read(assets.open("parity/pdf-placement.tsv"))) {
+      val source = jpeg("placement.jpg", 400, 300, fixture.getValue("exif").toInt())
+      val pdf = createPdf(listOf(source), imageFit = ImageFit.valueOf(fixture.getValue("fit")),
+        pageWidth = 600.0, pageHeight = 800.0)
+      val text = String(pdf.readBytes(), Charsets.ISO_8859_1)
+      val match = requireNotNull(Regex("q 0 0 600 800 re W n (.*?) cm /Im0 Do Q").find(text))
+      val actual = match.groupValues[1].split(' ').map(String::toDouble)
+      val expected = fixture.getValue("matrix").split(',').map(String::toDouble)
+      assertEquals(6, actual.size)
+      for (i in expected.indices) assertEquals(fixture.getValue("id"), expected[i], actual[i], 0.0001)
+      assertTrue("Placement must not re-encode source", pdf.readBytes().indexOf(source.readBytes()) >= 0)
+    }
+  }
+
   @Test
   fun embedsSmallJpegUnchangedAndEncodesPngUpright() {
     // Stored 400 x 300 with its left half dark, shown rotated 90 degrees clockwise: upright, the dark half is on top.

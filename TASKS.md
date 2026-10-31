@@ -1,6 +1,6 @@
 # iOS scanner parity execution plan
 
-Status: Planned
+Status: Task 01 completed; Tasks 02–33 planned
 
 Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating Android first. This index contains only the current iOS/shared-engine goal; every implementation task is linked below.
 
@@ -18,7 +18,7 @@ Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating 
 
 ## Execution order
 
-Tasks are numbered sequentially; each task declares its exact prerequisites. Task 04 verifies the iOS toolchain and model run early, so later iOS work does not discover a blocked dependency. Complete the Android migration gate before starting iOS integration. All tasks are Planned; no product implementation is implied by this index.
+Tasks are numbered sequentially; each task declares its exact prerequisites. Task 04 verifies the iOS toolchain and model run early, so later iOS work does not discover a blocked dependency. Complete the Android migration gate before starting iOS integration. Task 01 establishes fixtures and Android baseline assertions; remaining tasks are Planned. No production migration is implied by the fixture work.
 
 | Task | Outcome | Complexity |
 | --- | --- | --- |

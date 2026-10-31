@@ -25,23 +25,15 @@ class SourceImageLoaderTest {
 
   @Test
   fun allExifOrientationsProduceExpectedUprightDimensionsAndMarkerPositions() {
-    val expectedCorners = mapOf(
-      ExifInterface.ORIENTATION_NORMAL to listOf(Color.RED, Color.GREEN, Color.YELLOW, Color.BLUE),
-      ExifInterface.ORIENTATION_FLIP_HORIZONTAL to listOf(Color.GREEN, Color.RED, Color.BLUE, Color.YELLOW),
-      ExifInterface.ORIENTATION_ROTATE_180 to listOf(Color.YELLOW, Color.BLUE, Color.RED, Color.GREEN),
-      ExifInterface.ORIENTATION_FLIP_VERTICAL to listOf(Color.BLUE, Color.YELLOW, Color.GREEN, Color.RED),
-      ExifInterface.ORIENTATION_TRANSPOSE to listOf(Color.RED, Color.BLUE, Color.YELLOW, Color.GREEN),
-      ExifInterface.ORIENTATION_ROTATE_90 to listOf(Color.BLUE, Color.RED, Color.GREEN, Color.YELLOW),
-      ExifInterface.ORIENTATION_TRANSVERSE to listOf(Color.YELLOW, Color.GREEN, Color.RED, Color.BLUE),
-      ExifInterface.ORIENTATION_ROTATE_270 to listOf(Color.GREEN, Color.YELLOW, Color.BLUE, Color.RED),
-    )
-
-    expectedCorners.forEach { (orientation, expected) ->
+    val colors = mapOf("RED" to Color.RED, "GREEN" to Color.GREEN, "YELLOW" to Color.YELLOW, "BLUE" to Color.BLUE)
+    val assets = InstrumentationRegistry.getInstrumentation().context.assets
+    ParityFixtures.read(assets.open("parity/orientation.tsv")).forEach { fixture ->
+      val orientation = fixture.getValue("exif").toInt()
+      val expected = fixture.getValue("corners").split(',').map { colors.getValue(it) }
       val file = createFixture(orientation)
       SourceImageLoader.load(Uri.fromFile(file).toString(), maxDimension = 128).use { image ->
-        val rotated = orientation >= ExifInterface.ORIENTATION_TRANSPOSE
-        assertEquals(if (rotated) 60 else 80, image.uprightWidth)
-        assertEquals(if (rotated) 80 else 60, image.uprightHeight)
+        assertEquals(fixture.getValue("width").toInt(), image.uprightWidth)
+        assertEquals(fixture.getValue("height").toInt(), image.uprightHeight)
         assertEquals(orientation, image.exifOrientation)
         assertCorners(image.bitmap, expected, orientation)
 
