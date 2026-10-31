@@ -30,8 +30,8 @@ One accepted takePhoto starts one physical shot. Source publication precedes res
 ## Implementation steps
 
 1. Implement per-shot delegate ownership with a strong lifetime through final completion and exactly-once settlement.
-2. When jpegQuality is omitted prefer supported uncompressed BGRA; when explicitly set select JPEG with native AVVideoQualityKey. Choose JPEG fallback if the bounded capture configuration cannot deliver required uncompressed pixels; use latency when ZSL is unsupported.
-3. Apply the centered square ROI before source persistence and expensive downstream processing. Persist in the source format Task 04 recorded (TIFF for the uncompressed path and JPEG for the compressed path unless its evidence chose otherwise), preserving requested JPEG quality after any required crop.
+2. Use native JPEG capture as the provisional low-friction default. Honor explicit jpegQuality with native AVVideoQualityKey; otherwise follow the existing capture-mode defaults (quality 1.0, latency 0.95). Use latency when ZSL is unsupported. Per user direction (2026-10-31), defer the TIFF/BGRA alternative and format-cost measurements until a working sample runs on a physical device.
+3. Apply the centered square ROI before source persistence and expensive downstream processing. Persist with provisional JPEG backing, preserving requested JPEG quality after any required crop.
 4. Return correct encoded dimensions/EXIF metadata; normalize orientation after pixel crop and remove or regenerate stale embedded thumbnails.
 5. Publish the durable file, register a native pixel lease for immediate consumers, save the shutter analysis thumbnail, and map liveCandidate to final source coordinates.
 6. Defer format/framing changes during an active shot. Clean temporary/published-but-unreturned files on failure/disposal.
@@ -54,7 +54,7 @@ Verification prerequisites: establish the exact compiler/OpenCV setup before sha
 
 ## Completion criteria
 
-takePhoto produces correct TIFF/JPEG sources within the preconfigured capture cap and preserves framing/pixel lifetimes.
+takePhoto produces correct JPEG sources under the provisional default within the preconfigured capture cap and preserves framing/pixel lifetimes.
 
 Required checks must pass before Status changes to Completed. A prerequisite may be prepared with unavailable validation explicitly recorded, but downstream release readiness must remain incomplete until required evidence exists. Record changed files, executed checks, actual results, and material limitations.
 

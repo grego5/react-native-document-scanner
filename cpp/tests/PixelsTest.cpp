@@ -57,8 +57,10 @@ void ownerLifetime() {
   require(lease.view().at(1,1).red == 7);
 }
 }
+#ifndef DOCUMENT_SCANNER_NO_TEST_MAIN
 int main() {
   try { stridesAndChannels(); invalidSpans(); ownerLifetime(); }
   catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
   std::cout << "Pixel stride, channel, span and lease tests passed\n";
 }
+#endif

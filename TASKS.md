@@ -1,6 +1,6 @@
 # iOS scanner parity execution plan
 
-Status: Tasks 01–03 completed; Tasks 04–33 planned
+Status: Tasks 01–04 completed (Task 04 physical-device checks deferred by user); Tasks 05–33 planned
 
 Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating Android first. This index contains only the current iOS/shared-engine goal; every implementation task is linked below.
 
@@ -8,7 +8,7 @@ Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating 
 
 - Preserve the public scanning workflow and current Android observable behavior. Share algorithms and pure policies; keep cameras, permissions, lifecycle, runtime, files, and views platform-owned.
 - Cap iOS still capture before allocation: long edge <=4096 and total pixels <=12,582,912, using only supported advertised dimensions. Exclude oversized modes instead of capturing then shrinking.
-- Prefer native uncompressed BGRA pixels with TIFF backing when JPEG quality is omitted. Explicit JPEG quality selects JPEG; supported-feature fallback may use JPEG. Task 04 measures format and storage costs before the source store and capture tasks commit to a format; verify end-to-end efficiency on device and never claim it from format alone.
+- Use JPEG source backing as the provisional low-friction iOS default, with quality following the existing capture-mode defaults and explicit jpegQuality honored. Per user direction (2026-10-31), defer TIFF/JPEG format and storage measurements until a working sample runs on a physical device. Keep source pixels leased/cached within the existing memory bound; do not claim format or end-to-end efficiency before measurement.
 - Square framing must agree across preview, analysis, captured source, review, editing, thumbnails, and exports. Source bytes remain immutable after publication.
 - Preserve one native model runtime/worker, bounded operation admission, scoped file cleanup, and generation-based stale-result rejection. On iOS, keep source pixels behind explicit leases and a one-entry reusable full-source cache, with a bound on all live source memory including leased evicted buffers; Android keeps decoding each request during the migration.
 - Android links the core against its existing OpenCV runtime; no second OpenCV runtime. FastCores.run stays around rendering and FastCores.prime on the inference worker.
@@ -18,7 +18,7 @@ Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating 
 
 ## Execution order
 
-Tasks are numbered sequentially; each task declares its exact prerequisites. Task 04 verifies the iOS toolchain and model run early, so later iOS work does not discover a blocked dependency. Complete the Android migration gate before starting iOS integration. Task 01 establishes fixtures and Android baseline assertions; Task 02 adds the portable build/pixel boundary and separates existing native kernel bodies from JNI. Task 03 shares model resources; Tasks 04–33 are Planned; their algorithm and platform migrations remain pending.
+Tasks are numbered sequentially; each task declares its exact prerequisites. Task 04 verifies the iOS toolchain and model run early, so later iOS work does not discover a blocked dependency. Complete the Android migration gate before starting iOS integration. Task 01 establishes fixtures and Android baseline assertions; Task 02 adds the portable build/pixel boundary and separates existing native kernel bodies from JNI. Task 03 shares model resources; Task 04 verified x86_64 simulator execution and arm64 device linkage; physical-device checks are deferred until a working sample, preprocessing parity belongs to Task 06, and official OpenCV lacks an arm64 simulator slice; Tasks 05–33 are Planned; their algorithm and platform migrations remain pending.
 
 | Task | Outcome | Complexity |
 | --- | --- | --- |
