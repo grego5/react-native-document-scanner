@@ -19,7 +19,8 @@ import org.opencv.imgproc.Imgproc
  * Ink is a black-hat about a text line wide, kept per pixel: only that depth below the surrounding paper is deepened,
  * so a broad mid-tone area, such as a gray box or a printed photo beside faded text, keeps its tone.
  */
-internal class InkDetail private constructor(
+/** Test-only pre-migration Kotlin reference; sharpness depth changes use separate matrices. */
+internal class ReferenceInkDetail private constructor(
   /** Per-pixel ink depth below the local paper; null when no tile holds text. */
   private val ink: Mat?,
   /** Per tile, how much more of [ink] to remove: stretch − 1. */
@@ -40,9 +41,9 @@ internal class InkDetail private constructor(
 
   companion object {
     /** Measures [gray], an evened 8-bit page; [baseAmount] is the sharpening every tile gets. */
-    fun measure(gray: Mat, baseAmount: Double): InkDetail {
+    fun measure(gray: Mat, baseAmount: Double): ReferenceInkDetail {
       if (min(gray.cols(), gray.rows()) < MIN_SIDE) return uniform(baseAmount)
-      val ink = Mat(); val half = Mat(); val edges = Mat()
+      val ink = Mat(); val half = Mat(); val smooth = Mat(); val signedEdges = Mat(); val edges = Mat()
       var kept = false
       try {
         val side = max(3, (min(gray.cols(), gray.rows()) * INK_FRACTION).roundToInt()) or 1
@@ -54,9 +55,9 @@ internal class InkDetail private constructor(
         }
         // Sharpness only needs edges per tile; half size is enough and costs a quarter.
         Imgproc.resize(gray, half, Size(), .5, .5, Imgproc.INTER_AREA)
-        Imgproc.GaussianBlur(half, edges, Size(0.0, 0.0), 1.0)
-        Imgproc.Laplacian(edges, edges, CvType.CV_16S)
-        Core.convertScaleAbs(edges, edges)
+        Imgproc.GaussianBlur(half, smooth, Size(0.0, 0.0), 1.0)
+        Imgproc.Laplacian(smooth, signedEdges, CvType.CV_16S)
+        Core.convertScaleAbs(signedEdges, edges)
 
         val tileSide = min(gray.cols(), gray.rows()).toDouble() / TILES
         val rows = max(1, (gray.rows() / tileSide).roundToInt())
@@ -73,13 +74,13 @@ internal class InkDetail private constructor(
         return fromTiles(rows, cols, depth, sharpness, baseAmount, ink).also { kept = it.ink != null }
       } finally {
         if (!kept) ink.release()
-        half.release(); edges.release()
+        half.release(); smooth.release(); signedEdges.release(); edges.release()
       }
     }
 
     private fun fromTiles(
       rows: Int, cols: Int, depth: FloatArray, sharpness: FloatArray, baseAmount: Double, ink: Mat,
-    ): InkDetail {
+    ): ReferenceInkDetail {
       val valid = BooleanArray(depth.size) { depth[it] >= MIN_INK_DEPTH }
       if (valid.none { it }) return uniform(baseAmount)
       val target = percentile(depth.filterIndexed { i, _ -> valid[i] }, .9)
@@ -105,11 +106,11 @@ internal class InkDetail private constructor(
       }
       val deepen = FloatArray(depth.size) { filledS[it] - 1f }
       val amount = FloatArray(depth.size) { baseAmount.toFloat() + filledExtra[it] }
-      return InkDetail(ink, map(rows, cols, deepen), map(rows, cols, amount))
+      return ReferenceInkDetail(ink, map(rows, cols, deepen), map(rows, cols, amount))
     }
 
     private fun uniform(baseAmount: Double) =
-      InkDetail(null, map(1, 1, floatArrayOf(0f)), map(1, 1, floatArrayOf(baseAmount.toFloat())))
+      ReferenceInkDetail(null, map(1, 1, floatArrayOf(0f)), map(1, 1, floatArrayOf(baseAmount.toFloat())))
 
     private fun map(rows: Int, cols: Int, values: FloatArray) = Mat(rows, cols, CvType.CV_32F).apply { put(0, 0, values) }
 

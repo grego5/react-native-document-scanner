@@ -4,3 +4,4 @@
 -keep class com.margelo.nitro.documentscanner.processing.NativeRenderGeometry { *; }
 # Constructed by the geometry JNI adapter to preserve input/invalid failures.
 -keep class com.margelo.nitro.documentscanner.InvalidInputException { public <init>(java.lang.String); }
+-keep class com.margelo.nitro.documentscanner.processing.NativeDocumentFilters { *; }

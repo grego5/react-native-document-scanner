@@ -48,12 +48,6 @@ class RenderTimingTest {
     time("shadow removal") { Mat().also { page.copyTo(it) }.let { copy -> ShadowRemoval.apply(copy); copy.release() } }
     for (filter in DocumentFilter.entries) time("filter $filter") { DocumentFilters.apply(page, filter).release() }
     val gray = Mat().also { Imgproc.cvtColor(page, it, Imgproc.COLOR_RGBA2GRAY) }
-    time("ink detail measure") { InkDetail.measure(gray, .6).close() }
-    InkDetail.measure(gray, .6).use { detail ->
-      val blurred = Mat().also { Imgproc.GaussianBlur(gray, it, Size(0.0, 0.0), 1.0) }
-      time("ink detail apply, one channel") { Mat().also { gray.copyTo(it) }.let { c -> detail.apply(listOf(c), listOf(blurred)); c.release() } }
-      blurred.release()
-    }
     val small = Mat(64, 48, org.opencv.core.CvType.CV_32F, org.opencv.core.Scalar(1.5))
     time("gain kernel") { Mat().also { page.copyTo(it) }.let { c -> FieldKernels.gain(c, small); c.release() } }
     small.release()

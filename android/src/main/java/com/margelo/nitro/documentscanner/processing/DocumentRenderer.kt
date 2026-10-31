@@ -69,8 +69,7 @@ internal object DocumentRenderer {
           val target = NativeRenderGeometry.render(sourceMat, warped, sourcePoints.coordinates(), originalScale,
             config.paperLongEdge, config.followPageEdges)
           // Shadows go first, so the filter's own paper estimate sees an evenly lit page.
-          if (config.removeShadows) ShadowRemoval.apply(warped)
-          val filtered = DocumentFilters.apply(warped, config.filter)
+          val filtered = DocumentFilters.apply(warped, config.filter, config.removeShadows)
           val thumbnailBitmap: Bitmap
           try {
             if (config.format == DocumentImageFormat.PNG) {
