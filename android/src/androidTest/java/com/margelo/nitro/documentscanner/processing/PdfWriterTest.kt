@@ -15,11 +15,16 @@ import com.margelo.nitro.documentscanner.ImageFit
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.io.FilterOutputStream
+import java.io.IOException
 import java.util.zip.CRC32
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.opencv.core.CvType
@@ -168,6 +173,73 @@ class PdfWriterTest {
       renderer.render(0) { width, height, pixel -> assertTrue(pixel(width / 2, height / 2) > 240) }
     }
     assertFalse(String(pdf.readBytes(), Charsets.ISO_8859_1).contains("/FlateDecode"))
+  }
+
+  @Test
+  fun streamFailurePreservesExistingDestinationAndReleasesInputs() {
+    val image = jpeg("failure.jpg", 400, 300)
+    val output = File(directory, "preserved.pdf")
+    val original = "existing destination".toByteArray()
+    val options = CreatePdfOptions(output.absolutePath, arrayOf(image.absolutePath), null, null, null, null,
+      null, null, null)
+    for (failAt in listOf(1, 12, 14)) {
+      output.writeBytes(original)
+      val failure = IOException("injected PDF sink failure")
+      var writes = 0
+      try {
+        PdfWriter.write(options) { underlying ->
+          object : FilterOutputStream(underlying) {
+            override fun write(bytes: ByteArray, offset: Int, length: Int) {
+              writes++
+              if (writes == failAt) throw failure
+              out.write(bytes, offset, length)
+            }
+          }
+        }
+        fail("Sink exception was swallowed")
+      } catch (actual: IOException) { assertSame(failure, actual) }
+      assertEquals(failAt, writes)
+      assertArrayEquals(original, output.readBytes())
+      assertFalse(File(directory, ".${output.name}.tmp").exists())
+    }
+    // Reusing the source/output after errors exercises close/recovery and atomic replacement.
+    PdfWriter.write(options)
+    PdfRenderer(ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_READ_ONLY)).use {
+      assertEquals(1, it.pageCount)
+    }
+  }
+
+  @Test
+  fun aspectDimensionsQualityOverrideAndExifOptOutReachSharedWriter() {
+    val image = jpeg("forced.jpg", 400, 300, ExifInterface.ORIENTATION_ROTATE_90)
+    val output = File(directory, "options.pdf")
+    for (widthFirst in listOf(false, true)) {
+      val options = CreatePdfOptions(output.absolutePath, arrayOf(image.absolutePath), ImageFit.CONTAIN,
+        false, 0.0, 72.0, if (widthFirst) 200.0 else null, if (widthFirst) null else 100.0, 2.0)
+      PdfWriter.write(options)
+      val bytes = output.readBytes()
+      val text = String(bytes, Charsets.ISO_8859_1)
+      assertTrue(text.contains("/MediaBox [0 0 200 100]"))
+      assertTrue(text.contains("/Width 133 /Height 100 /ColorSpace /DeviceRGB"))
+      assertTrue("Explicit quality forces JPEG re-encoding", bytes.indexOf(image.readBytes()) < 0)
+      assertTrue("EXIF opt-out retains landscape placement", text.contains("133.3333 0 0 100"))
+    }
+  }
+
+  @Test
+  fun invalidPageOptionsLeaveExistingDestinationUntouched() {
+    val image = jpeg("validation.jpg", 400, 300)
+    val output = File(directory, "validation.pdf")
+    val original = byteArrayOf(1, 2, 3)
+    output.writeBytes(original)
+    val invalid = CreatePdfOptions(output.absolutePath, arrayOf(image.absolutePath), null, null, null, 72.0,
+      null, null, null)
+    try {
+      PdfWriter.write(invalid)
+      fail("DPI without page dimensions was accepted")
+    } catch (_: com.margelo.nitro.documentscanner.InvalidInputException) { }
+    assertArrayEquals(original, output.readBytes())
+    assertFalse(File(directory, ".${output.name}.tmp").exists())
   }
 
   private fun createPdf(

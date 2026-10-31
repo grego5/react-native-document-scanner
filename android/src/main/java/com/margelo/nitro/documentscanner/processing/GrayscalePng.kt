@@ -45,48 +45,9 @@ internal object GrayscalePng {
 
   /** Null unless this is a non-interlaced 4-bit grayscale PNG. Other images use the ordinary bitmap decoder. */
   fun read4(file: File): Image? {
-    return RandomAccessFile(file, "r").use { input ->
-      if (input.length() < 8) return null
-      if (!ByteArray(8).also { input.readFully(it) }.contentEquals(SIGNATURE)) return null
-      var width = 0
-      var height = 0
-      var transparent: Int? = null
-      var ended = false
-      val chunks = mutableListOf<Pair<Long, Int>>()
-      while (input.filePointer + 12 <= input.length()) {
-        val length = input.readInt()
-        val type = ByteArray(4).also { input.readFully(it) }.toString(Charsets.US_ASCII)
-        val start = input.filePointer
-        if (length < 0 || start + length.toLong() + 4 > input.length()) return null
-        if (width == 0 && type != "IHDR") return null
-        when (type) {
-          "IHDR" -> {
-            if (length != 13 || width != 0) return null
-            width = input.readInt()
-            height = input.readInt()
-            val header = ByteArray(5).also { input.readFully(it) }
-            if (width <= 0 || height <= 0 || !header.contentEquals(byteArrayOf(4, 0, 0, 0, 0))) return null
-          }
-          "tRNS" -> {
-            if (length != 2 || transparent != null) return null
-            transparent = input.readUnsignedShort()
-            if (transparent !in 0..15) return null
-          }
-          "IDAT" -> chunks += start to length
-          "IEND" -> {
-            if (length != 0) return null
-            ended = true
-            break
-          }
-          else -> if (type[0].isUpperCase()) return null
-        }
-        input.seek(start + length + 4)
-      }
-      if (!ended || chunks.sumOf { it.second.toLong() } == 0L) return null
-      Image(width, height, transparent, file, chunks.toList())
-    }
+    val data = NativePdfWriter.probe4(file)
+    if (data.isEmpty()) return null
+    return Image(data[0].toInt(), data[1].toInt(), data[2].takeIf { it >= 0 }?.toInt(), file,
+      data.drop(3).chunked(2).map { it[0] to it[1].toInt() })
   }
-
-  private val SIGNATURE = byteArrayOf(0x89.toByte(), 80, 78, 71, 13, 10, 26, 10)
-
 }

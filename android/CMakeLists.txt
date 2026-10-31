@@ -15,6 +15,7 @@ add_library(ReactNativeDocumentScanner SHARED
   src/main/cpp/NativeRenderGeometry.cpp
   src/main/cpp/NativeDocumentFilters.cpp
   src/main/cpp/NativeGrayscalePng.cpp
+  src/main/cpp/NativePdfWriter.cpp
   src/main/cpp/FieldKernels.cpp
   src/main/cpp/FastCores.cpp
   src/main/cpp/NativeGeometry.cpp
