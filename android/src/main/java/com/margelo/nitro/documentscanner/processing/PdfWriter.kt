@@ -1,5 +1,6 @@
 package com.margelo.nitro.documentscanner.processing
 
+import com.margelo.nitro.documentscanner.ScannerFiles
 import com.margelo.nitro.documentscanner.InvalidInputException
 import com.margelo.nitro.documentscanner.requireInput
 import android.graphics.Bitmap
@@ -11,7 +12,6 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
-import com.margelo.nitro.documentscanner.CreatePdfOptions
 import com.margelo.nitro.documentscanner.ImageFit
 import com.margelo.nitro.documentscanner.jpegQualityPercent
 import java.io.BufferedOutputStream
@@ -21,8 +21,6 @@ import java.io.FileOutputStream
 import java.io.FilterOutputStream
 import java.io.OutputStream
 import java.io.RandomAccessFile
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
@@ -34,7 +32,7 @@ import kotlin.math.roundToInt
  * a DCTDecode stream. Four-bit grayscale PNGs keep their depth, including when resized; other images use JPEG.
  */
 internal object PdfWriter {
-  fun write(options: CreatePdfOptions): String {
+  fun write(options: PdfWriteOptions): String {
     requireInput(options.pages.isNotEmpty()) { "No pages provided." }
     val output = localFile(options.outputPath, "Output path")
     val parent = output.parentFile ?: throw InvalidInputException("Output path '${output.path}' has no parent directory.")
@@ -95,7 +93,7 @@ internal object PdfWriter {
         out.flush()
         file.fd.sync()
       }
-      Files.move(temporary.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+      ScannerFiles.move(temporary, output)
       return Uri.fromFile(output).toString()
     } catch (error: Throwable) {
       temporary.delete()

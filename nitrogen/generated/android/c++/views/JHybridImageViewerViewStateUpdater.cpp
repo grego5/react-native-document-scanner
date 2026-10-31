@@ -54,9 +54,14 @@ void JHybridImageViewerViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCl
 
   // Update only props that differ from the previous State snapshot.
   if (oldProps == nullptr
-        ? newProps->uri.isProvided()
-        : !newProps->uri.hasSameValue(oldProps->uri)) {
-    hybridView->setUri(newProps->uri.get());
+        ? newProps->session.isProvided()
+        : !newProps->session.hasSameValue(oldProps->session)) {
+    hybridView->setSession(newProps->session.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->pageId.isProvided()
+        : !newProps->pageId.hasSameValue(oldProps->pageId)) {
+    hybridView->setPageId(newProps->pageId.get());
   }
   if (oldProps == nullptr
         ? newProps->onError.isProvided()

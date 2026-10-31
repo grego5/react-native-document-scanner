@@ -22,6 +22,8 @@ import com.facebook.react.uimanager.ThemedReactContext
 class CameraValidationActivity : ComponentActivity() {
   lateinit var camera: HybridDocumentScannerCameraView
     private set
+  lateinit var session: HybridScanSession
+    private set
   private lateinit var captureButton: Button
   private lateinit var traceBar: LinearLayout
   private lateinit var reactContext: BridgeReactContext
@@ -36,7 +38,9 @@ class CameraValidationActivity : ComponentActivity() {
     previousNitroContext = NitroModules.applicationContext
     NitroModules.applicationContext = reactContext
     reactContext.onHostResume(this)
+    session = HybridScanSession(applicationContext)
     camera = HybridDocumentScannerCameraView(ThemedReactContext(reactContext, this, "CameraValidation", -1))
+    camera.session = session
     // Tests that exercise the quality gate turn it on; the rest capture and analyze ungated.
     camera.quadTensorModel = intent.getStringExtra("quadTensorModel") ?: "asset:///doccornernet/model.tflite"
     camera.qualityGate = false
@@ -128,6 +132,7 @@ class CameraValidationActivity : ComponentActivity() {
   override fun onDestroy() {
     captureButton.setOnClickListener(null)
     camera.onDropView()
+    session.state.close().exceptionally { android.util.Log.w("CameraValidation", "Session cleanup failed.", it); null }
     reactContext.onHostDestroy()
     if (NitroModules.applicationContext === reactContext) NitroModules.applicationContext = previousNitroContext
     super.onDestroy()

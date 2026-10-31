@@ -14,6 +14,10 @@ namespace margelo::nitro::documentscanner {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
+      prototype.registerHybridGetter("session", &HybridDocumentScannerCameraViewSpec::getSession);
+      prototype.registerHybridSetter("session", &HybridDocumentScannerCameraViewSpec::setSession);
+      prototype.registerHybridGetter("renderOptions", &HybridDocumentScannerCameraViewSpec::getRenderOptions);
+      prototype.registerHybridSetter("renderOptions", &HybridDocumentScannerCameraViewSpec::setRenderOptions);
       prototype.registerHybridGetter("quadTensorModel", &HybridDocumentScannerCameraViewSpec::getQuadTensorModel);
       prototype.registerHybridSetter("quadTensorModel", &HybridDocumentScannerCameraViewSpec::setQuadTensorModel);
       prototype.registerHybridGetter("onError", &HybridDocumentScannerCameraViewSpec::getOnError);
@@ -54,12 +58,12 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridSetter("guideColor", &HybridDocumentScannerCameraViewSpec::setGuideColor);
       prototype.registerHybridGetter("captureFeedback", &HybridDocumentScannerCameraViewSpec::getCaptureFeedback);
       prototype.registerHybridSetter("captureFeedback", &HybridDocumentScannerCameraViewSpec::setCaptureFeedback);
-      prototype.registerHybridGetter("retainCapturePreview", &HybridDocumentScannerCameraViewSpec::getRetainCapturePreview);
-      prototype.registerHybridSetter("retainCapturePreview", &HybridDocumentScannerCameraViewSpec::setRetainCapturePreview);
       prototype.registerHybridGetter("captureColor", &HybridDocumentScannerCameraViewSpec::getCaptureColor);
       prototype.registerHybridSetter("captureColor", &HybridDocumentScannerCameraViewSpec::setCaptureColor);
       prototype.registerHybridGetter("onCameraStateChange", &HybridDocumentScannerCameraViewSpec::getOnCameraStateChange);
       prototype.registerHybridSetter("onCameraStateChange", &HybridDocumentScannerCameraViewSpec::setOnCameraStateChange);
+      prototype.registerHybridGetter("onCaptureStateChange", &HybridDocumentScannerCameraViewSpec::getOnCaptureStateChange);
+      prototype.registerHybridSetter("onCaptureStateChange", &HybridDocumentScannerCameraViewSpec::setOnCaptureStateChange);
       prototype.registerHybridGetter("onAutofocusChange", &HybridDocumentScannerCameraViewSpec::getOnAutofocusChange);
       prototype.registerHybridSetter("onAutofocusChange", &HybridDocumentScannerCameraViewSpec::setOnAutofocusChange);
       prototype.registerHybridGetter("onDocumentStateChange", &HybridDocumentScannerCameraViewSpec::getOnDocumentStateChange);

@@ -14,13 +14,24 @@ export function newPdfExport(): File {
   return file
 }
 
+/** Each gallery action owns a unique directory outside native sessions. */
+export function newImageExport(): Directory {
+  EXPORTS.create({ intermediates: true, idempotent: true })
+  let directory: Directory
+  do {
+    directory = new Directory(EXPORTS, `images-${Date.now()}-${++sequence}`)
+  } while (directory.exists)
+  directory.create()
+  return directory
+}
+
 /** Best-effort startup cleanup of this app's exports, retained for at least seven days. */
 export function removeOldPdfExports() {
   if (!EXPORTS.exists) return
   const now = Date.now()
   for (const entry of EXPORTS.list()) {
-    if (!(entry instanceof File)) continue
-    const match = /^scan-(\d+)-\d+\.pdf$/.exec(entry.name)
+    const match = entry instanceof File ? /^scan-(\d+)-\d+\.pdf$/.exec(entry.name) :
+      /^images-(\d+)-\d+$/.exec(entry.name)
     if (match && now - Number(match[1]) > RETENTION) entry.delete()
   }
 }

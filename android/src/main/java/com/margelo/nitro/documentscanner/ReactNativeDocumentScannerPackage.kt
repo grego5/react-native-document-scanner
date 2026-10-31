@@ -1,5 +1,6 @@
 package com.margelo.nitro.documentscanner
 
+import com.margelo.nitro.documentscanner.processing.CachedImageFiles
 import com.facebook.react.BaseReactPackage
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
@@ -9,6 +10,7 @@ import com.margelo.nitro.documentscanner.views.HybridDocumentCropEditorViewManag
 import com.margelo.nitro.documentscanner.views.HybridDocumentScannerCameraViewManager
 import com.margelo.nitro.documentscanner.views.HybridImageViewerViewManager
 import com.margelo.nitro.documentscanner.views.HybridImagePagerViewManager
+import com.margelo.nitro.documentscanner.views.HybridPageThumbnailViewManager
 
 class ReactNativeDocumentScannerPackage : BaseReactPackage() {
   companion object {
@@ -24,10 +26,15 @@ class ReactNativeDocumentScannerPackage : BaseReactPackage() {
 
   override fun createViewManagers(
     reactContext: ReactApplicationContext,
-  ): List<ViewManager<*, *>> = listOf(
-    HybridDocumentScannerCameraViewManager(),
-    HybridDocumentCropEditorViewManager(),
-    HybridImageViewerViewManager(),
-    HybridImagePagerViewManager(),
-  )
+  ): List<ViewManager<*, *>> {
+    // Intentionally asynchronous; the process-wide registry protects every live JS context.
+    ScanSessionRegistry.shared.cleanupAbandoned(CachedImageFiles.directory(reactContext))
+    return listOf(
+      HybridDocumentScannerCameraViewManager(),
+      HybridDocumentCropEditorViewManager(),
+      HybridImageViewerViewManager(),
+      HybridImagePagerViewManager(),
+      HybridPageThumbnailViewManager(),
+    )
+  }
 }

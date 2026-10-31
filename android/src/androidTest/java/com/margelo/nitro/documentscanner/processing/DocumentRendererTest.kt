@@ -266,6 +266,15 @@ class DocumentRendererTest {
     }
   }
 
+  @Test
+  fun invalidGeometryRejectsBeforeLoadingTheSource() {
+    val crossed = DocumentQuad(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 1.0),
+      DocumentPoint(1.0, 0.0), DocumentPoint(0.0, 1.0))
+    org.junit.Assert.assertThrows(com.margelo.nitro.documentscanner.InvalidInputException::class.java) {
+      DocumentRenderer.render("file:///missing-source.jpg", crossed, null)
+    }
+  }
+
   private fun sourceQuad() = DocumentQuad(
     topLeft = DocumentPoint(0.125, 0.10),
     topRight = DocumentPoint(0.875, 0.12),

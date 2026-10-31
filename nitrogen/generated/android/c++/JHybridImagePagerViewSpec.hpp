@@ -50,22 +50,26 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Properties
-    std::vector<std::string> getUris() override;
-    void setUris(const std::vector<std::string>& uris) override;
-    double getIndex() override;
-    void setIndex(double index) override;
+    std::shared_ptr<HybridScanSessionSpec> getSession() override;
+    void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) override;
+    std::optional<std::vector<std::string>> getPageIds() override;
+    void setPageIds(const std::optional<std::vector<std::string>>& pageIds) override;
+    std::optional<ImagePagerDirection> getDirection() override;
+    void setDirection(std::optional<ImagePagerDirection> direction) override;
+    std::string getSelectedPageId() override;
+    void setSelectedPageId(const std::string& selectedPageId) override;
     std::optional<bool> getSwipeEnabled() override;
     void setSwipeEnabled(std::optional<bool> swipeEnabled) override;
-    std::optional<std::function<void(double /* index */)>> getOnIndexChange() override;
-    void setOnIndexChange(const std::optional<std::function<void(double /* index */)>>& onIndexChange) override;
-    std::optional<std::function<void(const std::string& /* uri */)>> getOnLoad() override;
-    void setOnLoad(const std::optional<std::function<void(const std::string& /* uri */)>>& onLoad) override;
+    std::optional<std::function<void(const std::string& /* pageId */)>> getOnPageChange() override;
+    void setOnPageChange(const std::optional<std::function<void(const std::string& /* pageId */)>>& onPageChange) override;
+    std::optional<std::function<void(const std::string& /* pageId */)>> getOnLoad() override;
+    void setOnLoad(const std::optional<std::function<void(const std::string& /* pageId */)>>& onLoad) override;
     std::optional<std::function<void(const ScannerFailure& /* failure */)>> getOnError() override;
     void setOnError(const std::optional<std::function<void(const ScannerFailure& /* failure */)>>& onError) override;
 
   public:
     // Methods
-    
+
 
   private:
     jni::global_ref<JHybridImagePagerViewSpec::JavaPart> _javaPart;

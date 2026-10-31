@@ -34,8 +34,19 @@ class CropQuadEditingTest {
   }
 
   @Test
-  fun clampToFramePullsCornersInside() {
-    val clamped = CropQuadEditing.clampToFrame(doubleArrayOf(-0.2, 0.1, 1.3, 0.0, 1.0, 1.5, 0.0, 1.0))
-    assertArrayEquals(doubleArrayOf(0.0, 0.1, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0), clamped, 0.0)
+  fun collapsedAndNonFiniteMovesAreRejectedWithoutChangingTheInput() {
+    val original = quad.copyOf()
+    assertNull(CropQuadEditing.moveCorner(quad, 0, Double.NaN, .2))
+    assertNull(CropQuadEditing.moveEdge(quad, 0, Double.NaN, 0.0))
+    assertNull(CropQuadEditing.moveEdge(quad, 0, 0.0, .8))
+    assertArrayEquals(original, quad, 0.0)
+  }
+
+  @Test
+  fun developerGeometryMustAlreadyBeValidAndInFrame() {
+    org.junit.Assert.assertFalse(NativeQuadGeometry.editor(
+      doubleArrayOf(-.2, .1, 1.3, 0.0, 1.0, 1.5, 0.0, 1.0),
+    ))
+    org.junit.Assert.assertTrue(NativeQuadGeometry.editor(CropQuadEditing.FULL_FRAME))
   }
 }

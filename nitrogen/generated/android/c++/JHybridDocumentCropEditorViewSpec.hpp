@@ -50,14 +50,14 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Properties
-    std::string getOriginalUri() override;
-    void setOriginalUri(const std::string& originalUri) override;
-    DocumentQuad getQuad() override;
-    void setQuad(const DocumentQuad& quad) override;
+    std::shared_ptr<HybridScanSessionSpec> getSession() override;
+    void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) override;
+    std::string getPageId() override;
+    void setPageId(const std::string& pageId) override;
     std::optional<DocumentFilter> getFilter() override;
     void setFilter(std::optional<DocumentFilter> filter) override;
-    std::optional<std::function<void(const DocumentQuad& /* quad */)>> getOnQuadChange() override;
-    void setOnQuadChange(const std::optional<std::function<void(const DocumentQuad& /* quad */)>>& onQuadChange) override;
+    std::optional<std::function<void(CropDraftPreset /* preset */)>> getOnPresetChange() override;
+    void setOnPresetChange(const std::optional<std::function<void(CropDraftPreset /* preset */)>>& onPresetChange) override;
     std::optional<std::function<void(double /* width */, double /* height */)>> getOnLoad() override;
     void setOnLoad(const std::optional<std::function<void(double /* width */, double /* height */)>>& onLoad) override;
     std::optional<std::function<void(const ScannerFailure& /* failure */)>> getOnError() override;
@@ -65,7 +65,9 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
-    
+    std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> submitResult() override;
+    std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>> getQuadResult() override;
+    std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setPresetResult(CropPreset preset) override;
 
   private:
     jni::global_ref<JHybridDocumentCropEditorViewSpec::JavaPart> _javaPart;

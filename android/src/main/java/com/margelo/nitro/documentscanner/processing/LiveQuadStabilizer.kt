@@ -1,5 +1,6 @@
 package com.margelo.nitro.documentscanner.processing
 
+import com.margelo.nitro.documentscanner.NativeQuadGeometry
 import com.margelo.nitro.documentscanner.DocumentPoint
 import com.margelo.nitro.documentscanner.DocumentQuad
 import kotlin.math.abs
@@ -129,8 +130,8 @@ internal class LiveQuadStabilizer(config: LiveQuadStabilizerConfig = LiveQuadSta
   /** Basic area and normalized convex-corner validity. */
   private fun shapeDecision(quad: DocumentQuad, frame: LiveQuadInput): LiveQuadDecision? {
     if (area(quad, frame) < config.minFrameAreaFraction * frame.width * frame.height) return LiveQuadDecision.TOO_SMALL
-    val points = listOf(quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft)
-    return if (DocCornerSession.validNormalizedQuad(points)) null else LiveQuadDecision.INVALID
+
+    return if (NativeQuadGeometry.prediction(NativeQuadGeometry.coordinates(quad))) null else LiveQuadDecision.INVALID
   }
 
   /** Shoelace area in upright pixels. */

@@ -7,11 +7,16 @@
 
 #include "JHybridImageViewerViewSpec.hpp"
 
+// Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
+#include "JHybridScanSessionSpec.hpp"
 #include <string>
 #include "ScannerFailure.hpp"
 #include <functional>
@@ -54,14 +59,23 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Properties
-  std::string JHybridImageViewerViewSpec::getUri() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getUri");
+  std::shared_ptr<HybridScanSessionSpec> JHybridImageViewerViewSpec::getSession() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JHybridScanSessionSpec::JavaPart>()>("getSession");
+    auto __result = method(_javaPart);
+    return __result->getJHybridScanSessionSpec();
+  }
+  void JHybridImageViewerViewSpec::setSession(const std::shared_ptr<HybridScanSessionSpec>& session) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JHybridScanSessionSpec::JavaPart> /* session */)>("setSession");
+    method(_javaPart, std::dynamic_pointer_cast<JHybridScanSessionSpec>(session)->getJavaPart());
+  }
+  std::string JHybridImageViewerViewSpec::getPageId() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getPageId");
     auto __result = method(_javaPart);
     return __result->toStdString();
   }
-  void JHybridImageViewerViewSpec::setUri(const std::string& uri) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* uri */)>("setUri");
-    method(_javaPart, jni::make_jstring(uri));
+  void JHybridImageViewerViewSpec::setPageId(const std::string& pageId) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* pageId */)>("setPageId");
+    method(_javaPart, jni::make_jstring(pageId));
   }
   std::optional<std::function<void(const ScannerFailure& /* failure */)>> JHybridImageViewerViewSpec::getOnError() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_ScannerFailure::javaobject>()>("getOnError_cxx");
@@ -80,10 +94,10 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_ScannerFailure::javaobject> /* onError */)>("setOnError_cxx");
     method(_javaPart, onError.has_value() ? JFunc_void_ScannerFailure_cxx::fromCpp(onError.value()) : nullptr);
   }
-  std::optional<std::function<void(const std::string& /* uri */)>> JHybridImageViewerViewSpec::getOnLoad() {
+  std::optional<std::function<void(const std::string& /* pageId */)>> JHybridImageViewerViewSpec::getOnLoad() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_std__string::javaobject>()>("getOnLoad_cxx");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const std::string& /* uri */)> {
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const std::string& /* pageId */)> {
       if (__result->isInstanceOf(JFunc_void_std__string_cxx::javaClassStatic())) [[likely]] {
         auto downcast = jni::static_ref_cast<JFunc_void_std__string_cxx::javaobject>(__result);
         return downcast->cthis()->getFunction();
@@ -93,7 +107,7 @@ namespace margelo::nitro::documentscanner {
       }
     }()) : std::nullopt;
   }
-  void JHybridImageViewerViewSpec::setOnLoad(const std::optional<std::function<void(const std::string& /* uri */)>>& onLoad) {
+  void JHybridImageViewerViewSpec::setOnLoad(const std::optional<std::function<void(const std::string& /* pageId */)>>& onLoad) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_std__string::javaobject> /* onLoad */)>("setOnLoad_cxx");
     method(_javaPart, onLoad.has_value() ? JFunc_void_std__string_cxx::fromCpp(onLoad.value()) : nullptr);
   }

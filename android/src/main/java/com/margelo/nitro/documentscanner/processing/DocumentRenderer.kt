@@ -1,6 +1,10 @@
 package com.margelo.nitro.documentscanner.processing
 
+import com.margelo.nitro.documentscanner.ScannerFiles
 import com.margelo.nitro.documentscanner.requireInput
+import com.margelo.nitro.documentscanner.NativeQuadGeometry
+import com.margelo.nitro.documentscanner.SessionResources
+import com.margelo.nitro.documentscanner.LocalSessionFiles
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
@@ -11,15 +15,13 @@ import com.margelo.nitro.documentscanner.DocumentQuad as NitroDocumentQuad
 import com.margelo.nitro.documentscanner.DocumentRenderOptions
 import com.margelo.nitro.documentscanner.PageThumbnails
 import com.margelo.nitro.documentscanner.jpegQualityPercent
-import com.margelo.nitro.documentscanner.RenderedDocument
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.UUID
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -41,11 +43,49 @@ import org.opencv.imgproc.Imgproc
  * side onto the page's own edge where the page curves ([PageEdges]).
  */
 internal object DocumentRenderer {
+  /** Standalone algorithm entry for native pixel fixtures; session work uses leased destinations. */
+  fun render(originalUri: String, quad: NitroDocumentQuad, options: DocumentRenderOptions?): RenderResult =
+    renderTo(originalUri, quad, options, null)
+
+  /** Pins the original while consuming the destination transactions, including on failure/stale close. */
   fun render(
+    original: SessionResources.Resource,
+    quad: NitroDocumentQuad,
+    options: DocumentRenderOptions?,
+    output: SessionResources.RenderDestination,
+  ): RenderResult = output.use {
+    try {
+      requireInput(original.owner === output.owner && original.kind == SessionResources.Kind.ORIGINAL) {
+        "Session renders require an original and destinations from the same session."
+      }
+      output.owner.lease(original).use { source ->
+        renderTo(Uri.fromFile(source.file).toString(), quad, options, output)
+      }
+    } catch (error: Throwable) {
+      output.discard()
+      throw error
+    }
+  }
+
+  /** Export already owns a source pin, even when its page has since been retired. */
+  fun render(source: SessionResources.Lease, quad: NitroDocumentQuad, options: DocumentRenderOptions?,
+    output: SessionResources.RenderDestination): RenderResult = output.use {
+    try {
+      requireInput(source.resource.owner === output.owner && source.resource.kind == SessionResources.Kind.ORIGINAL) {
+        "Expected a leased session original."
+      }
+      renderTo(Uri.fromFile(source.file).toString(), quad, options, output)
+    } catch (error: Throwable) { output.discard(); throw error }
+  }
+
+  private fun renderTo(
     originalUri: String,
     quad: NitroDocumentQuad,
     options: DocumentRenderOptions?,
-  ): RenderedDocument {
+    output: SessionResources.RenderDestination?,
+  ): RenderResult {
+    val issue = NativeQuadGeometry.renderIssue(NativeQuadGeometry.coordinates(quad))
+    requireInput(issue == null) { requireNotNull(issue) }
     val config = validateOptions(options)
     val uri = Uri.parse(originalUri)
     requireInput(uri.scheme == "file" && !uri.path.isNullOrBlank()) {
@@ -53,20 +93,29 @@ internal object DocumentRenderer {
     }
     val sourceFile = File(uri.path!!)
     if (!sourceFile.isFile || !sourceFile.canRead()) throw IOException("Captured image file was not found or is not readable.")
-    val outputDirectory = outputDirectoryFor(sourceFile)
+    requireInput(output != null || !LocalSessionFiles.isSessionFile(sourceFile)) {
+      "Session originals require a leased native render destination."
+    }
+    val outputDirectory = if (output == null) outputDirectoryFor(sourceFile) else requireNotNull(output.image.destination.parentFile)
     val extension = if (config.format == DocumentImageFormat.PNG) "png" else "jpg"
-    val destination = File(outputDirectory, "corrected-${System.currentTimeMillis()}-${UUID.randomUUID()}.$extension")
-    val temporary = File(outputDirectory, ".${destination.name}.tmp.$extension")
-    val thumbnail = File(outputDirectory, "thumbnail-${destination.nameWithoutExtension}.jpg")
-    val thumbnailTemporary = File(outputDirectory, ".${thumbnail.name}.tmp.jpg")
+    val destination = output?.image?.destination ?: File(outputDirectory, "corrected-${System.currentTimeMillis()}-${UUID.randomUUID()}.$extension")
+    val temporary = output?.image?.file ?: File(outputDirectory, ".${destination.name}.tmp.$extension")
+    val thumbnail = output?.thumbnail?.destination ?: File(outputDirectory, "thumbnail-${destination.nameWithoutExtension}.jpg")
+    val thumbnailTemporary = output?.thumbnail?.file ?: File(outputDirectory, ".${thumbnail.name}.tmp.jpg")
+    requireInput(destination.extension == extension && thumbnail.extension == "jpg") {
+      "Session output format does not match render options."
+    }
     val sourcePoints = normalizedQuad(quad)
-    validateQuad(sourcePoints)
 
     try {
-      // The largest decode, so originals up to MAX_SOURCE_DIMENSION keep every pixel the output may use.
-      SourceImageLoader.load(originalUri, MAX_SOURCE_DIMENSION).use { upright ->
+      SourceImageLoader.inspect(originalUri).let { header ->
+        // Only the page and PageEdges' search band around it, unsampled up to MAX_SOURCE_DIMENSION so the output
+        // keeps every pixel it may use.
+        val sampleSize = SourceImageLoader.sampleSize(header, MAX_SOURCE_DIMENSION)
+        val region = pageRegion(sourcePoints, header.uprightWidth, header.uprightHeight)
+        check(region != null) { "The selected document does not overlap the captured image." }
         OpenCvRuntime.ensureLoaded()
-        val sourceBitmap = upright.bitmap
+        val sourceBitmap = SourceImageLoader.loadRegion(header, region, sampleSize)
         val sourceMat = Mat()
         val warped = Mat()
         val bgr = Mat()
@@ -79,9 +128,11 @@ internal object DocumentRenderer {
         val parameters = MatOfInt(Imgcodecs.IMWRITE_JPEG_QUALITY, config.quality)
         try {
           Utils.bitmapToMat(sourceBitmap, sourceMat)
-          val pixelQuad = sourcePoints.points().map { ImagePoint(it.x * sourceBitmap.width, it.y * sourceBitmap.height) }
+          val pixelQuad = sourcePoints.points().map {
+            ImagePoint((it.x * header.uprightWidth - region.left) / sampleSize, (it.y * header.uprightHeight - region.top) / sampleSize)
+          }
           // Pixels in the original per pixel of the sampled bitmap, so the output is sized from the original.
-          val originalScale = max(upright.encodedWidth, upright.encodedHeight).toDouble() / max(sourceBitmap.width, sourceBitmap.height)
+          val originalScale = sampleSize.toDouble()
           val target = targetCanvas(pixelQuad, originalScale, config)
           sourceQuad.fromArray(*pixelQuad.map { Point(it.x, it.y) }.toTypedArray())
           destinationQuad.fromArray(*target.destination.map { Point(it.x, it.y) }.toTypedArray())
@@ -148,8 +199,13 @@ internal object DocumentRenderer {
             saveAttributes()
           }
           FileOutputStream(temporary, true).use { it.fd.sync() }
-          moveAtomically(temporary, destination)
-          moveAtomically(thumbnailTemporary, thumbnail)
+          if (output == null) {
+            moveAtomically(temporary, destination)
+            moveAtomically(thumbnailTemporary, thumbnail)
+          } else {
+            output.image.commit()
+            output.thumbnail.commit()
+          }
 
           val clipped = clipImageToQuad(pixelQuad, sourceBitmap.width, sourceBitmap.height)
           check(clipped.size >= 3) { "The selected document does not overlap the captured image." }
@@ -160,7 +216,7 @@ internal object DocumentRenderer {
           val outputUri = Uri.fromFile(destination).toString()
           // Cached before resolving, so a pager shows the new page and its thumbnail together.
           PageThumbnails.put(outputUri, thumbnailBitmap, thumbnail)
-          return RenderedDocument(
+          return RenderResult(
             originalUri = originalUri,
             outputUri = outputUri,
             thumbnailUri = Uri.fromFile(thumbnail).toString(),
@@ -169,6 +225,7 @@ internal object DocumentRenderer {
             validContentPolygon = validPoints.toTypedArray(),
           )
         } finally {
+          sourceBitmap.recycle()
           sourceMat.release()
           warped.release()
           bgr.release()
@@ -182,10 +239,12 @@ internal object DocumentRenderer {
         }
       }
     } catch (error: Throwable) {
-      temporary.delete()
-      destination.delete()
-      thumbnailTemporary.delete()
-      thumbnail.delete()
+      if (output == null) {
+        temporary.delete()
+        destination.delete()
+        thumbnailTemporary.delete()
+        thumbnail.delete()
+      }
       throw error
     }
   }
@@ -223,6 +282,18 @@ internal object DocumentRenderer {
 
   private data class TargetCanvas(val width: Int, val height: Int, val destination: List<ImagePoint>)
 
+  /** Validate at command admission, and make omitted defaults compare equal to explicit defaults. */
+  internal fun effectiveOptions(options: DocumentRenderOptions?): DocumentRenderOptions {
+    val config = validateOptions(options)
+    return DocumentRenderOptions(config.removeShadows, config.quality / 100.0, config.filter, options?.format ?: DocumentImageFormat.JPEG,
+      options?.paperSize, options?.paperSize?.let { options.dpi ?: DEFAULT_DPI }, config.followPageEdges)
+  }
+
+  internal fun outputFormat(options: DocumentRenderOptions?): DocumentImageFormat = when (options?.format) {
+    DocumentImageFormat.AUTO -> if (options.filter == DocumentFilter.BLACKWHITE) DocumentImageFormat.PNG else DocumentImageFormat.JPEG
+    else -> options?.format ?: DocumentImageFormat.JPEG
+  }
+
   private fun validateOptions(options: DocumentRenderOptions?): RenderConfig {
     val paper = options?.paperSize
     requireInput(paper != null || options?.dpi == null) { "dpi requires paperSize." }
@@ -236,8 +307,8 @@ internal object DocumentRenderer {
       requireInput(pixels <= MAX_OUTPUT_DIMENSION) { "paperSize at this dpi exceeds $MAX_OUTPUT_DIMENSION px." }
       pixels
     }
-    val format = options?.format ?: DocumentImageFormat.JPEG
-    val quality = if (format == DocumentImageFormat.PNG) DEFAULT_QUALITY
+    val format = outputFormat(options)
+    val quality = if (format == DocumentImageFormat.PNG && options?.format != DocumentImageFormat.AUTO) DEFAULT_QUALITY
       else options?.jpegQuality?.let(::jpegQualityPercent) ?: DEFAULT_QUALITY
     val filter = options?.filter ?: DocumentFilter.NONE
     requireInput(format != DocumentImageFormat.PNG || filter == DocumentFilter.GRAYSCALE || filter == DocumentFilter.BLACKWHITE) {
@@ -246,33 +317,29 @@ internal object DocumentRenderer {
     return RenderConfig(options?.removeShadows ?: true, quality, paperLongEdge, filter, format, options?.followPageEdges ?: true)
   }
 
+  /**
+   * The quad's bounds widened by [PAGE_MARGIN] of their size each side, within the photo; null when they miss it.
+   * PageEdges searches at most its band, a smaller fraction of the page, past each side.
+   */
+  private fun pageRegion(quad: ImageQuad, photoWidth: Int, photoHeight: Int): PhotoInferenceCrop? {
+    val points = quad.points()
+    val x0 = points.minOf { it.x } * photoWidth
+    val x1 = points.maxOf { it.x } * photoWidth
+    val y0 = points.minOf { it.y } * photoHeight
+    val y1 = points.maxOf { it.y } * photoHeight
+    val left = floor(x0 - (x1 - x0) * PAGE_MARGIN).toInt().coerceAtLeast(0)
+    val top = floor(y0 - (y1 - y0) * PAGE_MARGIN).toInt().coerceAtLeast(0)
+    val right = ceil(x1 + (x1 - x0) * PAGE_MARGIN).toInt().coerceAtMost(photoWidth)
+    val bottom = ceil(y1 + (y1 - y0) * PAGE_MARGIN).toInt().coerceAtMost(photoHeight)
+    return if (right > left && bottom > top) PhotoInferenceCrop(left, top, right - left, bottom - top) else null
+  }
+
   private fun normalizedQuad(quad: NitroDocumentQuad): ImageQuad = ImageQuad(
     topLeft = ImagePoint(quad.topLeft.x, quad.topLeft.y),
     topRight = ImagePoint(quad.topRight.x, quad.topRight.y),
     bottomRight = ImagePoint(quad.bottomRight.x, quad.bottomRight.y),
     bottomLeft = ImagePoint(quad.bottomLeft.x, quad.bottomLeft.y),
   )
-
-  private fun validateQuad(quad: ImageQuad) {
-    val points = quad.points()
-    requireInput(points.all { it.x.isFinite() && it.y.isFinite() }) { "Document corners must be finite." }
-    requireInput(points.all { it.x in -MAX_EXTRAPOLATION..1.0 + MAX_EXTRAPOLATION && it.y in -MAX_EXTRAPOLATION..1.0 + MAX_EXTRAPOLATION }) {
-      "Document corners exceed the supported extrapolation range."
-    }
-    requireInput(isConvex(points)) { "Document corners must form a convex clockwise quadrilateral." }
-    val area = abs(points.indices.sumOf { index ->
-      val current = points[index]
-      val next = points[(index + 1) % points.size]
-      current.x * next.y - next.x * current.y
-    }) * 0.5
-    requireInput(area in MIN_NORMALIZED_AREA..MAX_NORMALIZED_AREA) { "Document quadrilateral area is outside the supported range." }
-  }
-
-  private fun isConvex(points: List<ImagePoint>): Boolean {
-    val turns = points.indices.map { index -> cross(points[index], points[(index + 1) % 4], points[(index + 2) % 4]) }
-    return turns.all { it > MIN_TURN } && !segmentsIntersect(points[0], points[1], points[2], points[3]) &&
-      !segmentsIntersect(points[1], points[2], points[3], points[0])
-  }
 
   private fun targetCanvas(quad: List<ImagePoint>, originalScale: Double, config: RenderConfig): TargetCanvas {
     val contentWidth = (distance(quad[0], quad[1]) + distance(quad[2], quad[3])) / 2.0
@@ -353,18 +420,12 @@ internal object DocumentRenderer {
   }
 
   private fun moveAtomically(source: File, destination: File) {
-    try {
-      Files.move(source.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE)
-    } catch (_: AtomicMoveNotSupportedException) {
-      if (!source.renameTo(destination)) throw IOException("Corrected JPEG could not be published atomically.")
-    }
+    ScannerFiles.move(source, destination)
   }
 
   private fun ImageQuad.points() = listOf(topLeft, topRight, bottomRight, bottomLeft)
   private fun cross(a: ImagePoint, b: ImagePoint, c: ImagePoint) = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
   private fun distance(a: ImagePoint, b: ImagePoint) = hypot(a.x - b.x, a.y - b.y)
-  private fun segmentsIntersect(a: ImagePoint, b: ImagePoint, c: ImagePoint, d: ImagePoint) =
-    cross(a, b, c) * cross(a, b, d) < 0.0 && cross(c, d, a) * cross(c, d, b) < 0.0
 
   private const val CACHE_DIRECTORY_NAME = "react-native-document-scanner"
   private const val DEFAULT_QUALITY = 92
@@ -377,12 +438,9 @@ internal object DocumentRenderer {
   private const val CM_PER_INCH = 2.54
   private const val MAX_OUTPUT_PIXELS = 16_777_216L
   private const val MAX_SOURCE_DIMENSION = 4096
+  private const val PAGE_MARGIN = .10
   private const val THUMBNAIL_QUALITY = 85
   private const val MIN_ASPECT_RATIO = 0.20
   private const val MAX_ASPECT_RATIO = 5.0
-  private const val MIN_NORMALIZED_AREA = 1e-4
-  private const val MAX_NORMALIZED_AREA = 4.0
-  private const val MAX_EXTRAPOLATION = 0.8
-  private const val MIN_TURN = 1e-8
   private const val CLIP_EPSILON = 1e-7
 }

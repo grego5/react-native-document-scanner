@@ -14,16 +14,12 @@ namespace margelo::nitro::documentscanner {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
+      prototype.registerHybridMethod("createSessionResult", &HybridDocumentScannerProcessorSpec::createSessionResult);
       prototype.registerHybridMethod("pickSampleFolderResult", &HybridDocumentScannerProcessorSpec::pickSampleFolderResult);
       prototype.registerHybridMethod("getSampleFolder", &HybridDocumentScannerProcessorSpec::getSampleFolder);
       prototype.registerHybridMethod("clearSampleFolder", &HybridDocumentScannerProcessorSpec::clearSampleFolder);
       prototype.registerHybridMethod("setSampleCollection", &HybridDocumentScannerProcessorSpec::setSampleCollection);
       prototype.registerHybridMethod("setSampleFolder", &HybridDocumentScannerProcessorSpec::setSampleFolder);
-      prototype.registerHybridMethod("saveCaptureSampleResult", &HybridDocumentScannerProcessorSpec::saveCaptureSampleResult);
-      prototype.registerHybridMethod("analyzePhotoResult", &HybridDocumentScannerProcessorSpec::analyzePhotoResult);
-      prototype.registerHybridMethod("renderDocumentResult", &HybridDocumentScannerProcessorSpec::renderDocumentResult);
-      prototype.registerHybridMethod("createPdfResult", &HybridDocumentScannerProcessorSpec::createPdfResult);
-      prototype.registerHybridMethod("removeCachedImagesResult", &HybridDocumentScannerProcessorSpec::removeCachedImagesResult);
     });
   }
 

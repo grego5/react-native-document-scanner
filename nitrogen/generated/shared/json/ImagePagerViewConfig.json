@@ -4,10 +4,12 @@
   "bubblingEventTypes": {},
   "directEventTypes": {},
   "validAttributes": {
-    "uris": true,
-    "index": true,
+    "session": true,
+    "pageIds": true,
+    "direction": true,
+    "selectedPageId": true,
     "swipeEnabled": true,
-    "onIndexChange": true,
+    "onPageChange": true,
     "onLoad": true,
     "onError": true,
     "hybridRef": true

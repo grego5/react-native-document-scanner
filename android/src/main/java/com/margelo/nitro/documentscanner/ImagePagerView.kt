@@ -23,8 +23,11 @@ internal class ImagePagerView(
 ) : RecyclerView(context) {
   var swipeEnabled = true
 
-  private var uris: List<String> = emptyList()
-  private var current = 0
+  private var session: ScanSessionState? = null
+  private var pageIds: List<String> = emptyList()
+  private var direction = ImagePagerDirection.AUTO
+  internal var current = 0
+    private set
   /** The last index asked for; only a new one moves the pager, so other prop updates never interrupt a swipe. */
   private var requested = -1
   /** Set once React has dropped the pager, which may stay on screen while its screen animates away. */
@@ -58,17 +61,42 @@ internal class ImagePagerView(
     })
   }
 
-  /** Replaces the pages; a page whose uri changed keeps its image until the new one decodes. */
+  /** Retains selection by ID across input order changes; a replaced owner releases all old bindings. */
   @SuppressLint("NotifyDataSetChanged")
-  fun setPages(next: List<String>) {
-    if (next == uris) return
-    uris = next
+  fun setPages(next: List<String>, state: ScanSessionState? = session) {
+    if (next == pageIds && state === session) return
+    val selected = pageIds.getOrNull(current).takeIf { state === session }
+    for (index in 0 until childCount) {
+      val holder = getChildViewHolder(getChildAt(index)) as PageHolder
+      if (state !== session || holder.boundId !in next) holder.loader.clear()
+    }
+    session = state
+    pageIds = next
     adapter?.notifyDataSetChanged()
+    val retained = selected?.let(next::indexOf)?.takeIf { it >= 0 }
+    if (retained != null) {
+      settle(retained)
+      scrollToPosition(retained)
+    } else requested = -1
+  }
+
+  fun setDirection(direction: ImagePagerDirection) {
+    if (this.direction == direction) return
+    this.direction = direction
+    val wanted = when (direction) {
+      ImagePagerDirection.AUTO -> LAYOUT_DIRECTION_INHERIT
+      ImagePagerDirection.LTR -> LAYOUT_DIRECTION_LTR
+      ImagePagerDirection.RTL -> LAYOUT_DIRECTION_RTL
+    }
+    stopScroll()
+    layoutDirection = wanted
+    scrollToPosition(current)
+    requestLayout()
   }
 
   /** Jumps to [index], clamped to the pages, when it differs from the index asked for before. */
   fun show(index: Int) {
-    val target = index.coerceIn(0, (uris.size - 1).coerceAtLeast(0))
+    val target = index.coerceIn(0, (pageIds.size - 1).coerceAtLeast(0))
     if (target == requested) return
     requested = target
     if (target == current && childCount > 0) return
@@ -86,14 +114,16 @@ internal class ImagePagerView(
   }
 
   /**
-   * Stops the pager once React has dropped it, leaving its pages as they are: a closing screen keeps showing them in a
-   * view transition (react-native-screens starts one on every view it holds), and removing them then fails recycling,
-   * since a transitioning view keeps its parent. Each page lets go of its images once detached from the window.
+   * Detaches bindings immediately without recycling transitioning child views. React screens can keep their parents
+   * during exit animations, so adapter notifications and relayout stop until physical removal.
    */
   fun release() {
     dropped = true
     removeCallbacks(relayout)
     stopScroll()
+    for (index in 0 until childCount) (getChildViewHolder(getChildAt(index)) as PageHolder).loader.clear()
+    session = null
+    pageIds = emptyList()
   }
 
   // React Native lays out its views itself and drops native layout requests, so the pages are laid out here.
@@ -109,8 +139,8 @@ internal class ImagePagerView(
   }
 
   private inner class PageHolder(val image: ImageViewerView) : ViewHolder(image) {
-    /** The position whose page the view shows, so a new uri there fades in while another page replaces at once. */
-    var bound = NO_POSITION
+    /** Identity whose callbacks and leases belong to this holder. */
+    var boundId: String? = null
     val loader = ImageLoader(
       image,
       onLoaded = onImageLoaded,
@@ -119,7 +149,7 @@ internal class ImagePagerView(
   }
 
   private inner class PageAdapter : Adapter<PageHolder>() {
-    override fun getItemCount() = uris.size
+    override fun getItemCount() = pageIds.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = PageHolder(
       ImageViewerView(parent.context).apply {
@@ -128,13 +158,14 @@ internal class ImagePagerView(
     )
 
     override fun onBindViewHolder(holder: PageHolder, position: Int) {
-      holder.loader.show(uris[position], fade = holder.bound == position)
-      holder.bound = position
+      val state = session
+      if (state != null) holder.loader.bind(state, pageIds[position]) else holder.loader.clear()
+      holder.boundId = pageIds[position]
     }
 
     override fun onViewRecycled(holder: PageHolder) {
       holder.loader.clear()
-      holder.bound = NO_POSITION
+      holder.boundId = null
     }
   }
 }

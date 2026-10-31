@@ -4,10 +4,10 @@
   "bubblingEventTypes": {},
   "directEventTypes": {},
   "validAttributes": {
-    "originalUri": true,
-    "quad": true,
+    "session": true,
+    "pageId": true,
     "filter": true,
-    "onQuadChange": true,
+    "onPresetChange": true,
     "onLoad": true,
     "onError": true,
     "hybridRef": true

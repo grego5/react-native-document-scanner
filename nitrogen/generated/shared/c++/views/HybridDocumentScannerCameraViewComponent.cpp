@@ -20,6 +20,8 @@ namespace margelo::nitro::documentscanner::views {
                                                                              const HybridDocumentScannerCameraViewProps& sourceProps,
                                                                              const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
+    session(nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>>::fromRawValue("DocumentScannerCameraView", "session", rawProps, sourceProps.session)),
+    renderOptions(nitro::ReactProp<DocumentRenderOptions>::fromRawValue("DocumentScannerCameraView", "renderOptions", rawProps, sourceProps.renderOptions)),
     quadTensorModel(nitro::ReactProp<std::optional<std::string>>::fromRawValue("DocumentScannerCameraView", "quadTensorModel", rawProps, sourceProps.quadTensorModel)),
     onError(nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* error */)>>>::fromRawValue("DocumentScannerCameraView", "onError", rawProps, sourceProps.onError)),
     mode(nitro::ReactProp<std::optional<CameraMode>>::fromRawValue("DocumentScannerCameraView", "mode", rawProps, sourceProps.mode)),
@@ -40,16 +42,18 @@ namespace margelo::nitro::documentscanner::views {
     showStats(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "showStats", rawProps, sourceProps.showStats)),
     guideColor(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "guideColor", rawProps, sourceProps.guideColor)),
     captureFeedback(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "captureFeedback", rawProps, sourceProps.captureFeedback)),
-    retainCapturePreview(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "retainCapturePreview", rawProps, sourceProps.retainCapturePreview)),
     captureColor(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "captureColor", rawProps, sourceProps.captureColor)),
     onCameraStateChange(nitro::ReactProp<std::optional<std::function<void(CameraState /* state */)>>>::fromRawValue("DocumentScannerCameraView", "onCameraStateChange", rawProps, sourceProps.onCameraStateChange)),
+    onCaptureStateChange(nitro::ReactProp<std::optional<std::function<void(CameraCaptureState /* state */)>>>::fromRawValue("DocumentScannerCameraView", "onCaptureStateChange", rawProps, sourceProps.onCaptureStateChange)),
     onAutofocusChange(nitro::ReactProp<std::optional<std::function<void(AutofocusState /* state */)>>>::fromRawValue("DocumentScannerCameraView", "onAutofocusChange", rawProps, sourceProps.onAutofocusChange)),
     onDocumentStateChange(nitro::ReactProp<std::optional<std::function<void(DocumentState /* state */)>>>::fromRawValue("DocumentScannerCameraView", "onDocumentStateChange", rawProps, sourceProps.onDocumentStateChange)),
-    onCaptureStage(nitro::ReactProp<std::optional<std::function<void(CaptureStage /* stage */)>>>::fromRawValue("DocumentScannerCameraView", "onCaptureStage", rawProps, sourceProps.onCaptureStage)),
+    onCaptureStage(nitro::ReactProp<std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>>>::fromRawValue("DocumentScannerCameraView", "onCaptureStage", rawProps, sourceProps.onCaptureStage)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridDocumentScannerCameraViewSpec>& /* ref */)>>>::fromRawValue("DocumentScannerCameraView", "hybridRef", rawProps, sourceProps.hybridRef)) { }
 
   bool HybridDocumentScannerCameraViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
+      case hashString("session"): return true;
+      case hashString("renderOptions"): return true;
       case hashString("quadTensorModel"): return true;
       case hashString("onError"): return true;
       case hashString("mode"): return true;
@@ -70,9 +74,9 @@ namespace margelo::nitro::documentscanner::views {
       case hashString("showStats"): return true;
       case hashString("guideColor"): return true;
       case hashString("captureFeedback"): return true;
-      case hashString("retainCapturePreview"): return true;
       case hashString("captureColor"): return true;
       case hashString("onCameraStateChange"): return true;
+      case hashString("onCaptureStateChange"): return true;
       case hashString("onAutofocusChange"): return true;
       case hashString("onDocumentStateChange"): return true;
       case hashString("onCaptureStage"): return true;

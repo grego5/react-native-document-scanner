@@ -16,9 +16,9 @@ import com.facebook.proguard.annotations.DoNotStrip
 @DoNotStrip
 @Keep
 enum class TorchMode(@DoNotStrip @Keep val value: Int) {
-  OFF(0),
-  ON(1),
-  AUTO(2);
+  AUTO(0),
+  OFF(1),
+  ON(2);
 
   companion object
 }

@@ -31,7 +31,13 @@ abstract class HybridImageViewerViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var uri: String
+  abstract var session: HybridScanSessionSpec
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var pageId: String
   
   abstract var onError: ((failure: ScannerFailure) -> Unit)?
   
@@ -47,7 +53,7 @@ abstract class HybridImageViewerViewSpec: HybridView() {
       onError = value?.let { it }
     }
   
-  abstract var onLoad: ((uri: String) -> Unit)?
+  abstract var onLoad: ((pageId: String) -> Unit)?
   
   private var onLoad_cxx: Func_void_std__string?
     @Keep

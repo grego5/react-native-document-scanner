@@ -17,6 +17,62 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class CropEditorViewTest {
   @Test
+  fun sessionEditorDraftAndProgrammaticGeometryNeverSubmitPageEdits() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    com.facebook.soloader.SoLoader.init(context, false)
+    com.margelo.nitro.JNIOnLoad.initializeNativeNitro()
+    ReactNativeDocumentScannerOnLoad.initializeNative()
+    SessionViewFixture(context).use { fixture ->
+      val presets = mutableListOf<CropDraftPreset>()
+      lateinit var hybrid: HybridDocumentCropEditorView
+      instrumentation.runOnMainSync {
+        fixture.admit("page")
+        val original = DocumentQuad(DocumentPoint(.1, .1), DocumentPoint(.9, .1),
+          DocumentPoint(.9, .9), DocumentPoint(.1, .9))
+        fixture.state.setDocumentCrop("page", original)
+        val react = com.facebook.react.bridge.BridgeReactContext(context)
+        val themed = com.facebook.react.uimanager.ThemedReactContext(react, context, "CropValidation", -1)
+        hybrid = HybridDocumentCropEditorView(themed)
+        hybrid.onPresetChange = { presets.add(it) }
+        hybrid.session = HybridScanSession(fixture.state)
+        hybrid.pageId = "page"
+        hybrid.afterUpdate()
+      }
+      val before = fixture.state.snapshot().pages.getValue("page")
+      val result = java.util.concurrent.CompletableFuture<Variant_Boolean_ScannerFailure>()
+      hybrid.setPresetResult(CropPreset.NONE).then { result.complete(it) }
+      assertEquals(true, result.get(5, java.util.concurrent.TimeUnit.SECONDS).asFirstOrNull())
+      val draft = java.util.concurrent.CompletableFuture<Variant_ScannerFailure_DocumentQuad>()
+      hybrid.getQuadResult().then { draft.complete(it) }
+      assertEquals(ScanPage.fullFrame(), draft.get(5, java.util.concurrent.TimeUnit.SECONDS).asSecondOrNull())
+      assertEquals(before, fixture.state.snapshot().pages.getValue("page"))
+      assertEquals(listOf(CropDraftPreset.CUSTOM, CropDraftPreset.NONE), presets)
+      instrumentation.runOnMainSync {
+        val editor = hybrid.view as CropEditorView
+        val custom = doubleArrayOf(.2, .2, .8, .2, .8, .8, .2, .8)
+        editor.replaceQuad(custom)
+        editor.onQuadEdited?.invoke(custom)
+      }
+      assertEquals(CropDraftPreset.CUSTOM, presets.last())
+      val reset = java.util.concurrent.CompletableFuture<Variant_Boolean_ScannerFailure>()
+      hybrid.setPresetResult(CropPreset.NONE).then { reset.complete(it) }
+      assertEquals(true, reset.get(5, java.util.concurrent.TimeUnit.SECONDS).asFirstOrNull())
+      val submitted = java.util.concurrent.CompletableFuture<Variant_Boolean_ScannerFailure>()
+      hybrid.submitResult().then { submitted.complete(it) }
+      assertEquals(true, submitted.get(5, java.util.concurrent.TimeUnit.SECONDS).asFirstOrNull())
+      assertEquals(ScanPage.fullFrame(), fixture.state.snapshot().pages.getValue("page").quad)
+      instrumentation.runOnMainSync { hybrid.onDropView() }
+      val dropped = java.util.concurrent.CompletableFuture<Variant_ScannerFailure_DocumentQuad>()
+      hybrid.getQuadResult().then { dropped.complete(it) }
+      assertEquals(ScannerErrorCode.INPUT_INVALID, dropped.get(5, java.util.concurrent.TimeUnit.SECONDS).asFirstOrNull()?.code)
+      val rejectedSubmit = java.util.concurrent.CompletableFuture<Variant_Boolean_ScannerFailure>()
+      hybrid.submitResult().then { rejectedSubmit.complete(it) }
+      assertEquals(ScannerErrorCode.INPUT_INVALID, rejectedSubmit.get(5, java.util.concurrent.TimeUnit.SECONDS).asSecondOrNull()?.code)
+    }
+  }
+
+  @Test
   fun twoFingerTranslationWorksWithoutPinchingAndStopsWhenOneFingerLifts() = withEditor { editor, touches ->
     touches.zoomIn()
     assertEquals(Color.RED, pixel(editor, 500, 500))
@@ -45,6 +101,23 @@ class CropEditorViewTest {
     assertEquals(Color.RED, pixel(editor, 580, 500))
     assertEquals(Color.DKGRAY, pixel(editor, 500, 500))
     touches.send(MotionEvent.ACTION_CANCEL, 80f, 500f, 1080f, 500f)
+  }
+
+  @Test
+  fun invalidDragEmitsNoEdit() = withEditor { _, touches ->
+    touches.begin(0f, 0f)
+    touches.send(MotionEvent.ACTION_MOVE, 900f, 900f)
+    touches.send(MotionEvent.ACTION_UP, 900f, 900f)
+  }
+
+  @Test
+  fun invalidDeveloperGeometryRejectsWithoutReplacingTheCrop() = withEditor { editor, _ ->
+    org.junit.Assert.assertThrows(InvalidInputException::class.java) {
+      editor.replaceQuad(doubleArrayOf(-.2, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0))
+    }
+    org.junit.Assert.assertThrows(InvalidInputException::class.java) {
+      editor.replaceQuad(doubleArrayOf(0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0))
+    }
   }
 
   private fun withEditor(check: (CropEditorView, Touches) -> Unit) {

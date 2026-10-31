@@ -43,24 +43,31 @@ target_sources(
   ../nitrogen/generated/shared/c++/views/HybridImagePagerViewComponent.cpp
   ../nitrogen/generated/shared/c++/HybridImageViewerViewSpec.cpp
   ../nitrogen/generated/shared/c++/views/HybridImageViewerViewComponent.cpp
+  ../nitrogen/generated/shared/c++/HybridPageThumbnailViewSpec.cpp
+  ../nitrogen/generated/shared/c++/views/HybridPageThumbnailViewComponent.cpp
+  ../nitrogen/generated/shared/c++/HybridScanSessionSpec.cpp
   # Android-specific Nitrogen C++ sources
   ../nitrogen/generated/android/c++/JHybridCameraPermissionSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_CameraPermissionValue_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JHybridDocumentCropEditorViewSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_Boolean_ScannerFailure.cpp
+  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_DocumentQuad.cpp
   ../nitrogen/generated/android/c++/views/JHybridDocumentCropEditorViewStateUpdater.cpp
   ../nitrogen/generated/android/c++/JHybridDocumentScannerCameraViewSpec.cpp
-  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_CapturedPhoto.cpp
   ../nitrogen/generated/android/c++/JVariant_String_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/views/JHybridDocumentScannerCameraViewStateUpdater.cpp
   ../nitrogen/generated/android/c++/JHybridDocumentScannerProcessorSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_HybridScanSessionSpec_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_ScannerFailure_SampleFolder.cpp
-  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_DocumentAnalysis.cpp
-  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_RenderedDocument.cpp
-  ../nitrogen/generated/android/c++/JVariant_Boolean_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JHybridImagePagerViewSpec.cpp
   ../nitrogen/generated/android/c++/views/JHybridImagePagerViewStateUpdater.cpp
   ../nitrogen/generated/android/c++/JHybridImageViewerViewSpec.cpp
   ../nitrogen/generated/android/c++/views/JHybridImageViewerViewStateUpdater.cpp
+  ../nitrogen/generated/android/c++/JHybridPageThumbnailViewSpec.cpp
+  ../nitrogen/generated/android/c++/views/JHybridPageThumbnailViewStateUpdater.cpp
+  ../nitrogen/generated/android/c++/JHybridScanSessionSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_Array_String__ScannerFailure.cpp
+  ../nitrogen/generated/android/c++/JVariant_ScanSessionObservation_ScannerFailure.cpp
 )
 
 # From node_modules/react-native/ReactAndroid/cmake-utils/folly-flags.cmake

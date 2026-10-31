@@ -113,7 +113,7 @@ class GrayscalePngTest {
   private fun decode(file: File): Decoded {
     val image = Class.forName("javax.imageio.ImageIO").getMethod("read", File::class.java).invoke(null, file)
     assertNotNull(image)
-    return Decoded(image)
+    return Decoded(requireNotNull(image))
   }
 
   private class Decoded(private val image: Any) {

@@ -38,16 +38,18 @@ class LiveCameraRuntimeTest {
     ActivityScenario.launch<CameraValidationActivity>(intent).use { scenario ->
       var state: CameraState? = null
       var document: DocumentState? = null
+      var captureState: CameraCaptureState? = null
       var original: HybridDocumentScannerCameraView? = null
       scenario.onActivity {
         original = it.camera
         it.camera.onCameraStateChange = { next -> state = next }
         it.camera.onDocumentStateChange = { next -> document = next }
+        it.camera.onCaptureStateChange = { next -> captureState = next }
         it.camera.analysisWidth = 640.0
         it.camera.guide = false
         it.camera.afterUpdate()
       }
-      await(scenario, "Initially inactive camera") { state == CameraState.SUSPENDED && document == DocumentState.OFF }
+      await(scenario, "Initially inactive camera") { state == CameraState.SUSPENDED && document == DocumentState.OFF && captureState == CameraCaptureState.UNAVAILABLE }
       scenario.moveToState(Lifecycle.State.CREATED)
       scenario.moveToState(Lifecycle.State.RESUMED)
       scenario.onActivity {
@@ -67,7 +69,13 @@ class LiveCameraRuntimeTest {
         it.camera.afterUpdate()
       }
       awaitStreaming(scenario)
-      scenario.onActivity { assertSame(original, it.camera) }
+      await(scenario, "Capture becomes ready after streaming") { captureState == CameraCaptureState.READY }
+      scenario.onActivity {
+        assertSame(original, it.camera)
+        it.camera.mode = CameraMode.OFF
+        it.camera.afterUpdate()
+        assertEquals(CameraCaptureState.UNAVAILABLE, captureState)
+      }
     }
   }
 
@@ -236,11 +244,12 @@ class LiveCameraRuntimeTest {
     whilePending: ((CameraValidationActivity) -> Unit)? = null) {
     val completed = CountDownLatch(1)
     val callbacks = AtomicInteger()
-    var photo: CapturedPhoto? = null
+    var pageId: String? = null
+    var session: HybridScanSession? = null
     var error: Throwable? = null
     scenario.onActivity { activity ->
       activity.requestManualCapture(label) {
-        activity.camera.takePhoto().then { photo = it; callbacks.incrementAndGet(); completed.countDown() }
+        activity.camera.takePhoto().then { pageId = it; session = activity.session; callbacks.incrementAndGet(); completed.countDown() }
           .catch { error = it; callbacks.incrementAndGet(); completed.countDown() }
         // takePhoto posts its request to the main thread, so a later post runs once the capture is pending.
         if (whilePending != null) activity.camera.view.post { whilePending(activity) }
@@ -249,10 +258,14 @@ class LiveCameraRuntimeTest {
     assertTrue("Waiting for user shutter/capture timed out", completed.await(180, TimeUnit.SECONDS))
     assertNull(error)
     assertEquals(1, callbacks.get())
-    assertTrue(photo!!.width > 0 && photo!!.height > 0)
-    val file = File(Uri.parse(photo!!.originalUri).path!!)
-    assertTrue(file.isFile)
-    file.delete()
+    val owner = requireNotNull(session).state
+    owner.leaseOriginal(requireNotNull(pageId)).use { source ->
+      val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      android.graphics.BitmapFactory.decodeFile(source.file.absolutePath, bounds)
+      assertTrue(bounds.outWidth > 0 && bounds.outHeight > 0)
+      assertTrue(source.file.isFile)
+    }
+    owner.removePage(requireNotNull(pageId))
   }
 
   private fun record(scenario: ActivityScenario<CameraValidationActivity>, directory: File, records: JSONArray, stage: String) {

@@ -78,8 +78,7 @@ class LiveQuadTraceRecordingTest {
     val directory = requireNotNull(context.getExternalFilesDir("live-quad-traces")) { "External files are unavailable" }
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
     val recorder = LiveQuadTraceRecorder(LiveQuadStabilizerConfig())
-    val processor = HybridDocumentScannerProcessor(context)
-    val shutter = Shutter(recorder, processor, captureCount, File(directory, "$scene-$stamp").takeIf { keepPhotos }, qualityGate)
+    val shutter = Shutter(recorder, captureCount, File(directory, "$scene-$stamp").takeIf { keepPhotos }, qualityGate)
     val stopRequested = CountDownLatch(1)
     val sensors = context.getSystemService(SensorManager::class.java)
     val gyroscope = sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
@@ -125,7 +124,6 @@ class LiveQuadTraceRecordingTest {
       }
     } finally {
       sensors.unregisterListener(gyroListener)
-      processor.dispose()
     }
     val trace = recorder.stop().copy(camera = backCamera())
     val file = File(directory, "$scene-$stamp.tsv")
@@ -142,7 +140,6 @@ class LiveQuadTraceRecordingTest {
    */
   private class Shutter(
     private val recorder: LiveQuadTraceRecorder,
-    private val processor: HybridDocumentScannerProcessor,
     private val count: Int,
     private val photoPrefix: File?,
     private val gated: Boolean,
@@ -156,26 +153,50 @@ class LiveQuadTraceRecordingTest {
         val tappedNs = System.nanoTime()
         val tapSensorNs = SystemClock.elapsedRealtimeNanos()
         pending.incrementAndGet()
-        activity.camera.takePhoto().then { photo ->
-          val original = File(Uri.parse(photo.originalUri).path!!)
-          processor.analyzePhoto(photo.originalUri).then { analysis ->
-            val exposureS = ExifInterface(original.absolutePath).getAttributeDouble(ExifInterface.TAG_EXPOSURE_TIME, 0.0)
-            val fire = recorder.gateSince(tapSensorNs)
-            recorder.addCapture(LiveQuadCaptureEvent(tappedNs, analysis.candidate?.quad, analysis.candidate?.score,
-              analysis.sourceWidth.toInt(), analysis.sourceHeight.toInt(), tapSensorNs, fire?.takeIf { it.fired }?.sensorClockNs,
-              (exposureS * 1e9).roundToLong().takeIf { it > 0 },
-              gateEvaluationNs = fire?.gateEvaluationNs, gateExposureNs = fire?.gateExposureNs, gateBlur = fire?.gateBlur,
-              gateSource = fire?.gateSource, flow = fire?.flow, flowAgeNs = fire?.flowAgeNs,
-              flowSourceAgeNs = fire?.flowSourceAgeNs))
-            Log.i(LOG_TAG, "Capture $index analyzed quad=${analysis.candidate != null}")
-            photoPrefix?.let { original.copyTo(File("${it.path}-$index.jpg"), overwrite = true) }
-            original.delete()
-            activity.runOnUiThread {
-              if (index < count) arm(activity, index + 1)
-              else activity.showCaptureStatus("Captured. Tap Stop recording when done.")
+        activity.camera.takePhoto().then { id ->
+          val owner = activity.session.state
+          val consumed = java.util.concurrent.atomic.AtomicBoolean()
+          var remove: (() -> Unit)? = null
+          fun consume(snapshot: ScanSessionSnapshot) {
+            val page = snapshot.pages[id]
+            if (page?.analyzing == true || !consumed.compareAndSet(false, true)) return
+            remove?.invoke()
+            val analysis = page?.analysis
+            if (analysis == null) {
+              failures.add(ScannerException(page?.analysisFailure?.code ?: ScannerErrorCode.PROCESSOR_DISPOSED))
+              pending.decrementAndGet()
+              return
             }
-            pending.decrementAndGet()
-          }.catch { error -> failures.add(error); original.delete(); pending.decrementAndGet() }
+            java.util.concurrent.CompletableFuture.runAsync {
+              owner.leaseOriginal(id).use { source ->
+                val original = source.file
+                val exposureS = ExifInterface(original.absolutePath).getAttributeDouble(ExifInterface.TAG_EXPOSURE_TIME, 0.0)
+                val fire = recorder.gateSince(tapSensorNs)
+                recorder.addCapture(LiveQuadCaptureEvent(tappedNs, analysis.candidate?.quad, analysis.candidate?.score,
+                  analysis.sourceWidth.toInt(), analysis.sourceHeight.toInt(), tapSensorNs, fire?.takeIf { it.fired }?.sensorClockNs,
+                  (exposureS * 1e9).roundToLong().takeIf { it > 0 },
+                  gateEvaluationNs = fire?.gateEvaluationNs, gateExposureNs = fire?.gateExposureNs, gateBlur = fire?.gateBlur,
+                  gateSource = fire?.gateSource, flow = fire?.flow, flowAgeNs = fire?.flowAgeNs,
+                  flowSourceAgeNs = fire?.flowSourceAgeNs))
+                photoPrefix?.let { original.copyTo(File("${it.path}-$index.jpg"), overwrite = true) }
+              }
+            }.whenComplete { _, error ->
+              if (error != null) failures.add(error)
+              try { owner.removePage(id) } catch (failure: Throwable) { failures.add(failure) }
+              activity.runOnUiThread {
+                if (index < count) arm(activity, index + 1)
+                else activity.showCaptureStatus("Captured. Tap Stop recording when done.")
+              }
+              pending.decrementAndGet()
+            }
+          }
+          try {
+            val registration = owner.observe { change ->
+              if (change.closed || id in change.updatedPages || id in change.removedPageIds) consume(owner.snapshot())
+            }
+            remove = registration.unsubscribe
+            consume(registration.snapshot)
+          } catch (error: Throwable) { failures.add(error); pending.decrementAndGet() }
         }.catch { error ->
           if (gated) {
             Log.i(LOG_TAG, "Capture $index rejected: ${error.message}")

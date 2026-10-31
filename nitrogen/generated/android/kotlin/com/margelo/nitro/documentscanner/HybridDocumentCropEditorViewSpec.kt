@@ -11,6 +11,7 @@ import androidx.annotation.Keep
 import com.facebook.jni.HybridData
 import com.facebook.proguard.annotations.DoNotStrip
 import dalvik.annotation.optimization.FastNative
+import com.margelo.nitro.core.Promise
 import com.margelo.nitro.core.HybridObject
 import com.margelo.nitro.views.HybridView
 
@@ -31,36 +32,36 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var originalUri: String
-  
+  abstract var session: HybridScanSessionSpec
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var quad: DocumentQuad
-  
+  abstract var pageId: String
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var filter: DocumentFilter?
-  
-  abstract var onQuadChange: ((quad: DocumentQuad) -> Unit)?
-  
-  private var onQuadChange_cxx: Func_void_DocumentQuad?
+
+  abstract var onPresetChange: ((preset: CropDraftPreset) -> Unit)?
+
+  private var onPresetChange_cxx: Func_void_CropDraftPreset?
     @Keep
     @DoNotStrip
     get() {
-      return onQuadChange?.let { Func_void_DocumentQuad_java(it) }
+      return onPresetChange?.let { Func_void_CropDraftPreset_java(it) }
     }
     @Keep
     @DoNotStrip
     set(value) {
-      onQuadChange = value?.let { it }
+      onPresetChange = value?.let { it }
     }
-  
+
   abstract var onLoad: ((width: Double, height: Double) -> Unit)?
-  
+
   private var onLoad_cxx: Func_void_double_double?
     @Keep
     @DoNotStrip
@@ -72,9 +73,9 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
     set(value) {
       onLoad = value?.let { it }
     }
-  
+
   abstract var onError: ((failure: ScannerFailure) -> Unit)?
-  
+
   private var onError_cxx: Func_void_ScannerFailure?
     @Keep
     @DoNotStrip
@@ -88,7 +89,17 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
     }
 
   // Methods
-  
+  @DoNotStrip
+  @Keep
+  abstract fun submitResult(): Promise<Variant_Boolean_ScannerFailure>
+
+  @DoNotStrip
+  @Keep
+  abstract fun getQuadResult(): Promise<Variant_ScannerFailure_DocumentQuad>
+
+  @DoNotStrip
+  @Keep
+  abstract fun setPresetResult(preset: CropPreset): Promise<Variant_Boolean_ScannerFailure>
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

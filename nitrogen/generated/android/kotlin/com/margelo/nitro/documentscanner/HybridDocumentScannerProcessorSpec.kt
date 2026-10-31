@@ -32,6 +32,10 @@ abstract class HybridDocumentScannerProcessorSpec: HybridObject() {
   // Methods
   @DoNotStrip
   @Keep
+  abstract fun createSessionResult(): Variant_HybridScanSessionSpec_ScannerFailure
+  
+  @DoNotStrip
+  @Keep
   abstract fun pickSampleFolderResult(): Promise<Variant_ScannerFailure_SampleFolder>
   
   @DoNotStrip
@@ -49,26 +53,6 @@ abstract class HybridDocumentScannerProcessorSpec: HybridObject() {
   @DoNotStrip
   @Keep
   abstract fun setSampleFolder(uri: String): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun saveCaptureSampleResult(originalUri: String, quad: DocumentQuad?): Promise<Variant_String_ScannerFailure>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun analyzePhotoResult(originalUri: String, liveQuad: DocumentQuad?): Promise<Variant_ScannerFailure_DocumentAnalysis>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun renderDocumentResult(originalUri: String, quad: DocumentQuad, options: DocumentRenderOptions?): Promise<Variant_ScannerFailure_RenderedDocument>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun createPdfResult(options: CreatePdfOptions): Promise<Variant_String_ScannerFailure>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun removeCachedImagesResult(uris: Array<String>): Promise<Variant_Boolean_ScannerFailure>
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

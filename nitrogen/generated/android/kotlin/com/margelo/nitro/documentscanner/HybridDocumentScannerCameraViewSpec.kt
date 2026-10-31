@@ -32,10 +32,22 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
+  abstract var session: HybridScanSessionSpec
+
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var renderOptions: DocumentRenderOptions
+
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
   abstract var quadTensorModel: String?
-  
+
   abstract var onError: ((error: ScannerFailure) -> Unit)?
-  
+
   private var onError_cxx: Func_void_ScannerFailure?
     @Keep
     @DoNotStrip
@@ -47,129 +59,123 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
     set(value) {
       onError = value?.let { it }
     }
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var mode: CameraMode?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var guide: Boolean?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var adaptiveDetection: Boolean?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var minCornerScore: Double?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var qualityGate: Boolean?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var qualityGateConfig: QualityGateConfig?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var tapToFocus: Boolean?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var exposureCompensation: Double?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var minFrameRate: Double?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var torch: TorchMode?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var captureMode: CaptureMode?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var jpegQuality: Double?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var guideTransitionDuration: Double?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var analysisWidth: Double?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var squareFrame: Boolean?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var showStats: Boolean?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var guideColor: Double?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var captureFeedback: Boolean?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var retainCapturePreview: Boolean?
-  
+
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var captureColor: Double?
-  
+
   abstract var onCameraStateChange: ((state: CameraState) -> Unit)?
-  
+
   private var onCameraStateChange_cxx: Func_void_CameraState?
     @Keep
     @DoNotStrip
@@ -181,9 +187,23 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
     set(value) {
       onCameraStateChange = value?.let { it }
     }
-  
+
+  abstract var onCaptureStateChange: ((state: CameraCaptureState) -> Unit)?
+
+  private var onCaptureStateChange_cxx: Func_void_CameraCaptureState?
+    @Keep
+    @DoNotStrip
+    get() {
+      return onCaptureStateChange?.let { Func_void_CameraCaptureState_java(it) }
+    }
+    @Keep
+    @DoNotStrip
+    set(value) {
+      onCaptureStateChange = value?.let { it }
+    }
+
   abstract var onAutofocusChange: ((state: AutofocusState) -> Unit)?
-  
+
   private var onAutofocusChange_cxx: Func_void_AutofocusState?
     @Keep
     @DoNotStrip
@@ -195,9 +215,9 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
     set(value) {
       onAutofocusChange = value?.let { it }
     }
-  
+
   abstract var onDocumentStateChange: ((state: DocumentState) -> Unit)?
-  
+
   private var onDocumentStateChange_cxx: Func_void_DocumentState?
     @Keep
     @DoNotStrip
@@ -209,14 +229,14 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
     set(value) {
       onDocumentStateChange = value?.let { it }
     }
-  
-  abstract var onCaptureStage: ((stage: CaptureStage) -> Unit)?
-  
-  private var onCaptureStage_cxx: Func_void_CaptureStage?
+
+  abstract var onCaptureStage: ((stage: CaptureStage, waitReason: CaptureWaitReason?) -> Unit)?
+
+  private var onCaptureStage_cxx: Func_void_CaptureStage_std__optional_CaptureWaitReason_?
     @Keep
     @DoNotStrip
     get() {
-      return onCaptureStage?.let { Func_void_CaptureStage_java(it) }
+      return onCaptureStage?.let { Func_void_CaptureStage_std__optional_CaptureWaitReason__java(it) }
     }
     @Keep
     @DoNotStrip
@@ -227,8 +247,8 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   // Methods
   @DoNotStrip
   @Keep
-  abstract fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_ScannerFailure_CapturedPhoto>
-  
+  abstract fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_String_ScannerFailure>
+
   @DoNotStrip
   @Keep
   abstract fun saveLiveSampleResult(): Promise<Variant_String_ScannerFailure>

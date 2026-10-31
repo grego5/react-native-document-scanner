@@ -32,7 +32,34 @@ Use Android Studio's JDK and the installed SDK; set `JAVA_HOME` for the command 
 Compare one switch at a time in the example's Options panel, with the scene, lighting and other settings unchanged. The adaptive status line shows the last reason inference woke (`reset: …`).
 
 - Camera: permission grant and denial, capture, rotation, background and foreground. `LiveCameraRuntimeTest#inactiveCameraStaysSuspendedAcrossForegroundAndSettingsThenResumesWithoutRemounting` checks `mode` `off` without a shutter.
-- Session: one pager for capture and saved pages, thumbnail navigation, filter modal, Crop and Shadow toggles, global Shadow default for new captures, separate crop screen, Add page, Done and Save, Delete, New scan, Back confirmation, the 50-page limit, PDF share and gallery save. Verify the camera stays mounted and inactive beneath preview and crop.
+### Session UI
+
+- Capture and saved pages share one pager; test thumbnails and the filter modal.
+- Check that awaited capture/settings changes are visible in snapshots immediately, and that native placeholders show before the first decode.
+- Check Crop, Shadow and the shadow default for new captures. Saved filter/shadow edits survive Back.
+- Crop actions: No crop, Auto crop, Cancel and Submit.
+- Navigation: Add page, Done/Save, Delete, New scan, Back confirmation and the 50-page limit.
+- Camera stays mounted and inactive beneath preview/crop.
+
+### Session lifetime
+
+- New scan/unmount closes the old owner without blocking the UI; late captures/events cannot affect its replacement.
+- Published host exports survive close. No JS image janitor or URI processing calls.
+
+### Native views
+
+- Check auto/LTR/RTL direction and selected-page retention after host ID reordering/deletion.
+- Check thumbnail updates during processing, detach/reattach, and empty tiles after deletion/close.
+- Test dragging in a host fixture that supplies a complete pager order and verifies session publication/export order; the example strip supports selection only.
+
+### Exports
+
+- Controlled fixture: edit/delete/close during queued or running exports. Verify frozen order/settings, cancellation before publication and source leases.
+- Human example: PDF sharing, gallery saving, permission denial and unlock after share/gallery failures.
+- Check PDF/image format preservation and seven-day host export retention outside active sessions.
+
+### Camera guidance
+
 - Shutter focus: with the quality gate on, press while focus is scanning; no photo fires until focus is reported, and the 2 s timeout rejects rather than shoots.
 - Guide validation: a stationary page near competing table edges, then real changes in tilt, rotation, framing and distance, occlusion and focus loss. Replay alone cannot show which visible boundary was the paper.
 - Document focus: an initially defocused page, approach and retreat, pans, target loss, taps during an automatic scan, capture during a pending scan, background and resume.

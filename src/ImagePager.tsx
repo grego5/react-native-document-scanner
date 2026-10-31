@@ -1,3 +1,4 @@
+import { getNativeScanSession, type ScanSession } from './ScanSession'
 import { callback, getHostComponent } from 'react-native-nitro-modules'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import type { ViewProps } from 'react-native'
@@ -12,22 +13,25 @@ const NativeImagePager = getHostComponent<
 >('ImagePagerView', () => ImagePagerViewConfig)
 
 export interface ImagePagerProps
-  extends Omit<ImagePagerViewProps, 'hybridRef' | 'onError'>,
+  extends Omit<ImagePagerViewProps, 'hybridRef' | 'onError' | 'session' | 'pageIds'>,
     ViewProps {
+  session: ScanSession
+  pageIds?: readonly string[]
   onError?: (error: ScannerError) => void
 }
 
 /** Native swiping between zoomable images; see `ImagePagerViewProps`. */
-export function ImagePager({ swipeEnabled = true, onIndexChange, onError, onLoad, ...props }: ImagePagerProps) {
+export function ImagePager({ session, pageIds, direction = 'auto', swipeEnabled = true, onPageChange, onError, onLoad, ...props }: ImagePagerProps) {
+  const nativePageIds = useMemo(() => pageIds === undefined ? undefined : [...pageIds], [pageIds])
   // A stable wrapper calling the latest handler, so a new handler each render does not reach native.
-  const handlers = useRef({ onIndexChange, onError, onLoad })
+  const handlers = useRef({ onPageChange, onError, onLoad })
   useLayoutEffect(() => {
-    handlers.current = { onIndexChange, onError, onLoad }
+    handlers.current = { onPageChange, onError, onLoad }
   })
   const native = useMemo(
     () => ({
-      onIndexChange: callback((index: number) => handlers.current.onIndexChange?.(index)),
-      onLoad: callback((loadedUri: string) => handlers.current.onLoad?.(loadedUri)),
+      onPageChange: callback((pageId: string) => handlers.current.onPageChange?.(pageId)),
+      onLoad: callback((pageId: string) => handlers.current.onLoad?.(pageId)),
       onError: callback((failure: ScannerFailure) => handlers.current.onError?.(new ScannerError(failure.code))),
     }),
     [],
@@ -37,8 +41,11 @@ export function ImagePager({ swipeEnabled = true, onIndexChange, onError, onLoad
   return (
     <NativeImagePager
       {...props}
+      pageIds={nativePageIds}
+      session={getNativeScanSession(session)}
+      direction={direction}
       swipeEnabled={swipeEnabled}
-      onIndexChange={native.onIndexChange}
+      onPageChange={native.onPageChange}
       onError={native.onError}
       onLoad={native.onLoad}
     />

@@ -42,15 +42,15 @@ namespace margelo::nitro::documentscanner {
     static jni::alias_ref<JTorchMode> fromCpp(TorchMode value) {
       static const auto clazz = javaClassStatic();
       switch (value) {
+        case TorchMode::AUTO:
+          static const auto fieldAUTO = clazz->getStaticField<JTorchMode>("AUTO");
+          return clazz->getStaticFieldValue(fieldAUTO);
         case TorchMode::OFF:
           static const auto fieldOFF = clazz->getStaticField<JTorchMode>("OFF");
           return clazz->getStaticFieldValue(fieldOFF);
         case TorchMode::ON:
           static const auto fieldON = clazz->getStaticField<JTorchMode>("ON");
           return clazz->getStaticFieldValue(fieldON);
-        case TorchMode::AUTO:
-          static const auto fieldAUTO = clazz->getStaticField<JTorchMode>("AUTO");
-          return clazz->getStaticFieldValue(fieldAUTO);
         default:
           std::string stringValue = std::to_string(static_cast<int>(value));
           throw std::invalid_argument("Invalid enum value (" + stringValue + "!");

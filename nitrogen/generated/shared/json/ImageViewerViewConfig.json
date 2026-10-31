@@ -4,7 +4,8 @@
   "bubblingEventTypes": {},
   "directEventTypes": {},
   "validAttributes": {
-    "uri": true,
+    "session": true,
+    "pageId": true,
     "onError": true,
     "onLoad": true,
     "onZoomChange": true,

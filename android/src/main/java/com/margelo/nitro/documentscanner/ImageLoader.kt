@@ -4,8 +4,6 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import com.margelo.nitro.documentscanner.processing.SourceImageLoader
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
 /**
  * Loads one page into [image] off the main thread, only while the view is attached to a window: a detached view, such as
@@ -22,8 +20,29 @@ internal class ImageLoader(
   private val onLoaded: (uri: String) -> Unit,
   private val onFailed: (error: ScannerException) -> Unit,
   private val onZoomChanged: (zoomed: Boolean) -> Unit = {},
+  private val reads: java.util.concurrent.Executor = ScannerImageReads,
 ) {
   private val mainHandler = Handler(Looper.getMainLooper())
+
+  private var binding: SessionPageBinding? = null
+  private var boundState: ScanSessionState? = null
+  private var pageId: String? = null
+  private var source: SessionPageSource? = null
+  private var displayedSource: SessionPageSource? = null
+
+  fun bind(state: ScanSessionState, id: String) {
+    if (boundState === state && pageId == id) { if (image.isAttachedToWindow) binding?.start(); return }
+    clear()
+    boundState = state
+    pageId = id
+    state.capturePlaceholder(id)?.let { image.bitmap = it }
+    binding = SessionPageBinding(state, id, changed = { next ->
+      source?.close()
+      source = next
+      if (next == null) { drop(); uri = null } else show(next.uri, fade = true)
+    }, failed = onFailed)
+    if (image.isAttachedToWindow) binding?.start()
+  }
 
   /** The requested uri, loaded or not; null after [clear]. */
   var uri: String? = null
@@ -53,12 +72,21 @@ internal class ImageLoader(
         onZoomChanged(zoomed)
       }
     }
+    image.onHidden = ::release
     image.onVisible = {
       restore()
       retry()
     }
-    image.onAttach = { uri?.let { load(it, fade = false) } }
-    image.onDetach = ::drop
+    image.onAttach = {
+      pageId?.let { id -> boundState?.capturePlaceholder(id)?.let { image.bitmap = it } }
+      if (binding != null) binding?.start() else uri?.let { load(it, fade = false) }
+    }
+    image.onDetach = {
+      binding?.close()
+      source?.close(); source = null
+      if (binding != null) uri = null
+      drop()
+    }
   }
 
   /**
@@ -66,7 +94,7 @@ internal class ImageLoader(
    * fades it in when [fade], or is replaced at once for a view reused for another page. A detached view loads it once
    * attached.
    */
-  fun show(uri: String, fade: Boolean) {
+  private fun show(uri: String, fade: Boolean) {
     if (uri == this.uri) return
     this.uri = uri
     if (image.isAttachedToWindow) load(uri, fade) else drop()
@@ -88,11 +116,12 @@ internal class ImageLoader(
       return
     }
     if (!fade) image.clearImage()
-    thumbnailWorker.execute {
-      if (page != pageGeneration) return@execute
-      val result = runCatching { PageThumbnails.load(uri) }
+    val pin = source?.retain()
+    reads.executeRead(pin) {
+      if (page != pageGeneration) { pin?.close(); return@executeRead }
+      val result = try { runCatching { PageThumbnails.load(uri) } } finally { pin?.close() }
       mainHandler.post {
-        if (page != pageGeneration) return@post
+        if (page != pageGeneration || binding?.valid() == false) return@post
         result.fold(
           onSuccess = { applyThumbnail(uri, it, fade) },
           onFailure = { error ->
@@ -127,6 +156,9 @@ internal class ImageLoader(
 
   /** Drops the images and any pending decode. */
   fun clear() {
+    binding?.close(); binding = null
+    boundState = null; pageId = null
+    source?.close(); source = null
     drop()
     uri = null
   }
@@ -138,15 +170,20 @@ internal class ImageLoader(
     thumbnail = null
     failed = false
     image.clearImage()
+    displayedSource?.close(); displayedSource = null
   }
 
   private fun applyThumbnail(uri: String, bitmap: Bitmap, fade: Boolean) {
     thumbnail = bitmap
-    if (fade) image.fadeIn(bitmap, fit = true) else {
+    val previous = displayedSource
+    displayedSource = source?.retain()
+    if (fade) image.fadeIn(bitmap, fit = true, finished = { previous?.close() }) else {
+      previous?.close()
       image.bitmap = bitmap
       image.resetZoom()
     }
-    onLoaded(uri)
+    pageId?.let { boundState?.releaseCapturePlaceholder(it) }
+    onLoaded(pageId ?: uri)
   }
 
   private fun loadFull() {
@@ -155,11 +192,12 @@ internal class ImageLoader(
     if (thumbnail == null || fullImage != null || fullPending) return
     fullPending = true
     val full = fullGeneration
-    fullWorker.execute {
-      if (full != fullGeneration) return@execute
-      val result = runCatching { SourceImageLoader.loadReduced(uri, FULL_LIMIT) }
+    val pin = source?.retain()
+    reads.executeRead(pin) {
+      if (full != fullGeneration) { pin?.close(); return@executeRead }
+      val result = try { runCatching { SourceImageLoader.loadReduced(uri, FULL_LIMIT) } } finally { pin?.close() }
       mainHandler.post {
-        if (full != fullGeneration) {
+        if (full != fullGeneration || binding?.valid() == false) {
           // Never shown, so nothing else can be drawing it.
           result.getOrNull()?.recycle()
           return@post
@@ -179,13 +217,5 @@ internal class ImageLoader(
     const val PRELOAD_ZOOM = 1.1f
     /** A full-resolution rendered page, so zooming in stays sharp. */
     const val FULL_LIMIT = 4096
-    /** Makes thumbnails, one at a time across views. */
-    val thumbnailWorker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-      Thread(runnable, "DocumentThumbnailLoader").apply { isDaemon = true }
-    }
-    /** Decodes full images, one at a time across views, apart from thumbnails. */
-    val fullWorker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-      Thread(runnable, "ImageViewerLoader").apply { isDaemon = true }
-    }
   }
 }

@@ -50,6 +50,10 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Properties
+    std::shared_ptr<HybridScanSessionSpec> getSession() override;
+    void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) override;
+    DocumentRenderOptions getRenderOptions() override;
+    void setRenderOptions(const DocumentRenderOptions& renderOptions) override;
     std::optional<std::string> getQuadTensorModel() override;
     void setQuadTensorModel(const std::optional<std::string>& quadTensorModel) override;
     std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() override;
@@ -90,22 +94,22 @@ namespace margelo::nitro::documentscanner {
     void setGuideColor(std::optional<double> guideColor) override;
     std::optional<bool> getCaptureFeedback() override;
     void setCaptureFeedback(std::optional<bool> captureFeedback) override;
-    std::optional<bool> getRetainCapturePreview() override;
-    void setRetainCapturePreview(std::optional<bool> retainCapturePreview) override;
     std::optional<double> getCaptureColor() override;
     void setCaptureColor(std::optional<double> captureColor) override;
     std::optional<std::function<void(CameraState /* state */)>> getOnCameraStateChange() override;
     void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) override;
+    std::optional<std::function<void(CameraCaptureState /* state */)>> getOnCaptureStateChange() override;
+    void setOnCaptureStateChange(const std::optional<std::function<void(CameraCaptureState /* state */)>>& onCaptureStateChange) override;
     std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() override;
     void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) override;
     std::optional<std::function<void(DocumentState /* state */)>> getOnDocumentStateChange() override;
     void setOnDocumentStateChange(const std::optional<std::function<void(DocumentState /* state */)>>& onDocumentStateChange) override;
-    std::optional<std::function<void(CaptureStage /* stage */)>> getOnCaptureStage() override;
-    void setOnCaptureStage(const std::optional<std::function<void(CaptureStage /* stage */)>>& onCaptureStage) override;
+    std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>> getOnCaptureStage() override;
+    void setOnCaptureStage(const std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>>& onCaptureStage) override;
 
   public:
     // Methods
-    std::shared_ptr<Promise<std::variant<ScannerFailure, CapturedPhoto>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override;
+    std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override;
     std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveLiveSampleResult() override;
 
   private:

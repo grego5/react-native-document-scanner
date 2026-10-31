@@ -42,7 +42,7 @@ internal class InkDetail private constructor(
     /** Measures [gray], an evened 8-bit page; [baseAmount] is the sharpening every tile gets. */
     fun measure(gray: Mat, baseAmount: Double): InkDetail {
       if (min(gray.cols(), gray.rows()) < MIN_SIDE) return uniform(baseAmount)
-      val ink = Mat(); val half = Mat(); val edges = Mat()
+      val ink = Mat(); val half = Mat(); val blurred = Mat(); val laplacian = Mat(); val edges = Mat()
       var kept = false
       try {
         val side = max(3, (min(gray.cols(), gray.rows()) * INK_FRACTION).roundToInt()) or 1
@@ -54,9 +54,10 @@ internal class InkDetail private constructor(
         }
         // Sharpness only needs edges per tile; half size is enough and costs a quarter.
         Imgproc.resize(gray, half, Size(), .5, .5, Imgproc.INTER_AREA)
-        Imgproc.GaussianBlur(half, edges, Size(0.0, 0.0), 1.0)
-        Imgproc.Laplacian(edges, edges, CvType.CV_16S)
-        Core.convertScaleAbs(edges, edges)
+        Imgproc.GaussianBlur(half, blurred, Size(0.0, 0.0), 1.0)
+        // A depth-changing destination must not replace the blurred source storage.
+        Imgproc.Laplacian(blurred, laplacian, CvType.CV_16S)
+        Core.convertScaleAbs(laplacian, edges)
 
         val tileSide = min(gray.cols(), gray.rows()).toDouble() / TILES
         val rows = max(1, (gray.rows() / tileSide).roundToInt())
@@ -73,7 +74,7 @@ internal class InkDetail private constructor(
         return fromTiles(rows, cols, depth, sharpness, baseAmount, ink).also { kept = it.ink != null }
       } finally {
         if (!kept) ink.release()
-        half.release(); edges.release()
+        half.release(); blurred.release(); laplacian.release(); edges.release()
       }
     }
 

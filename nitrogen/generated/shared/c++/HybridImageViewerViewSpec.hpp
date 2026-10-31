@@ -13,9 +13,13 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
 #include <string>
 #include "ScannerFailure.hpp"
 #include <functional>
@@ -48,12 +52,14 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Properties
-      virtual std::string getUri() = 0;
-      virtual void setUri(const std::string& uri) = 0;
+      virtual std::shared_ptr<HybridScanSessionSpec> getSession() = 0;
+      virtual void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) = 0;
+      virtual std::string getPageId() = 0;
+      virtual void setPageId(const std::string& pageId) = 0;
       virtual std::optional<std::function<void(const ScannerFailure& /* failure */)>> getOnError() = 0;
       virtual void setOnError(const std::optional<std::function<void(const ScannerFailure& /* failure */)>>& onError) = 0;
-      virtual std::optional<std::function<void(const std::string& /* uri */)>> getOnLoad() = 0;
-      virtual void setOnLoad(const std::optional<std::function<void(const std::string& /* uri */)>>& onLoad) = 0;
+      virtual std::optional<std::function<void(const std::string& /* pageId */)>> getOnLoad() = 0;
+      virtual void setOnLoad(const std::optional<std::function<void(const std::string& /* pageId */)>>& onLoad) = 0;
       virtual std::optional<std::function<void(bool /* zoomed */)>> getOnZoomChange() = 0;
       virtual void setOnZoomChange(const std::optional<std::function<void(bool /* zoomed */)>>& onZoomChange) = 0;
 

@@ -7,18 +7,26 @@
 
 #include "JHybridImagePagerViewSpec.hpp"
 
+// Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
+// Forward declaration of `ImagePagerDirection` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class ImagePagerDirection; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
+#include "JHybridScanSessionSpec.hpp"
 #include <string>
 #include <vector>
 #include <optional>
+#include "ImagePagerDirection.hpp"
+#include "JImagePagerDirection.hpp"
 #include <functional>
-#include "JFunc_void_double.hpp"
-#include <NitroModules/JNICallable.hpp>
 #include "JFunc_void_std__string.hpp"
+#include <NitroModules/JNICallable.hpp>
 #include "ScannerFailure.hpp"
 #include "JFunc_void_ScannerFailure.hpp"
 #include "JScannerFailure.hpp"
@@ -55,10 +63,19 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Properties
-  std::vector<std::string> JHybridImagePagerViewSpec::getUris() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<jni::JString>>()>("getUris");
+  std::shared_ptr<HybridScanSessionSpec> JHybridImagePagerViewSpec::getSession() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JHybridScanSessionSpec::JavaPart>()>("getSession");
     auto __result = method(_javaPart);
-    return [&](auto&& __input) {
+    return __result->getJHybridScanSessionSpec();
+  }
+  void JHybridImagePagerViewSpec::setSession(const std::shared_ptr<HybridScanSessionSpec>& session) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JHybridScanSessionSpec::JavaPart> /* session */)>("setSession");
+    method(_javaPart, std::dynamic_pointer_cast<JHybridScanSessionSpec>(session)->getJavaPart());
+  }
+  std::optional<std::vector<std::string>> JHybridImagePagerViewSpec::getPageIds() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<jni::JString>>()>("getPageIds");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional([&](auto&& __input) {
       size_t __size = __input->size();
       std::vector<std::string> __vector;
       __vector.reserve(__size);
@@ -67,11 +84,11 @@ namespace margelo::nitro::documentscanner {
         __vector.push_back(__element->toStdString());
       }
       return __vector;
-    }(__result);
+    }(__result)) : std::nullopt;
   }
-  void JHybridImagePagerViewSpec::setUris(const std::vector<std::string>& uris) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JArrayClass<jni::JString>> /* uris */)>("setUris");
-    method(_javaPart, [&](auto&& __input) {
+  void JHybridImagePagerViewSpec::setPageIds(const std::optional<std::vector<std::string>>& pageIds) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JArrayClass<jni::JString>> /* pageIds */)>("setPageIds");
+    method(_javaPart, pageIds.has_value() ? [&](auto&& __input) {
       size_t __size = __input.size();
       jni::local_ref<jni::JArrayClass<jni::JString>> __array = jni::JArrayClass<jni::JString>::newArray(__size);
       for (size_t __i = 0; __i < __size; __i++) {
@@ -80,16 +97,25 @@ namespace margelo::nitro::documentscanner {
         __array->setElement(__i, *__elementJni);
       }
       return __array;
-    }(uris));
+    }(pageIds.value()) : nullptr);
   }
-  double JHybridImagePagerViewSpec::getIndex() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<double()>("getIndex");
+  std::optional<ImagePagerDirection> JHybridImagePagerViewSpec::getDirection() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JImagePagerDirection>()>("getDirection");
     auto __result = method(_javaPart);
-    return __result;
+    return __result != nullptr ? std::make_optional(__result->toCpp()) : std::nullopt;
   }
-  void JHybridImagePagerViewSpec::setIndex(double index) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* index */)>("setIndex");
-    method(_javaPart, index);
+  void JHybridImagePagerViewSpec::setDirection(std::optional<ImagePagerDirection> direction) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JImagePagerDirection> /* direction */)>("setDirection");
+    method(_javaPart, direction.has_value() ? JImagePagerDirection::fromCpp(direction.value()) : nullptr);
+  }
+  std::string JHybridImagePagerViewSpec::getSelectedPageId() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getSelectedPageId");
+    auto __result = method(_javaPart);
+    return __result->toStdString();
+  }
+  void JHybridImagePagerViewSpec::setSelectedPageId(const std::string& selectedPageId) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* selectedPageId */)>("setSelectedPageId");
+    method(_javaPart, jni::make_jstring(selectedPageId));
   }
   std::optional<bool> JHybridImagePagerViewSpec::getSwipeEnabled() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getSwipeEnabled");
@@ -100,27 +126,10 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* swipeEnabled */)>("setSwipeEnabled");
     method(_javaPart, swipeEnabled.has_value() ? jni::JBoolean::valueOf(swipeEnabled.value()) : nullptr);
   }
-  std::optional<std::function<void(double /* index */)>> JHybridImagePagerViewSpec::getOnIndexChange() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_double::javaobject>()>("getOnIndexChange_cxx");
+  std::optional<std::function<void(const std::string& /* pageId */)>> JHybridImagePagerViewSpec::getOnPageChange() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_std__string::javaobject>()>("getOnPageChange_cxx");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(double /* index */)> {
-      if (__result->isInstanceOf(JFunc_void_double_cxx::javaClassStatic())) [[likely]] {
-        auto downcast = jni::static_ref_cast<JFunc_void_double_cxx::javaobject>(__result);
-        return downcast->cthis()->getFunction();
-      } else {
-        auto __resultRef = jni::make_global(__result);
-        return JNICallable<JFunc_void_double, void(double)>(std::move(__resultRef));
-      }
-    }()) : std::nullopt;
-  }
-  void JHybridImagePagerViewSpec::setOnIndexChange(const std::optional<std::function<void(double /* index */)>>& onIndexChange) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_double::javaobject> /* onIndexChange */)>("setOnIndexChange_cxx");
-    method(_javaPart, onIndexChange.has_value() ? JFunc_void_double_cxx::fromCpp(onIndexChange.value()) : nullptr);
-  }
-  std::optional<std::function<void(const std::string& /* uri */)>> JHybridImagePagerViewSpec::getOnLoad() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_std__string::javaobject>()>("getOnLoad_cxx");
-    auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const std::string& /* uri */)> {
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const std::string& /* pageId */)> {
       if (__result->isInstanceOf(JFunc_void_std__string_cxx::javaClassStatic())) [[likely]] {
         auto downcast = jni::static_ref_cast<JFunc_void_std__string_cxx::javaobject>(__result);
         return downcast->cthis()->getFunction();
@@ -130,7 +139,24 @@ namespace margelo::nitro::documentscanner {
       }
     }()) : std::nullopt;
   }
-  void JHybridImagePagerViewSpec::setOnLoad(const std::optional<std::function<void(const std::string& /* uri */)>>& onLoad) {
+  void JHybridImagePagerViewSpec::setOnPageChange(const std::optional<std::function<void(const std::string& /* pageId */)>>& onPageChange) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_std__string::javaobject> /* onPageChange */)>("setOnPageChange_cxx");
+    method(_javaPart, onPageChange.has_value() ? JFunc_void_std__string_cxx::fromCpp(onPageChange.value()) : nullptr);
+  }
+  std::optional<std::function<void(const std::string& /* pageId */)>> JHybridImagePagerViewSpec::getOnLoad() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_std__string::javaobject>()>("getOnLoad_cxx");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const std::string& /* pageId */)> {
+      if (__result->isInstanceOf(JFunc_void_std__string_cxx::javaClassStatic())) [[likely]] {
+        auto downcast = jni::static_ref_cast<JFunc_void_std__string_cxx::javaobject>(__result);
+        return downcast->cthis()->getFunction();
+      } else {
+        auto __resultRef = jni::make_global(__result);
+        return JNICallable<JFunc_void_std__string, void(std::string)>(std::move(__resultRef));
+      }
+    }()) : std::nullopt;
+  }
+  void JHybridImagePagerViewSpec::setOnLoad(const std::optional<std::function<void(const std::string& /* pageId */)>>& onLoad) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_std__string::javaobject> /* onLoad */)>("setOnLoad_cxx");
     method(_javaPart, onLoad.has_value() ? JFunc_void_std__string_cxx::fromCpp(onLoad.value()) : nullptr);
   }
@@ -153,6 +179,6 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Methods
-  
+
 
 } // namespace margelo::nitro::documentscanner

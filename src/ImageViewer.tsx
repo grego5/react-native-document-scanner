@@ -1,3 +1,4 @@
+import { getNativeScanSession, type ScanSession } from './ScanSession'
 import { callback, getHostComponent } from 'react-native-nitro-modules'
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import type { ViewProps } from 'react-native'
@@ -12,8 +13,9 @@ const NativeImageViewer = getHostComponent<
 >('ImageViewerView', () => ImageViewerViewConfig)
 
 export interface ImageViewerProps
-  extends Omit<ImageViewerViewProps, 'hybridRef' | 'onError'>,
+  extends Omit<ImageViewerViewProps, 'hybridRef' | 'onError' | 'session'>,
     ViewProps {
+  session: ScanSession
   onError?: (error: ScannerError) => void
 }
 
@@ -27,7 +29,7 @@ export interface ImageViewerRef {
 
 /** Native pinch, pan and double-tap zoom over an image; see `ImageViewerViewProps`. */
 export const ImageViewer = forwardRef<ImageViewerRef, ImageViewerProps>(function ImageViewer(
-  { uri, onError, onLoad, onZoomChange, ...props },
+  { session, pageId, onError, onLoad, onZoomChange, ...props },
   forwardedRef,
 ) {
   // A stable wrapper calling the latest handler, so a new handler each render does not reach native.
@@ -59,7 +61,8 @@ export const ImageViewer = forwardRef<ImageViewerRef, ImageViewerProps>(function
   return (
     <NativeImageViewer
       {...props}
-      uri={uri}
+      session={getNativeScanSession(session)}
+      pageId={pageId}
       onError={native.onError}
       onLoad={native.onLoad}
       onZoomChange={native.onZoomChange}

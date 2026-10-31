@@ -55,6 +55,27 @@ class SourceImageLoaderTest {
   }
 
   @Test
+  fun regionDecodeMatchesTheSameRegionOfTheFullUprightDecodeForEveryOrientation() {
+    for (orientation in ExifInterface.ORIENTATION_NORMAL..ExifInterface.ORIENTATION_ROTATE_270) {
+      val file = createFixture(orientation)
+      val header = SourceImageLoader.inspect(Uri.fromFile(file).toString())
+      // Straddles the quadrant borders, off-centre, so a wrong mapping shows a different colour mix.
+      val region = PhotoInferenceCrop(10, 8, header.uprightWidth / 2, header.uprightHeight / 3)
+      SourceImageLoader.load(Uri.fromFile(file).toString(), maxDimension = 1024).use { full ->
+        val part = SourceImageLoader.loadRegion(header, region)
+        try {
+          assertEquals(region.width, part.width)
+          assertEquals(region.height, part.height)
+          for ((x, y) in listOf(1 to 1, part.width - 2 to 1, 1 to part.height - 2, part.width - 2 to part.height - 2)) {
+            val expected = full.bitmap.getPixel(region.left + x, region.top + y)
+            assertTrue("orientation $orientation at $x,$y", colorDistance(expected, part.getPixel(x, y)) < 40)
+          }
+        } finally { part.recycle() }
+      }
+    }
+  }
+
+  @Test
   fun sampledDecodeHonorsRequestedMaximumDimensionAndPreservesAspect() {
     val file = createFixture(ExifInterface.ORIENTATION_NORMAL, width = 640, height = 480)
     SourceImageLoader.load(Uri.fromFile(file).toString(), maxDimension = 160).use { image ->

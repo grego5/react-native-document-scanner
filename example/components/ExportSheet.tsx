@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BackHandler, Text, TextInput, View } from 'react-native'
-import type { CreatePdfOptions } from 'react-native-document-scanner'
+import type { SessionPdfOptions } from 'react-native-document-scanner'
 import { colors, styles } from '../styles'
 import { ChoiceRow } from './ChoiceRow'
 import { PrimaryButton } from './PrimaryButton'
@@ -8,7 +8,7 @@ import { PrimaryButton } from './PrimaryButton'
 type Format = 'pdf' | 'images'
 
 /** The PDF options an export passes on; the pages and output path are the caller's. */
-export type PdfSettings = Omit<CreatePdfOptions, 'outputPath' | 'pages'>
+export type PdfSettings = Omit<SessionPdfOptions, 'outputPath'>
 
 const FORMATS = [
   { value: 'pdf', label: 'PDF' },

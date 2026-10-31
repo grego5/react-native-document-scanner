@@ -20,20 +20,20 @@ namespace margelo::nitro::documentscanner::views {
                                                                        const HybridDocumentCropEditorViewProps& sourceProps,
                                                                        const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
-    originalUri(nitro::ReactProp<std::string>::fromRawValue("DocumentCropEditorView", "originalUri", rawProps, sourceProps.originalUri)),
-    quad(nitro::ReactProp<DocumentQuad>::fromRawValue("DocumentCropEditorView", "quad", rawProps, sourceProps.quad)),
+    session(nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>>::fromRawValue("DocumentCropEditorView", "session", rawProps, sourceProps.session)),
+    pageId(nitro::ReactProp<std::string>::fromRawValue("DocumentCropEditorView", "pageId", rawProps, sourceProps.pageId)),
     filter(nitro::ReactProp<std::optional<DocumentFilter>>::fromRawValue("DocumentCropEditorView", "filter", rawProps, sourceProps.filter)),
-    onQuadChange(nitro::ReactProp<std::optional<std::function<void(const DocumentQuad& /* quad */)>>>::fromRawValue("DocumentCropEditorView", "onQuadChange", rawProps, sourceProps.onQuadChange)),
+    onPresetChange(nitro::ReactProp<std::optional<std::function<void(CropDraftPreset /* preset */)>>>::fromRawValue("DocumentCropEditorView", "onPresetChange", rawProps, sourceProps.onPresetChange)),
     onLoad(nitro::ReactProp<std::optional<std::function<void(double /* width */, double /* height */)>>>::fromRawValue("DocumentCropEditorView", "onLoad", rawProps, sourceProps.onLoad)),
     onError(nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* failure */)>>>::fromRawValue("DocumentCropEditorView", "onError", rawProps, sourceProps.onError)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridDocumentCropEditorViewSpec>& /* ref */)>>>::fromRawValue("DocumentCropEditorView", "hybridRef", rawProps, sourceProps.hybridRef)) { }
 
   bool HybridDocumentCropEditorViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
-      case hashString("originalUri"): return true;
-      case hashString("quad"): return true;
+      case hashString("session"): return true;
+      case hashString("pageId"): return true;
       case hashString("filter"): return true;
-      case hashString("onQuadChange"): return true;
+      case hashString("onPresetChange"): return true;
       case hashString("onLoad"): return true;
       case hashString("onError"): return true;
       case hashString("hybridRef"): return true;

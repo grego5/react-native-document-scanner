@@ -29,9 +29,9 @@ namespace margelo::nitro::documentscanner {
    * An enum which can be represented as a JavaScript union (TorchMode).
    */
   enum class TorchMode {
-    OFF      SWIFT_NAME(off) = 0,
-    ON      SWIFT_NAME(on) = 1,
-    AUTO      SWIFT_NAME(auto) = 2,
+    AUTO      SWIFT_NAME(auto) = 0,
+    OFF      SWIFT_NAME(off) = 1,
+    ON      SWIFT_NAME(on) = 2,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::documentscanner
@@ -44,18 +44,18 @@ namespace margelo::nitro {
     static inline margelo::nitro::documentscanner::TorchMode fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, arg);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
+        case hashString("auto"): return margelo::nitro::documentscanner::TorchMode::AUTO;
         case hashString("off"): return margelo::nitro::documentscanner::TorchMode::OFF;
         case hashString("on"): return margelo::nitro::documentscanner::TorchMode::ON;
-        case hashString("auto"): return margelo::nitro::documentscanner::TorchMode::AUTO;
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert \"" + unionValue + "\" to enum TorchMode - invalid value!");
       }
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, margelo::nitro::documentscanner::TorchMode arg) {
       switch (arg) {
+        case margelo::nitro::documentscanner::TorchMode::AUTO: return JSIConverter<std::string>::toJSI(runtime, "auto");
         case margelo::nitro::documentscanner::TorchMode::OFF: return JSIConverter<std::string>::toJSI(runtime, "off");
         case margelo::nitro::documentscanner::TorchMode::ON: return JSIConverter<std::string>::toJSI(runtime, "on");
-        case margelo::nitro::documentscanner::TorchMode::AUTO: return JSIConverter<std::string>::toJSI(runtime, "auto");
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert TorchMode to JS - invalid value: "
                                     + std::to_string(static_cast<int>(arg)) + "!");
@@ -67,9 +67,9 @@ namespace margelo::nitro {
       }
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, value);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
+        case hashString("auto"):
         case hashString("off"):
         case hashString("on"):
-        case hashString("auto"):
           return true;
         default:
           return false;

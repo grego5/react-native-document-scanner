@@ -22,6 +22,36 @@ class ImageViewerViewTest {
   private val instrumentation = InstrumentationRegistry.getInstrumentation()
 
   @Test
+  fun sessionPlaceholderIsImmediateAndBoundedWithoutAJavaScriptHandoff() = withImage { image ->
+    SessionViewFixture(image.context).use { fixture ->
+      fixture.admit("a"); fixture.admit("b")
+      val preview = solid(Color.RED)
+      onMain {
+        fixture.state.retainCapturePlaceholder("a", preview)
+        fixture.state.retainCapturePlaceholder("b", preview)
+        assertNull(fixture.state.capturePlaceholder("a"))
+        val queued = java.util.ArrayDeque<Runnable>()
+        val reads = java.util.concurrent.Executor { queued.add(it) }
+        var failures = 0
+        val loader = ImageLoader(image, onLoaded = {}, onFailed = { failures++ }, reads = reads)
+        loader.bind(fixture.state, "b")
+        assertSame(preview, image.bitmap)
+        fixture.state.releaseCapturePlaceholder("b")
+        assertSame("the view independently retains its pixels", preview, image.bitmap)
+        fixture.state.removePage("b")
+        assertNull(image.bitmap)
+        assertEquals("expected deletion is a lifecycle change", 0, failures)
+        loader.clear()
+        while (queued.isNotEmpty()) queued.removeFirst().run()
+        assertNull(image.bitmap)
+        fixture.state.retainCapturePlaceholder("a", preview)
+        fixture.state.removePage("a")
+        assertNull(fixture.state.capturePlaceholder("a"))
+      }
+    }
+  }
+
+  @Test
   fun rapidReplacementFadesInOverTheLatestImageOnly() = withImage { image ->
     val center = onMain {
       image.bitmap = solid(Color.RED)
@@ -52,20 +82,81 @@ class ImageViewerViewTest {
 
   @Test
   fun holdsTheImageOnlyWhileAttached() = withImage { image ->
-    val uri = "file:///zoom-image-attach-test.jpg"
-    val thumbnail = solid(Color.RED)
-    onMain {
-      PageThumbnails.put(uri, thumbnail)
-      // As a pager outside its window holds a mounted page.
-      val parent = image.parent as FrameLayout
-      parent.removeView(image)
-      ImageLoader(image, onLoaded = {}, onFailed = {}).show(uri, fade = false)
-      assertNull("a detached view loads nothing", image.bitmap)
-      parent.addView(image, SIZE, SIZE)
-      assertSame("attaching shows the cached thumbnail", thumbnail, image.bitmap)
-      parent.removeView(image)
-      assertNull("detaching lets go of it", image.bitmap)
-      assertSame("the cache keeps it", thumbnail, PageThumbnails.cached(uri))
+    SessionViewFixture(image.context).use { fixture ->
+      fixture.admit("page")
+      val thumbnail = solid(Color.GREEN)
+      fixture.state.imageSource("page").use { PageThumbnails.put(it.uri, thumbnail) }
+      onMain {
+        val parent = image.parent as FrameLayout
+        parent.removeView(image)
+        val loader = ImageLoader(image, onLoaded = { assertEquals("page", it) }, onFailed = { throw it })
+        loader.bind(fixture.state, "page")
+        assertNull("a detached view loads nothing", image.bitmap)
+        parent.addView(image, SIZE, SIZE)
+        assertSame("attaching shows the cached placeholder", thumbnail, image.bitmap)
+        parent.removeView(image)
+        assertNull("detaching lets go of it", image.bitmap)
+        loader.clear()
+      }
+    }
+  }
+
+  @Test
+  fun renderRetryDeletionAndSessionReplacementSuppressQueuedReads() = withImage { image ->
+    SessionViewFixture(image.context).use { first ->
+      SessionViewFixture(image.context).use { second ->
+        val reads = SessionViewFixture.Worker()
+        val loaded = mutableListOf<String>()
+        val failures = mutableListOf<ScannerException>()
+        lateinit var loader: ImageLoader
+        onMain {
+          first.admit("first"); second.admit("second")
+          loader = ImageLoader(image, onLoaded = { loaded.add(it) }, onFailed = { failures.add(it) }, reads = reads)
+          loader.bind(first.state, "first")
+          loader.bind(second.state, "second") // First read is still queued, with its own pin.
+          reads.drain()
+        }
+        instrumentation.waitForIdleSync()
+        assertEquals(listOf("second"), loaded)
+        onMain {
+          first.worker.drain()
+          second.failRender = true
+          second.worker.drain() // Failed rendering preserves the placeholder.
+          assertTrue(image.bitmap != null)
+          second.failRender = false
+          second.state.setFilter("second", DocumentFilter.NONE)
+          second.worker.drain()
+          reads.drain()
+          second.state.removePage("second") // Decode result posted, but not installed.
+          assertNull(image.bitmap)
+        }
+        instrumentation.waitForIdleSync()
+        assertEquals(listOf("second"), loaded)
+        assertTrue("expected removal clears presentation without an error", failures.isEmpty())
+        onMain { loader.clear() }
+      }
+    }
+  }
+
+  @Test
+  fun closeWaitsForQueuedReadPinsAndNeverInstallsTheirResult() = withImage { image ->
+    SessionViewFixture(image.context).use { fixture ->
+      val reads = SessionViewFixture.Worker()
+      var loads = 0
+      onMain {
+        fixture.admit("page")
+        val loader = ImageLoader(image, onLoaded = { loads++ }, onFailed = {}, reads = reads)
+        loader.bind(fixture.state, "page")
+        val closing = fixture.state.close()
+        assertNull(image.bitmap)
+        assertTrue("queued read still owns its pin", !closing.isDone)
+        fixture.worker.drain()
+        reads.drain()
+        assertTrue("the skipped read releases its pin", closing.isDone)
+        loader.clear()
+      }
+      instrumentation.waitForIdleSync()
+      assertEquals(0, loads)
     }
   }
 

@@ -10,7 +10,6 @@ class DocCornerGeometryTest {
     val candidate = DocCornerSession.decodeOutput(output)!!
     assertEquals(output[0].toDouble(), candidate.quad.topLeft.x, 0.0)
     assertEquals(output[4].toDouble(), candidate.quad.bottomRight.x, 0.0)
-    assertNull(candidate.a4PageRange)
     assertNull(DocCornerSession.decodeOutput(output.copyOf().apply { this[4] = 1.01f }))
     assertNull(DocCornerSession.decodeOutput(output.copyOf().apply { this[4] = .1f; this[5] = .2f }))
     assertNull(DocCornerSession.decodeOutput(floatArrayOf(.1f, .1f, .9f, .9f, .9f, .1f, .1f, .9f, .7f)))
@@ -20,6 +19,16 @@ class DocCornerGeometryTest {
     assertThrows(IllegalStateException::class.java) {
       DocCornerSession.decodeOutput(output.copyOf().apply { this[0] = Float.POSITIVE_INFINITY })
     }
+  }
+
+  @Test
+  fun smallPredictionsKeepTheirOwnTurnToleranceWithoutEditorArea() {
+    assertNotNull(DocCornerSession.decodeOutput(
+      floatArrayOf(0f, 0f, .005f, 0f, .005f, .005f, 0f, .005f, .7f),
+    ))
+    assertNull(DocCornerSession.decodeOutput(
+      floatArrayOf(0f, 0f, .0005f, 0f, .0005f, .0005f, 0f, .0005f, .7f),
+    ))
   }
 
   @Test

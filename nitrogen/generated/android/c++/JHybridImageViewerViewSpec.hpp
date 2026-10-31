@@ -50,12 +50,14 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Properties
-    std::string getUri() override;
-    void setUri(const std::string& uri) override;
+    std::shared_ptr<HybridScanSessionSpec> getSession() override;
+    void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) override;
+    std::string getPageId() override;
+    void setPageId(const std::string& pageId) override;
     std::optional<std::function<void(const ScannerFailure& /* failure */)>> getOnError() override;
     void setOnError(const std::optional<std::function<void(const ScannerFailure& /* failure */)>>& onError) override;
-    std::optional<std::function<void(const std::string& /* uri */)>> getOnLoad() override;
-    void setOnLoad(const std::optional<std::function<void(const std::string& /* uri */)>>& onLoad) override;
+    std::optional<std::function<void(const std::string& /* pageId */)>> getOnLoad() override;
+    void setOnLoad(const std::optional<std::function<void(const std::string& /* pageId */)>>& onLoad) override;
     std::optional<std::function<void(bool /* zoomed */)>> getOnZoomChange() override;
     void setOnZoomChange(const std::optional<std::function<void(bool /* zoomed */)>>& onZoomChange) override;
 

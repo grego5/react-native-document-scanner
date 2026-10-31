@@ -13,19 +13,31 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
 // Forward declaration of `DocumentFilter` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
+// Forward declaration of `CropDraftPreset` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class CropDraftPreset; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
+// Forward declaration of `DocumentQuad` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `CropPreset` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class CropPreset; }
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
 #include <string>
-#include "DocumentQuad.hpp"
 #include "DocumentFilter.hpp"
 #include <optional>
+#include "CropDraftPreset.hpp"
 #include <functional>
 #include "ScannerFailure.hpp"
+#include <variant>
+#include <NitroModules/Promise.hpp>
+#include "DocumentQuad.hpp"
+#include "CropPreset.hpp"
 
 namespace margelo::nitro::documentscanner {
 
@@ -54,14 +66,14 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Properties
-      virtual std::string getOriginalUri() = 0;
-      virtual void setOriginalUri(const std::string& originalUri) = 0;
-      virtual DocumentQuad getQuad() = 0;
-      virtual void setQuad(const DocumentQuad& quad) = 0;
+      virtual std::shared_ptr<HybridScanSessionSpec> getSession() = 0;
+      virtual void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) = 0;
+      virtual std::string getPageId() = 0;
+      virtual void setPageId(const std::string& pageId) = 0;
       virtual std::optional<DocumentFilter> getFilter() = 0;
       virtual void setFilter(std::optional<DocumentFilter> filter) = 0;
-      virtual std::optional<std::function<void(const DocumentQuad& /* quad */)>> getOnQuadChange() = 0;
-      virtual void setOnQuadChange(const std::optional<std::function<void(const DocumentQuad& /* quad */)>>& onQuadChange) = 0;
+      virtual std::optional<std::function<void(CropDraftPreset /* preset */)>> getOnPresetChange() = 0;
+      virtual void setOnPresetChange(const std::optional<std::function<void(CropDraftPreset /* preset */)>>& onPresetChange) = 0;
       virtual std::optional<std::function<void(double /* width */, double /* height */)>> getOnLoad() = 0;
       virtual void setOnLoad(const std::optional<std::function<void(double /* width */, double /* height */)>>& onLoad) = 0;
       virtual std::optional<std::function<void(const ScannerFailure& /* failure */)>> getOnError() = 0;
@@ -69,7 +81,9 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Methods
-      
+      virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> submitResult() = 0;
+      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>> getQuadResult() = 0;
+      virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setPresetResult(CropPreset preset) = 0;
 
     protected:
       // Hybrid Setup

@@ -19,24 +19,28 @@
 #include "JFunc_void.hpp"
 #include "JFunc_void_CameraPermissionStatus.hpp"
 #include "JHybridDocumentCropEditorViewSpec.hpp"
-#include "JFunc_void_DocumentQuad.hpp"
+#include "JFunc_void_CropDraftPreset.hpp"
 #include "JFunc_void_double_double.hpp"
 #include "JFunc_void_ScannerFailure.hpp"
 #include "views/JHybridDocumentCropEditorViewStateUpdater.hpp"
 #include "JHybridDocumentScannerCameraViewSpec.hpp"
 #include "JFunc_void_CameraState.hpp"
+#include "JFunc_void_CameraCaptureState.hpp"
 #include "JFunc_void_AutofocusState.hpp"
 #include "JFunc_void_DocumentState.hpp"
-#include "JFunc_void_CaptureStage.hpp"
+#include "JFunc_void_CaptureStage_std__optional_CaptureWaitReason_.hpp"
 #include "views/JHybridDocumentScannerCameraViewStateUpdater.hpp"
 #include "JHybridDocumentScannerProcessorSpec.hpp"
 #include "JHybridImagePagerViewSpec.hpp"
-#include "JFunc_void_double.hpp"
 #include "JFunc_void_std__string.hpp"
 #include "views/JHybridImagePagerViewStateUpdater.hpp"
 #include "JHybridImageViewerViewSpec.hpp"
 #include "JFunc_void_bool.hpp"
 #include "views/JHybridImageViewerViewStateUpdater.hpp"
+#include "JHybridPageThumbnailViewSpec.hpp"
+#include "views/JHybridPageThumbnailViewStateUpdater.hpp"
+#include "JHybridScanSessionSpec.hpp"
+#include "JFunc_void_ScanSessionChange.hpp"
 #include <NitroModules/DefaultConstructableObject.hpp>
 
 namespace margelo::nitro::documentscanner {
@@ -55,6 +59,14 @@ struct JHybridDocumentScannerCameraViewSpecImpl: public jni::JavaClass<JHybridDo
     return javaPart->getJHybridDocumentScannerCameraViewSpec();
   }
 };
+struct JHybridScanSessionSpecImpl: public jni::JavaClass<JHybridScanSessionSpecImpl, JHybridScanSessionSpec::JavaPart> {
+  static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/documentscanner/HybridScanSession;";
+  static std::shared_ptr<JHybridScanSessionSpec> create() {
+    static const auto constructorFn = javaClassStatic()->getConstructor<JHybridScanSessionSpecImpl::javaobject()>();
+    jni::local_ref<JHybridScanSessionSpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
+    return javaPart->getJHybridScanSessionSpec();
+  }
+};
 struct JHybridDocumentScannerProcessorSpecImpl: public jni::JavaClass<JHybridDocumentScannerProcessorSpecImpl, JHybridDocumentScannerProcessorSpec::JavaPart> {
   static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/documentscanner/HybridDocumentScannerProcessor;";
   static std::shared_ptr<JHybridDocumentScannerProcessorSpec> create() {
@@ -69,6 +81,14 @@ struct JHybridDocumentCropEditorViewSpecImpl: public jni::JavaClass<JHybridDocum
     static const auto constructorFn = javaClassStatic()->getConstructor<JHybridDocumentCropEditorViewSpecImpl::javaobject()>();
     jni::local_ref<JHybridDocumentCropEditorViewSpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
     return javaPart->getJHybridDocumentCropEditorViewSpec();
+  }
+};
+struct JHybridPageThumbnailViewSpecImpl: public jni::JavaClass<JHybridPageThumbnailViewSpecImpl, JHybridPageThumbnailViewSpec::JavaPart> {
+  static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/documentscanner/HybridPageThumbnailView;";
+  static std::shared_ptr<JHybridPageThumbnailViewSpec> create() {
+    static const auto constructorFn = javaClassStatic()->getConstructor<JHybridPageThumbnailViewSpecImpl::javaobject()>();
+    jni::local_ref<JHybridPageThumbnailViewSpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
+    return javaPart->getJHybridPageThumbnailViewSpec();
   }
 };
 struct JHybridImageViewerViewSpecImpl: public jni::JavaClass<JHybridImageViewerViewSpecImpl, JHybridImageViewerViewSpec::JavaPart> {
@@ -105,30 +125,40 @@ void registerAllNatives() {
   margelo::nitro::documentscanner::JFunc_void_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_CameraPermissionStatus_cxx::registerNatives();
   margelo::nitro::documentscanner::JHybridDocumentCropEditorViewSpec::CxxPart::registerNatives();
-  margelo::nitro::documentscanner::JFunc_void_DocumentQuad_cxx::registerNatives();
+  margelo::nitro::documentscanner::JFunc_void_CropDraftPreset_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_double_double_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_ScannerFailure_cxx::registerNatives();
   margelo::nitro::documentscanner::views::JHybridDocumentCropEditorViewStateUpdater::registerNatives();
   margelo::nitro::documentscanner::JHybridDocumentScannerCameraViewSpec::CxxPart::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_CameraState_cxx::registerNatives();
+  margelo::nitro::documentscanner::JFunc_void_CameraCaptureState_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_AutofocusState_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_DocumentState_cxx::registerNatives();
-  margelo::nitro::documentscanner::JFunc_void_CaptureStage_cxx::registerNatives();
+  margelo::nitro::documentscanner::JFunc_void_CaptureStage_std__optional_CaptureWaitReason__cxx::registerNatives();
   margelo::nitro::documentscanner::views::JHybridDocumentScannerCameraViewStateUpdater::registerNatives();
   margelo::nitro::documentscanner::JHybridDocumentScannerProcessorSpec::CxxPart::registerNatives();
   margelo::nitro::documentscanner::JHybridImagePagerViewSpec::CxxPart::registerNatives();
-  margelo::nitro::documentscanner::JFunc_void_double_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_std__string_cxx::registerNatives();
   margelo::nitro::documentscanner::views::JHybridImagePagerViewStateUpdater::registerNatives();
   margelo::nitro::documentscanner::JHybridImageViewerViewSpec::CxxPart::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_bool_cxx::registerNatives();
   margelo::nitro::documentscanner::views::JHybridImageViewerViewStateUpdater::registerNatives();
+  margelo::nitro::documentscanner::JHybridPageThumbnailViewSpec::CxxPart::registerNatives();
+  margelo::nitro::documentscanner::views::JHybridPageThumbnailViewStateUpdater::registerNatives();
+  margelo::nitro::documentscanner::JHybridScanSessionSpec::CxxPart::registerNatives();
+  margelo::nitro::documentscanner::JFunc_void_ScanSessionChange_cxx::registerNatives();
 
   // Register Nitro Hybrid Objects
   HybridObjectRegistry::registerHybridObjectConstructor(
     "DocumentScannerCameraView",
     []() -> std::shared_ptr<HybridObject> {
       return JHybridDocumentScannerCameraViewSpecImpl::create();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "ScanSession",
+    []() -> std::shared_ptr<HybridObject> {
+      return JHybridScanSessionSpecImpl::create();
     }
   );
   HybridObjectRegistry::registerHybridObjectConstructor(
@@ -141,6 +171,12 @@ void registerAllNatives() {
     "DocumentCropEditorView",
     []() -> std::shared_ptr<HybridObject> {
       return JHybridDocumentCropEditorViewSpecImpl::create();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "PageThumbnailView",
+    []() -> std::shared_ptr<HybridObject> {
+      return JHybridPageThumbnailViewSpecImpl::create();
     }
   );
   HybridObjectRegistry::registerHybridObjectConstructor(

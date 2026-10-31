@@ -9,7 +9,7 @@ import {
 import { errorMessage } from '../lib/errorMessage'
 import { styles } from '../styles'
 import { PrimaryButton } from './PrimaryButton'
-import { TuningSwitch } from './TuningSwitch'
+import { ActionButton } from './ActionButton'
 
 export interface LiveTuning {
   guideTransitionDuration: number
@@ -109,10 +109,10 @@ export function OptionsPanel({
       <ScrollView>
         <Text style={styles.diagnostics}>Shadow is the default for new pages.</Text>
         <View style={styles.tuningRow}>
-          <TuningSwitch label={`Shadow · ${onOff(removeShadows)}`} disabled={disabled}
+          <ActionButton label={`Shadow · ${onOff(removeShadows)}`} disabled={disabled}
             onPress={() => onRemoveShadowsChange(!removeShadows)} />
           {OPTIONS.map(({ label, next }, index) => (
-            <TuningSwitch
+            <ActionButton
               key={index}
               label={label(tuning)}
               disabled={disabled}
@@ -143,13 +143,13 @@ function SampleFolderSwitches({ folder, onChange }: {
     change()
     onChange(DocumentScanner.getSampleFolder())
   }
-  if (folder.uri == null) return <TuningSwitch label="Sample collection off" onPress={pick} />
+  if (folder.uri == null) return <ActionButton label="Sample collection off" onPress={pick} />
   return (
     <>
-      <TuningSwitch label={`Sample collection ${folder.collecting ? 'on' : 'off'}`}
+      <ActionButton label={`Sample collection ${folder.collecting ? 'on' : 'off'}`}
         onPress={() => update(() => DocumentScanner.setSampleCollection(!folder.collecting))} />
-      <TuningSwitch label={`Sample folder ${folder.name ?? 'picked'}`} onPress={pick} />
-      <TuningSwitch label="Forget sample folder" onPress={() => update(DocumentScanner.clearSampleFolder)} />
+      <ActionButton label={`Sample folder ${folder.name ?? 'picked'}`} onPress={pick} />
+      <ActionButton label="Forget sample folder" onPress={() => update(DocumentScanner.clearSampleFolder)} />
     </>
   )
 }

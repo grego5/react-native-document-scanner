@@ -10,7 +10,7 @@ import android.os.ParcelFileDescriptor
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.margelo.nitro.documentscanner.CreatePdfOptions
+import com.margelo.nitro.documentscanner.processing.PdfWriteOptions
 import com.margelo.nitro.documentscanner.ImageFit
 import java.io.File
 import java.io.ByteArrayOutputStream
@@ -161,7 +161,7 @@ class PdfWriterTest {
     jpegQuality: Double? = null,
   ): File {
     val output = File(directory, "out.pdf")
-    val uri = PdfWriter.write(CreatePdfOptions(
+    val uri = PdfWriter.write(PdfWriteOptions(
       outputPath = output.absolutePath,
       pages = pages.map { Uri.fromFile(it).toString() }.toTypedArray(),
       imageFit = imageFit,

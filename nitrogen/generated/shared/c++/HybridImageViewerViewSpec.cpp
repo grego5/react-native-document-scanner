@@ -14,8 +14,10 @@ namespace margelo::nitro::documentscanner {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
-      prototype.registerHybridGetter("uri", &HybridImageViewerViewSpec::getUri);
-      prototype.registerHybridSetter("uri", &HybridImageViewerViewSpec::setUri);
+      prototype.registerHybridGetter("session", &HybridImageViewerViewSpec::getSession);
+      prototype.registerHybridSetter("session", &HybridImageViewerViewSpec::setSession);
+      prototype.registerHybridGetter("pageId", &HybridImageViewerViewSpec::getPageId);
+      prototype.registerHybridSetter("pageId", &HybridImageViewerViewSpec::setPageId);
       prototype.registerHybridGetter("onError", &HybridImageViewerViewSpec::getOnError);
       prototype.registerHybridSetter("onError", &HybridImageViewerViewSpec::setOnError);
       prototype.registerHybridGetter("onLoad", &HybridImageViewerViewSpec::getOnLoad);

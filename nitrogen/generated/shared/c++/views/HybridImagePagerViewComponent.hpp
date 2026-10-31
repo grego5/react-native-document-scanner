@@ -17,12 +17,14 @@
 
 #include <string>
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
 #include <string>
 #include <vector>
 #include <optional>
+#include "ImagePagerDirection.hpp"
 #include <functional>
 #include "ScannerFailure.hpp"
-#include <memory>
 #include "HybridImagePagerViewSpec.hpp"
 
 namespace margelo::nitro::documentscanner::views {
@@ -45,20 +47,24 @@ namespace margelo::nitro::documentscanner::views {
                               const react::RawProps& rawProps);
 
   public:
-    nitro::ReactProp<std::vector<std::string>> uris;
-    nitro::ReactProp<double> index;
+    nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>> session;
+    nitro::ReactProp<std::optional<std::vector<std::string>>> pageIds;
+    nitro::ReactProp<std::optional<ImagePagerDirection>> direction;
+    nitro::ReactProp<std::string> selectedPageId;
     nitro::ReactProp<std::optional<bool>> swipeEnabled;
-    nitro::ReactProp<std::optional<std::function<void(double /* index */)>>> onIndexChange;
-    nitro::ReactProp<std::optional<std::function<void(const std::string& /* uri */)>>> onLoad;
+    nitro::ReactProp<std::optional<std::function<void(const std::string& /* pageId */)>>> onPageChange;
+    nitro::ReactProp<std::optional<std::function<void(const std::string& /* pageId */)>>> onLoad;
     nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* failure */)>>> onError;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridImagePagerViewSpec>& /* ref */)>>> hybridRef;
 
     [[nodiscard]]
     bool hasSameProps(const HybridImagePagerViewProps& other) const noexcept {
-      return uris.hasSameValue(other.uris) &&
-             index.hasSameValue(other.index) &&
+      return session.hasSameValue(other.session) &&
+             pageIds.hasSameValue(other.pageIds) &&
+             direction.hasSameValue(other.direction) &&
+             selectedPageId.hasSameValue(other.selectedPageId) &&
              swipeEnabled.hasSameValue(other.swipeEnabled) &&
-             onIndexChange.hasSameValue(other.onIndexChange) &&
+             onPageChange.hasSameValue(other.onPageChange) &&
              onLoad.hasSameValue(other.onLoad) &&
              onError.hasSameValue(other.onError) &&
              hybridRef.hasSameValue(other.hybridRef);
@@ -66,10 +72,12 @@ namespace margelo::nitro::documentscanner::views {
 
     [[nodiscard]]
     bool hasAnyProvidedProps() const noexcept {
-      return uris.isProvided() ||
-             index.isProvided() ||
+      return session.isProvided() ||
+             pageIds.isProvided() ||
+             direction.isProvided() ||
+             selectedPageId.isProvided() ||
              swipeEnabled.isProvided() ||
-             onIndexChange.isProvided() ||
+             onPageChange.isProvided() ||
              onLoad.isProvided() ||
              onError.isProvided() ||
              hybridRef.isProvided();

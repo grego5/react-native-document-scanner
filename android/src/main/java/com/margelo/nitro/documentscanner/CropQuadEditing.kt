@@ -1,6 +1,5 @@
 package com.margelo.nitro.documentscanner
 
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -11,14 +10,12 @@ import kotlin.math.min
 internal object CropQuadEditing {
   val FULL_FRAME = doubleArrayOf(0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0)
 
-  fun clampToFrame(quad: DoubleArray): DoubleArray = DoubleArray(8) { quad[it].coerceIn(0.0, 1.0) }
-
   /** Moves corner [index] to ([x], [y]), kept inside the photo; null when the result is not a valid quad. */
   fun moveCorner(quad: DoubleArray, index: Int, x: Double, y: Double): DoubleArray? {
     val next = quad.copyOf()
     next[index * 2] = x.coerceIn(0.0, 1.0)
     next[index * 2 + 1] = y.coerceIn(0.0, 1.0)
-    return next.takeIf(::isValid)
+    return next.takeIf(NativeQuadGeometry::editor)
   }
 
   /**
@@ -35,27 +32,6 @@ internal object CropQuadEditing {
     next[a + 1] += sy
     next[b] += sx
     next[b + 1] += sy
-    return next.takeIf(::isValid)
+    return next.takeIf(NativeQuadGeometry::editor)
   }
-
-  /** Convex with clockwise turns in screen coordinates, not crossed, and not collapsed. */
-  fun isValid(quad: DoubleArray): Boolean {
-    if (quad.size != 8 || quad.any { !it.isFinite() }) return false
-    for (index in 0 until 4) {
-      if (turn(quad, index, (index + 1) % 4, (index + 2) % 4) <= MIN_TURN) return false
-    }
-    var doubledArea = 0.0
-    for (index in 0 until 4) {
-      val next = (index + 1) % 4
-      doubledArea += quad[index * 2] * quad[next * 2 + 1] - quad[next * 2] * quad[index * 2 + 1]
-    }
-    return abs(doubledArea) / 2 >= MIN_AREA
-  }
-
-  private fun turn(quad: DoubleArray, a: Int, b: Int, c: Int): Double =
-    (quad[b * 2] - quad[a * 2]) * (quad[c * 2 + 1] - quad[a * 2 + 1]) -
-      (quad[b * 2 + 1] - quad[a * 2 + 1]) * (quad[c * 2] - quad[a * 2])
-
-  private const val MIN_TURN = 1e-8
-  private const val MIN_AREA = 1e-4
 }

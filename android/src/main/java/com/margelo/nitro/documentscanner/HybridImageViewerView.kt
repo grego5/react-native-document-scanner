@@ -6,7 +6,7 @@ import android.view.View
 import com.facebook.react.uimanager.ThemedReactContext
 
 /** A native zoomable image; its gestures never cross into JavaScript. */
-class HybridImageViewerView(
+open class HybridImageViewerView(
   themedContext: ThemedReactContext,
 ) : HybridImageViewerViewSpec() {
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -26,7 +26,8 @@ class HybridImageViewerView(
   override val view: View
     get() = image
 
-  override var uri: String = ""
+  override lateinit var session: HybridScanSessionSpec
+  override var pageId: String = ""
   override var onLoad: ((uri: String) -> Unit)? = null
   override var onError: ((failure: ScannerFailure) -> Unit)? = null
   override var onZoomChange: ((zoomed: Boolean) -> Unit)? = null
@@ -37,9 +38,17 @@ class HybridImageViewerView(
     mainHandler.post(image::resetZoom)
   }
 
-  override fun afterUpdate() = loader.show(uri, fade = true)
+  override fun afterUpdate() {
+    val state = (session as? HybridScanSession)?.state
+    if (state == null) {
+      loader.clear()
+      onError?.invoke(scannerFailure(InvalidInputException("Expected a native scan session."), ScannerErrorCode.INPUT_INVALID))
+    } else loader.bind(state, pageId)
+  }
 
-  // A dropped view may stay on screen while its screen animates away, so it keeps its image until detached, where the
-  // loader lets go of it.
-  override fun onDropView() = Unit
+  // Explicit unmount detaches subscriptions and invalidates even already queued decodes.
+  override fun onDropView() {
+    onLoad = null; onError = null; onZoomChange = null
+    loader.clear()
+  }
 }
