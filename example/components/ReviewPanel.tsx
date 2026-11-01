@@ -72,7 +72,7 @@ function PreviewMode({
   const index = pageIds.indexOf(selectedId ?? '');
   const editBlocked = working || !page;
   const blocked = working || !page?.ready;
-  const canNavigate = visible && !working && !newPhoto && !review?.cropping;
+  const canNavigate = visible && !working && !review?.cropping;
   const filter = page?.options.filter ?? 'none';
   const shadow = page?.options.removeShadows ?? true;
   const selectPage = useCallback(

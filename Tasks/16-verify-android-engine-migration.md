@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: In progress - automated Android integration verified; human camera evidence pending
+Status: Completed
 Complexity: High
 Dependencies: [06](06-share-model-preprocessing.md), [08](08-share-document-filters.md), [10](10-share-pdf-writer.md), [12](12-share-live-guide-policy.md), [13](13-share-focus-policy.md), [14](14-share-torch-policy.md)
 
@@ -94,3 +94,9 @@ Task 16 stays In progress for human camera/visible-guidance evidence. Automated 
 A human release launch reported ExceptionInInitializerError caused by ClassNotFoundException for processing.FieldKernels during JNI_OnLoad. The bridge has no production Java callers after shared-filter extraction, but native library initialization still registers it unconditionally by class name. Added explicit consumer keep rules for FieldKernels and FastCores (also eagerly registered). Debug instrumentation did not exercise R8 class removal; release library instrumentation is not a substitute for launching a minified example APK.
 
 Whitespace check passed. Actual minified release verification remains outstanding: tools/android.ps1 -Release failed to clear the locked prepared host (EBUSY). Building the existing host directly with :app:assembleRelease, arm64-v8a and android.enableMinifyInReleaseBuilds=true failed configuring expo-constants: No such property: libraryVariants for class: java.lang.String. An isolated --no-daemon, nonincremental/in-process Kotlin retry failed at the same configuration step before app compilation/R8. No rebuilt APK was installed or launched. Logs: .local/task16-release-startup.log, .local/task16-release-first-build.log, .local/task16-release-r8-build.log. Keep-rule correction is uncommitted; Task 16 also remains pending this minified-startup check in addition to human camera/guide evidence.
+
+## Human acceptance — 2026-11-02
+
+The user confirmed the example works after being asked specifically about rebuilt minified-release startup following the R8 fix, live detection/visible guidance, human-triggered capture, crop and export. This closes the remaining manual Android acceptance checks. This is user-reported device validation; the earlier local release-build failures remain recorded above and are not represented as successful agent-run builds.
+
+Task 16 is completed on the combined automated evidence above and this human acceptance. No new performance measurement or iOS readiness is claimed.

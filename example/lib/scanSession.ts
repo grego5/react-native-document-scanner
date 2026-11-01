@@ -47,8 +47,8 @@ export function sessionReducer(state: SessionState, action: SessionAction, pageI
     case 'navigate':
       return { ...state, screen: { type: action.screen === 'summary' && pageIds.length > 0 ? 'summary' : 'camera' } }
     case 'select':
-      return !pageIds.includes(action.pageId) ||
-        (state.screen.type === 'review' && (state.screen.origin === 'capture' || state.screen.cropping)) ? state :
+      return action.pageId === state.selectedId || !pageIds.includes(action.pageId) ||
+        (state.screen.type === 'review' && state.screen.cropping) ? state :
         { ...state, selectedId: action.pageId, screen: { type: 'summary' } }
     case 'delete':
       return { ...state, selectedId: action.nextId,
