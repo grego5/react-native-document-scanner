@@ -3,11 +3,8 @@ package com.margelo.nitro.documentscanner.processing
 import android.content.Context
 import android.graphics.Bitmap
 import com.margelo.nitro.documentscanner.DocumentCandidate
-import com.margelo.nitro.documentscanner.DocumentCornerProvenance
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentPointProvenance
 import com.margelo.nitro.documentscanner.DocumentQuad
-import com.margelo.nitro.documentscanner.DocumentSideProvenance
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.tensorflow.lite.Interpreter
@@ -90,30 +87,11 @@ internal class DocCornerSession(
     const val BUNDLED_ASSET = "doccornernet/model.tflite"
     const val BUNDLED_INPUT_SIZE = 224
 
-    // Bound JPEG decode memory while preserving the model's corner parity on photo inputs.
-    const val MAX_PHOTO_DIMENSION = 2000
-
     fun decodeOutput(values: FloatArray): DocumentCandidate? {
       val decoded = NativeTensorPreprocessor.decodeOutputNative(values) ?: return null
       val points = (0..3).map { DocumentPoint(decoded[it * 2], decoded[it * 2 + 1]) }
-      val predicted = DocumentPointProvenance.PREDICTED
-      return DocumentCandidate(
-        DocumentQuad(points[0], points[1], points[2], points[3]), decoded[8],
-        DocumentCornerProvenance(predicted, predicted, predicted, predicted),
-        DocumentSideProvenance(predicted, predicted, predicted, predicted), null,
-      )
+      return DocumentCandidate(DocumentQuad(points[0], points[1], points[2], points[3]), decoded[8])
     }
 
-    fun corners(quad: DocumentQuad) = listOf(quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft)
-
-    fun validNormalizedQuad(points: List<DocumentPoint>): Boolean {
-      if (points.size != 4 || points.any { !it.x.isFinite() || !it.y.isFinite() || it.x !in 0.0..1.0 || it.y !in 0.0..1.0 }) return false
-      return points.indices.all { i ->
-        val a = points[i]
-        val b = points[(i + 1) % 4]
-        val c = points[(i + 2) % 4]
-        (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) > 1e-6
-      }
-    }
   }
 }

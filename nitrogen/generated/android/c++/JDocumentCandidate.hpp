@@ -10,21 +10,10 @@
 #include <fbjni/fbjni.h>
 #include "DocumentCandidate.hpp"
 
-#include "DocumentA4PageEstimateRange.hpp"
-#include "DocumentCornerProvenance.hpp"
-#include "DocumentPageSide.hpp"
 #include "DocumentPoint.hpp"
-#include "DocumentPointProvenance.hpp"
 #include "DocumentQuad.hpp"
-#include "DocumentSideProvenance.hpp"
-#include "JDocumentA4PageEstimateRange.hpp"
-#include "JDocumentCornerProvenance.hpp"
-#include "JDocumentPageSide.hpp"
 #include "JDocumentPoint.hpp"
-#include "JDocumentPointProvenance.hpp"
 #include "JDocumentQuad.hpp"
-#include "JDocumentSideProvenance.hpp"
-#include <optional>
 
 namespace margelo::nitro::documentscanner {
 
@@ -49,18 +38,9 @@ namespace margelo::nitro::documentscanner {
       jni::local_ref<JDocumentQuad> quad = this->getFieldValue(fieldQuad);
       static const auto fieldScore = clazz->getField<double>("score");
       double score = this->getFieldValue(fieldScore);
-      static const auto fieldCorners = clazz->getField<JDocumentCornerProvenance>("corners");
-      jni::local_ref<JDocumentCornerProvenance> corners = this->getFieldValue(fieldCorners);
-      static const auto fieldSides = clazz->getField<JDocumentSideProvenance>("sides");
-      jni::local_ref<JDocumentSideProvenance> sides = this->getFieldValue(fieldSides);
-      static const auto fieldA4PageRange = clazz->getField<JDocumentA4PageEstimateRange>("a4PageRange");
-      jni::local_ref<JDocumentA4PageEstimateRange> a4PageRange = this->getFieldValue(fieldA4PageRange);
       return DocumentCandidate(
         quad->toCpp(),
-        score,
-        corners->toCpp(),
-        sides->toCpp(),
-        a4PageRange != nullptr ? std::make_optional(a4PageRange->toCpp()) : std::nullopt
+        score
       );
     }
 
@@ -70,16 +50,13 @@ namespace margelo::nitro::documentscanner {
      */
     [[maybe_unused]]
     static jni::local_ref<JDocumentCandidate::javaobject> fromCpp(const DocumentCandidate& value) {
-      using JSignature = JDocumentCandidate(jni::alias_ref<JDocumentQuad>, double, jni::alias_ref<JDocumentCornerProvenance>, jni::alias_ref<JDocumentSideProvenance>, jni::alias_ref<JDocumentA4PageEstimateRange>);
+      using JSignature = JDocumentCandidate(jni::alias_ref<JDocumentQuad>, double);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
         JDocumentQuad::fromCpp(value.quad),
-        value.score,
-        JDocumentCornerProvenance::fromCpp(value.corners),
-        JDocumentSideProvenance::fromCpp(value.sides),
-        value.a4PageRange.has_value() ? JDocumentA4PageEstimateRange::fromCpp(value.a4PageRange.value()) : nullptr
+        value.score
       );
     }
   };

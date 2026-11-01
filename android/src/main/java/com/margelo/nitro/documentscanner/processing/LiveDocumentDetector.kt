@@ -1,5 +1,6 @@
 package com.margelo.nitro.documentscanner.processing
 
+import com.margelo.nitro.documentscanner.NativeQuadGeometry
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.PixelFormat
@@ -616,7 +617,7 @@ internal class LiveDocumentDetector(
   private fun publish(result: LiveDetectionResult) {
     // Capture's page is the guide main shows: a confirmed outline with every corner inside the frame.
     captureGuide = result.quad?.takeIf {
-      result.status == LiveGuideStatus.TRACKING && DocCornerSession.validNormalizedQuad(DocCornerSession.corners(it))
+      result.status == LiveGuideStatus.TRACKING && NativeQuadGeometry.prediction(NativeQuadGeometry.coordinates(it))
     }
     captureGuideDeadlineNs = result.holdDeadlineNs
     handler.removeCallbacksAndMessages(callbackToken)
@@ -723,5 +724,4 @@ internal class LiveDocumentDetector(
     executor.execute { releaseSession(); releaseFlow(); pageMotion.close(); stabilizer.close() }
     executor.shutdown() // Drain the current image and final close; never close interpreter in flight.
   }
-
 }

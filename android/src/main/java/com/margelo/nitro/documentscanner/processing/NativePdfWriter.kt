@@ -1,7 +1,6 @@
 package com.margelo.nitro.documentscanner.processing
 
 import com.facebook.proguard.annotations.DoNotStrip
-import com.margelo.nitro.documentscanner.CreatePdfOptions
 import com.margelo.nitro.documentscanner.ImageFit
 import com.margelo.nitro.documentscanner.ReactNativeDocumentScannerOnLoad
 import java.io.File
@@ -10,7 +9,7 @@ import java.io.OutputStream
 @DoNotStrip
 internal object NativePdfWriter {
   init { ReactNativeDocumentScannerOnLoad.initializeNative() }
-  fun write(output: OutputStream, images: PdfImageAdapter, options: CreatePdfOptions) {
+  fun write(output: OutputStream, images: PdfImageAdapter, options: PdfWriteOptions) {
     val optional = arrayOf(options.pageWidth, options.pageHeight, options.pageAspectRatio, options.targetDpi, options.jpegQuality)
     var mask = 0
     val values = DoubleArray(optional.size) { index ->

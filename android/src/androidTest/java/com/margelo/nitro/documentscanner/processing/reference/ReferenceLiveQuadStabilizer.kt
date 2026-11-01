@@ -96,7 +96,7 @@ internal class ReferenceLiveQuadStabilizer(config: LiveQuadStabilizerConfig = Li
   private fun shapeDecision(quad: DocumentQuad, frame: LiveQuadInput): LiveQuadDecision? {
     if (area(quad, frame) < config.minFrameAreaFraction * frame.width * frame.height) return LiveQuadDecision.TOO_SMALL
     val points = listOf(quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft)
-    return if (DocCornerSession.validNormalizedQuad(points)) null else LiveQuadDecision.INVALID
+    return if (com.margelo.nitro.documentscanner.NativeQuadGeometry.prediction(points.flatMap { listOf(it.x, it.y) }.toDoubleArray())) null else LiveQuadDecision.INVALID
   }
 
   /** Shoelace area in upright pixels. */

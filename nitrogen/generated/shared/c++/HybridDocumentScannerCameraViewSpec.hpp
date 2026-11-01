@@ -13,6 +13,10 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
+// Forward declaration of `DocumentRenderOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `CameraMode` to properly resolve imports.
@@ -25,17 +29,22 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 namespace margelo::nitro::documentscanner { enum class CaptureMode; }
 // Forward declaration of `CameraState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraState; }
+// Forward declaration of `CameraCaptureState` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class CameraCaptureState; }
 // Forward declaration of `AutofocusState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class AutofocusState; }
 // Forward declaration of `DocumentState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentState; }
 // Forward declaration of `CaptureStage` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
-// Forward declaration of `CapturedPhoto` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct CapturedPhoto; }
+// Forward declaration of `CaptureWaitReason` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class CaptureWaitReason; }
 // Forward declaration of `TakePhotoOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
+#include "DocumentRenderOptions.hpp"
 #include <string>
 #include <optional>
 #include "ScannerFailure.hpp"
@@ -45,10 +54,11 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "TorchMode.hpp"
 #include "CaptureMode.hpp"
 #include "CameraState.hpp"
+#include "CameraCaptureState.hpp"
 #include "AutofocusState.hpp"
 #include "DocumentState.hpp"
 #include "CaptureStage.hpp"
-#include "CapturedPhoto.hpp"
+#include "CaptureWaitReason.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
 #include "TakePhotoOptions.hpp"
@@ -80,6 +90,10 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Properties
+      virtual std::shared_ptr<HybridScanSessionSpec> getSession() = 0;
+      virtual void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) = 0;
+      virtual DocumentRenderOptions getRenderOptions() = 0;
+      virtual void setRenderOptions(const DocumentRenderOptions& renderOptions) = 0;
       virtual std::optional<std::string> getQuadTensorModel() = 0;
       virtual void setQuadTensorModel(const std::optional<std::string>& quadTensorModel) = 0;
       virtual std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() = 0;
@@ -120,22 +134,22 @@ namespace margelo::nitro::documentscanner {
       virtual void setGuideColor(std::optional<double> guideColor) = 0;
       virtual std::optional<bool> getCaptureFeedback() = 0;
       virtual void setCaptureFeedback(std::optional<bool> captureFeedback) = 0;
-      virtual std::optional<bool> getRetainCapturePreview() = 0;
-      virtual void setRetainCapturePreview(std::optional<bool> retainCapturePreview) = 0;
       virtual std::optional<double> getCaptureColor() = 0;
       virtual void setCaptureColor(std::optional<double> captureColor) = 0;
       virtual std::optional<std::function<void(CameraState /* state */)>> getOnCameraStateChange() = 0;
       virtual void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) = 0;
+      virtual std::optional<std::function<void(CameraCaptureState /* state */)>> getOnCaptureStateChange() = 0;
+      virtual void setOnCaptureStateChange(const std::optional<std::function<void(CameraCaptureState /* state */)>>& onCaptureStateChange) = 0;
       virtual std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() = 0;
       virtual void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) = 0;
       virtual std::optional<std::function<void(DocumentState /* state */)>> getOnDocumentStateChange() = 0;
       virtual void setOnDocumentStateChange(const std::optional<std::function<void(DocumentState /* state */)>>& onDocumentStateChange) = 0;
-      virtual std::optional<std::function<void(CaptureStage /* stage */)>> getOnCaptureStage() = 0;
-      virtual void setOnCaptureStage(const std::optional<std::function<void(CaptureStage /* stage */)>>& onCaptureStage) = 0;
+      virtual std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>> getOnCaptureStage() = 0;
+      virtual void setOnCaptureStage(const std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>>& onCaptureStage) = 0;
 
     public:
       // Methods
-      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, CapturedPhoto>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) = 0;
+      virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) = 0;
       virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveLiveSampleResult() = 0;
 
     protected:

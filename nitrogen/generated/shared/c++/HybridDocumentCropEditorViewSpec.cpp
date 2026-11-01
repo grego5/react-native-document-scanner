@@ -14,18 +14,21 @@ namespace margelo::nitro::documentscanner {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
-      prototype.registerHybridGetter("originalUri", &HybridDocumentCropEditorViewSpec::getOriginalUri);
-      prototype.registerHybridSetter("originalUri", &HybridDocumentCropEditorViewSpec::setOriginalUri);
-      prototype.registerHybridGetter("quad", &HybridDocumentCropEditorViewSpec::getQuad);
-      prototype.registerHybridSetter("quad", &HybridDocumentCropEditorViewSpec::setQuad);
+      prototype.registerHybridGetter("session", &HybridDocumentCropEditorViewSpec::getSession);
+      prototype.registerHybridSetter("session", &HybridDocumentCropEditorViewSpec::setSession);
+      prototype.registerHybridGetter("pageId", &HybridDocumentCropEditorViewSpec::getPageId);
+      prototype.registerHybridSetter("pageId", &HybridDocumentCropEditorViewSpec::setPageId);
       prototype.registerHybridGetter("filter", &HybridDocumentCropEditorViewSpec::getFilter);
       prototype.registerHybridSetter("filter", &HybridDocumentCropEditorViewSpec::setFilter);
-      prototype.registerHybridGetter("onQuadChange", &HybridDocumentCropEditorViewSpec::getOnQuadChange);
-      prototype.registerHybridSetter("onQuadChange", &HybridDocumentCropEditorViewSpec::setOnQuadChange);
+      prototype.registerHybridGetter("onPresetChange", &HybridDocumentCropEditorViewSpec::getOnPresetChange);
+      prototype.registerHybridSetter("onPresetChange", &HybridDocumentCropEditorViewSpec::setOnPresetChange);
       prototype.registerHybridGetter("onLoad", &HybridDocumentCropEditorViewSpec::getOnLoad);
       prototype.registerHybridSetter("onLoad", &HybridDocumentCropEditorViewSpec::setOnLoad);
       prototype.registerHybridGetter("onError", &HybridDocumentCropEditorViewSpec::getOnError);
       prototype.registerHybridSetter("onError", &HybridDocumentCropEditorViewSpec::setOnError);
+      prototype.registerHybridMethod("submitResult", &HybridDocumentCropEditorViewSpec::submitResult);
+      prototype.registerHybridMethod("getQuadResult", &HybridDocumentCropEditorViewSpec::getQuadResult);
+      prototype.registerHybridMethod("setPresetResult", &HybridDocumentCropEditorViewSpec::setPresetResult);
     });
   }
 

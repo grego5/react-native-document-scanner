@@ -3,7 +3,9 @@ package com.margelo.nitro.documentscanner.processing
 import com.margelo.nitro.documentscanner.InvalidInputException
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapRegionDecoder
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
@@ -80,6 +82,56 @@ internal object SourceImageLoader {
     val width = (sampled.width * scale).roundToInt().coerceAtLeast(1)
     val height = (sampled.height * scale).roundToInt().coerceAtLeast(1)
     return Bitmap.createScaledBitmap(sampled, width, height, true).also { if (it !== sampled) sampled.recycle() }
+  }
+
+  /**
+   * Decodes the upright [region] of [header]'s photo, reduced by [sampleSize] (a power of two) while decoding and
+   * reading only that part of the JPEG; the caller owns the bitmap.
+   */
+  @Suppress("DEPRECATION")
+  fun loadRegion(header: SourceImageHeader, region: PhotoInferenceCrop, sampleSize: Int = 1): Bitmap {
+    val encoded = encodedRect(header, region)
+    val decoder = BitmapRegionDecoder.newInstance(header.file.absolutePath, false)
+      ?: throw IOException("Captured JPEG could not be opened for region decoding.")
+    val decoded = try {
+      decoder.decodeRegion(encoded, BitmapFactory.Options().apply {
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+        inSampleSize = sampleSize
+      })
+        ?: throw IOException("Captured JPEG region could not be decoded.")
+    } finally {
+      decoder.recycle()
+    }
+    return try {
+      applyOrientation(decoded, header.exifOrientation).also { if (it !== decoded) decoded.recycle() }
+    } catch (error: Throwable) {
+      decoded.recycle()
+      throw error
+    }
+  }
+
+  /** The power-of-two reduction that keeps [header]'s photo within [maxDimension] on each side. */
+  fun sampleSize(header: SourceImageHeader, maxDimension: Int): Int =
+    calculateSampleSize(header.encodedWidth, header.encodedHeight, maxDimension)
+
+  /** The encoded-pixel rectangle that [applyOrientation] turns into the upright [region]. */
+  internal fun encodedRect(header: SourceImageHeader, region: PhotoInferenceCrop): Rect {
+    val w = header.encodedWidth
+    val h = header.encodedHeight
+    val l = region.left
+    val t = region.top
+    val r = region.left + region.width
+    val b = region.top + region.height
+    return when (header.exifOrientation) {
+      ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> Rect(w - r, t, w - l, b)
+      ExifInterface.ORIENTATION_ROTATE_180 -> Rect(w - r, h - b, w - l, h - t)
+      ExifInterface.ORIENTATION_FLIP_VERTICAL -> Rect(l, h - b, r, h - t)
+      ExifInterface.ORIENTATION_TRANSPOSE -> Rect(t, l, b, r)
+      ExifInterface.ORIENTATION_ROTATE_90 -> Rect(t, h - r, b, h - l)
+      ExifInterface.ORIENTATION_TRANSVERSE -> Rect(w - b, h - r, w - t, h - l)
+      ExifInterface.ORIENTATION_ROTATE_270 -> Rect(w - b, l, w - t, r)
+      else -> Rect(l, t, r, b)
+    }
   }
 
   /** Validates a local JPEG and reads its header. */

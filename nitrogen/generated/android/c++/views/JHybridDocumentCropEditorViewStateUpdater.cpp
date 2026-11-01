@@ -54,14 +54,14 @@ void JHybridDocumentCropEditorViewStateUpdater::updateViewProps(jni::alias_ref<j
 
   // Update only props that differ from the previous State snapshot.
   if (oldProps == nullptr
-        ? newProps->originalUri.isProvided()
-        : !newProps->originalUri.hasSameValue(oldProps->originalUri)) {
-    hybridView->setOriginalUri(newProps->originalUri.get());
+        ? newProps->session.isProvided()
+        : !newProps->session.hasSameValue(oldProps->session)) {
+    hybridView->setSession(newProps->session.get());
   }
   if (oldProps == nullptr
-        ? newProps->quad.isProvided()
-        : !newProps->quad.hasSameValue(oldProps->quad)) {
-    hybridView->setQuad(newProps->quad.get());
+        ? newProps->pageId.isProvided()
+        : !newProps->pageId.hasSameValue(oldProps->pageId)) {
+    hybridView->setPageId(newProps->pageId.get());
   }
   if (oldProps == nullptr
         ? newProps->filter.isProvided()
@@ -69,9 +69,9 @@ void JHybridDocumentCropEditorViewStateUpdater::updateViewProps(jni::alias_ref<j
     hybridView->setFilter(newProps->filter.get());
   }
   if (oldProps == nullptr
-        ? newProps->onQuadChange.isProvided()
-        : !newProps->onQuadChange.hasSameValue(oldProps->onQuadChange)) {
-    hybridView->setOnQuadChange(newProps->onQuadChange.get());
+        ? newProps->onPresetChange.isProvided()
+        : !newProps->onPresetChange.hasSameValue(oldProps->onPresetChange)) {
+    hybridView->setOnPresetChange(newProps->onPresetChange.get());
   }
   if (oldProps == nullptr
         ? newProps->onLoad.isProvided()

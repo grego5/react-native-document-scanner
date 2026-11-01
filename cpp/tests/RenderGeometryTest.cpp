@@ -231,6 +231,22 @@ void callerTargets() {
   }
   check(rejected && !allocated, "Rejected render allocated caller storage");
 }
+void decodedRegion() {
+  auto source = fixture("flat");
+  // Identity region must preserve the exact existing result (including coverage and curves).
+  const auto full = renderGeometry(source.lease(), page, 1);
+  const auto mapped =
+      renderGeometry(source.lease(), page, 1, std::nullopt, true, RenderSourceRegion{640, 480, 0, 0, 1});
+  check(samePixels(full.pixels, mapped.pixels) && samePolygon(full.validContentPolygon, mapped.validContentPolygon),
+        "Identity source-region mapping changed rendering");
+  // A cropped buffer uses photo-normalized corners, rather than treating them as region-normalized.
+  const auto local = renderGeometry(source.lease(), rect(.25, .25, .75, .75), 2, std::nullopt, false);
+  const auto region = renderGeometry(source.lease(), rect(.375, .375, .625, .625), 2, std::nullopt, false,
+                                     RenderSourceRegion{2560, 1920, 640, 480, 2});
+  check(samePixels(local.pixels, region.pixels) && samePolygon(local.validContentPolygon, region.validContentPolygon),
+        "Decoded region lost photo origin or sample scale");
+}
+
 } // namespace
 int main() {
   try {
@@ -238,6 +254,7 @@ int main() {
     renderFixtures();
     failuresAndUnsupported();
     callerTargets();
+    decodedRegion();
     std::cout << "Geometric render contracts passed\n";
   } catch (const std::exception &e) {
     std::cerr << e.what() << '\n';

@@ -12,7 +12,7 @@ internal object NativeRenderGeometry {
   init { ReactNativeDocumentScannerOnLoad.initializeNative() }
   data class Result(val width: Int, val height: Int, val validContentPolygon: List<DocumentPoint>, val curved: Boolean)
   fun render(source: Mat, into: Mat, quad: DoubleArray, originalScale: Double,
-    paperLongEdge: Double?, followPageEdges: Boolean, filter: DocumentFilter? = null, removeShadows: Boolean = false): Result {
+    paperLongEdge: Double?, followPageEdges: Boolean, filter: DocumentFilter? = null, removeShadows: Boolean = false, region: DoubleArray? = null): Result {
     val filterValue = when (filter) {
       null -> -1
       DocumentFilter.NONE -> 0
@@ -21,9 +21,9 @@ internal object NativeRenderGeometry {
       DocumentFilter.BLACKWHITE -> 3
     }
     val values = renderNative(source.nativeObj, into.nativeObj, quad, originalScale, paperLongEdge ?: -1.0,
-      followPageEdges, filterValue, removeShadows)
+      followPageEdges, filterValue, removeShadows, region)
     return Result(values[0].toInt(), values[1].toInt(), values.drop(3).chunked(2).map { DocumentPoint(it[0], it[1]) }, values[2] != 0.0)
   }
   @JvmStatic @DoNotStrip private external fun renderNative(source: Long, into: Long, quad: DoubleArray,
-    originalScale: Double, paperLongEdge: Double, followPageEdges: Boolean, filter: Int, removeShadows: Boolean): DoubleArray
+    originalScale: Double, paperLongEdge: Double, followPageEdges: Boolean, filter: Int, removeShadows: Boolean, region: DoubleArray?): DoubleArray
 }

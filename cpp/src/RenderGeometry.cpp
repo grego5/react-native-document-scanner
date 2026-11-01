@@ -9,7 +9,8 @@
 
 namespace document_scanner {
 GeometricRenderInfo renderGeometry(const PixelLease &lease, const Quad &normalized, double scale,
-                                   std::optional<double> paper, bool follow, const PixelAllocator &allocate) {
+                                   std::optional<double> paper, bool follow, const PixelAllocator &allocate,
+                                   std::optional<RenderSourceRegion> region) {
   namespace g = geometry;
   const auto &layout = lease.view().layout();
   const auto size = layout.size;
@@ -19,7 +20,18 @@ GeometricRenderInfo renderGeometry(const PixelLease &lease, const Quad &normaliz
     throw std::invalid_argument(
         "Geometric rendering requires a full upright RGBA8 source no larger than 4096 pixels per side.");
   g::validateRenderQuad(normalized);
-  const auto q = g::toImage(normalized, size);
+  const auto q = [&]() -> Quad {
+    if (!region)
+      return g::toImage(normalized, size);
+    const auto r = *region;
+    if (!(std::isfinite(r.photoWidth) && std::isfinite(r.photoHeight) && std::isfinite(r.left) &&
+          std::isfinite(r.top) && std::isfinite(r.sample) && r.photoWidth > 0 && r.photoHeight > 0 && r.sample > 0))
+      throw std::invalid_argument("Invalid decoded source region.");
+    const auto point = [&](Point p) -> Point {
+      return {(p.x * r.photoWidth - r.left) / r.sample, (p.y * r.photoHeight - r.top) / r.sample};
+    };
+    return {point(normalized[0]), point(normalized[1]), point(normalized[2]), point(normalized[3])};
+  }();
   const auto target = g::targetCanvas(q, scale, paper);
   std::vector<cv::Point2f> from, to;
   for (Point p : q)
@@ -64,9 +76,10 @@ GeometricRenderInfo renderGeometry(const PixelLease &lease, const Quad &normaliz
   return {std::move(polygon), curved};
 }
 GeometricRenderResult renderGeometry(const PixelLease &lease, const Quad &normalized, double scale,
-                                     std::optional<double> paper, bool follow) {
+                                     std::optional<double> paper, bool follow,
+                                     std::optional<RenderSourceRegion> region) {
   internal::OwnedTarget out;
-  auto info = renderGeometry(lease, normalized, scale, paper, follow, out.allocator());
+  auto info = renderGeometry(lease, normalized, scale, paper, follow, out.allocator(), region);
   return {std::move(out).publish(), info.validContentPolygon, info.curved};
 }
 } // namespace document_scanner

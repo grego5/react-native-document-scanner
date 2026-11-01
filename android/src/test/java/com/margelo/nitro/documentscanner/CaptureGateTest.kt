@@ -12,6 +12,20 @@ class CaptureGateTest {
   )
 
   @Test
+  fun publicWaitReasonTracksTheChangingQualityGateBlocker() {
+    val gate = CaptureGate(1_500)
+    val states = listOf(
+      ready.copy(documentFound = false, focused = false),
+      ready.copy(nowMs = 100, focused = false),
+      ready.copy(nowMs = 200, torchReady = false),
+      ready.copy(nowMs = 300, steady = false),
+    )
+    val reasons = states.map { (gate.next(it) as CaptureDecision.Wait).reason.toCaptureWaitReason() }
+    assertEquals(listOf(CaptureWaitReason.DOCUMENT, CaptureWaitReason.FOCUS, CaptureWaitReason.LIGHT, CaptureWaitReason.STEADY), reasons)
+    assertEquals(CaptureDecision.Shoot, gate.next(ready.copy(nowMs = 400)))
+  }
+
+  @Test
   fun perShotOverrideBypassesEveryWaitWithoutChangingTheNextShotsGate() {
     val blocked = ready.copy(documentFound = false, focused = false, zslReady = false, torchReady = false, steady = false)
     assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipQualityGate = true).next(blocked))

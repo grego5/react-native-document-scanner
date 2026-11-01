@@ -138,7 +138,7 @@ class DocCornerNetRuntimeTest {
     val reports = File(context.filesDir, "doccornernet-runtime").apply { mkdirs() }
     val report = JSONObject().put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
       .put("abis", JSONArray(Build.SUPPORTED_ABIS.toList())).put("modelSha256", sha256(modelBytes)).put("photos", rows)
-      .put("photoMaxDimension", DocCornerSession.MAX_PHOTO_DIMENSION)
+      .put("photoMaxDimension", SAMPLED_PARITY_DIMENSION)
     Interpreter(model, Interpreter.Options().setNumThreads(2)).use { tensorRuntime ->
       DocCornerSession(context).use { session ->
         val photos = references.getJSONArray("photos")
@@ -172,7 +172,7 @@ class DocCornerNetRuntimeTest {
               baseline = values(session.analyze(source.bitmap))
             }
             val decodeStartedAt = System.nanoTime()
-            SourceImageLoader.load(Uri.fromFile(file).toString(), DocCornerSession.MAX_PHOTO_DIMENSION).use { source ->
+            SourceImageLoader.load(Uri.fromFile(file).toString(), SAMPLED_PARITY_DIMENSION).use { source ->
               decodeMs = (System.nanoTime() - decodeStartedAt) / 1_000_000.0
               decodedWidth = source.uprightWidth
               decodedHeight = source.uprightHeight
@@ -207,7 +207,7 @@ class DocCornerNetRuntimeTest {
       .put("jpegMeanCornerError", jpegErrors.average()).put("jpegWorstCornerError", jpegErrors.maxOrNull())
     File(reports, "report.json").writeText(report.toString(2) + "\n")
     assertTrue("Upright PNG resampling parity", pngErrors.average() <= .005 && pngErrors.max() <= .015)
-    assertTrue("Production sampled JPEG parity", jpegErrors.average() <= .005 && jpegErrors.max() <= .015)
+    assertTrue("Sampled JPEG parity", jpegErrors.average() <= .005 && jpegErrors.max() <= .015)
   }
 
   private fun requireFixtures() = assumeTrue("Pass -PdocCornerFixtures=<prepared assets>; private fixtures are not bundled by default.",
@@ -221,4 +221,9 @@ class DocCornerNetRuntimeTest {
   }
 
   private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+  private companion object {
+    /** A sampled whole-photo decode, checking the preprocessor against the reference on a resampled JPEG. */
+    const val SAMPLED_PARITY_DIMENSION = 2000
+  }
 }

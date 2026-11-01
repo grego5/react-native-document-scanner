@@ -12,102 +12,150 @@ npm install react-native-document-scanner react-native-nitro-modules
 
 Rebuild your Android app after installing. The library includes the camera permission declaration and a bundled detection model.
 
-## Capture a page
+## Start a scan
 
-Request permission, wait for the camera to be ready, then capture, detect and render a page:
+A session holds the scanned pages, their processing and their files. Create it in an effect, not during render, and close it on cleanup. Views only borrow it; navigation and selection stay in React.
 
 ```tsx
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Alert, Button, Linking, View } from 'react-native'
 import {
-  Camera,
-  DocumentScanner,
-  useCameraPermission,
-  type CameraRef,
+  Camera, DocumentScanner, ImagePager, useCameraPermission,
+  type CameraCaptureState, type CameraRef, type ScanSession,
 } from 'react-native-document-scanner'
 
-export function Scanner({ onPage }: { onPage: (uri: string) => void }) {
+export function Scanner() {
+  const [session, setSession] = useState<ScanSession | null>(null)
+  useEffect(() => {
+    const owner = DocumentScanner.createSession()
+    setSession(owner)
+    return () => { void owner.close().catch(console.warn) }
+  }, [])
+  return session ? <Scan session={session} /> : null
+}
+
+// This view borrows the session. Unmounting it does not dispose the session.
+function Scan({ session }: { session: ScanSession }) {
   const camera = useRef<CameraRef>(null)
   const permission = useCameraPermission()
-  const [ready, setReady] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const reportError = (error: unknown) => Alert.alert('Scanner', String(error))
+  const { pageIds, closed } = useSyncExternalStore(session.subscribe, session.getSession)
+  const [captureState, setCaptureState] = useState<CameraCaptureState>('unavailable')
+  const report = (error: unknown) => Alert.alert('Scanner', String(error))
 
   async function capture() {
-    if (!camera.current || busy) return
-    setBusy(true)
     try {
-      const photo = await camera.current.takePhoto()
-      const analysis = await DocumentScanner.analyzePhoto(
-        photo.originalUri, photo.liveCandidate?.quad,
-      )
-      if (!analysis.candidate) throw new Error('No page found. Try again.')
-      const page = await DocumentScanner.renderDocument(
-        photo.originalUri, analysis.candidate.quad,
-        { paperSize: { width: 21, height: 29.7 }, dpi: 200 },
-      )
-      onPage(page.outputUri)
-    } catch (error) {
-      reportError(error)
-    } finally {
-      setBusy(false)
-    }
+      await camera.current?.takePhoto()
+    } catch (error) { report(error) }
   }
 
   if (permission.status !== 'granted') {
     return <Button title="Allow camera" onPress={() => {
       const request = permission.status === 'blocked' ? Linking.openSettings() : permission.request()
-      void request.catch(reportError)
+      void request.catch(report)
     }} />
   }
-
   return (
     <View style={{ flex: 1 }}>
-      <Camera ref={camera} quadTensorModel="asset:///doccornernet/model.tflite" style={{ flex: 1 }}
-        onCameraStateChange={(state) => setReady(state === 'ready')} />
-      <Button title={busy ? 'Processing…' : 'Capture'} disabled={!ready || busy} onPress={capture} />
+      <Camera renderOptions={{ paperSize: { width: 21, height: 29.7 }, dpi: 200, filter: 'none', removeShadows: true }}
+        session={session} ref={camera} quadTensorModel="asset:///doccornernet/model.tflite"
+        onCaptureStateChange={setCaptureState} onError={report} style={{ flex: 1 }} />
+      <Button title="Capture" disabled={captureState !== 'ready' || closed}
+        onPress={() => { void capture() }} />
+      {pageIds.length > 0 && <ImagePager session={session} selectedPageId={pageIds[pageIds.length - 1]}
+        style={{ flex: 1 }} />}
     </View>
   )
 }
 ```
 
-Capture is user-triggered. By default, the shutter waits for focus and steady framing. Photo analysis finishes before rendering, so filters run once on the final crop.
+- `takePhoto()` waits for focus and steady framing, then resolves with the new page's ID. Detection and rendering continue in the background; page metadata reports `analyzing`, `rendering`, `ready` and failures. A page without a detected outline uses the whole photo.
+- `Camera.renderOptions` sets the defaults for future captures. Edit saved pages with session methods.
+- `pageIds` is the session's page order. `ImagePager` follows it unless you pass `pageIds`, which reorders the session; `session.setPageOrder(ids)` does the same without a view.
+- `session.close()` cancels pending work and deletes the session's files; exported files are kept. A closed session can't be reused. To keep a scan across screens, hold the session in a longer-lived owner.
 
-Photos, rendered pages and thumbnails are cached files. Save or copy anything you need to keep; call `DocumentScanner.removeCachedImages(uris)` when finished with the library's cached images.
+## Page thumbnails
+
+Compose `PageThumbnail` inside your own tiles or grid. You own selection, labels and drag handling; finish a reorder with `setPageOrder`.
+
+```tsx
+import { useSyncExternalStore } from 'react'
+import { FlatList, Pressable, Text } from 'react-native'
+import { PageThumbnail, type ScanSession } from 'react-native-document-scanner'
+
+function PageGrid({ session, selectedId, onSelect, beginDrag }: {
+  session: ScanSession
+  selectedId: string | null
+  onSelect: (id: string) => void
+  beginDrag: (id: string) => void
+}) {
+  const snapshot = useSyncExternalStore(session.subscribe, session.getSession)
+  return (
+    <FlatList data={snapshot.pageIds} keyExtractor={id => id} numColumns={3}
+      extraData={{ selectedId, snapshot }}
+      renderItem={({ item: id, index }) => (
+        <Pressable onPress={() => onSelect(id)} onLongPress={() => beginDrag(id)}
+          accessibilityRole="button" accessibilityLabel={`Page ${index + 1}`}
+          accessibilityState={{ selected: id === selectedId }}>
+          <PageThumbnail session={session} pageId={id} resizeMode="cover"
+            style={{ width: 80, height: 100, borderWidth: id === selectedId ? 2 : 0 }} />
+          <Text>{index + 1}{snapshot.pages[id]?.rendering ? ' (processing)' : ''}</Text>
+        </Pressable>
+      )} />
+  )
+}
+```
+
+`resizeMode` defaults to `cover`; use `contain` to show the whole page. Missing pages show an empty tile.
 
 ## Review and export
 
-Use `ImageViewer` for one page or `ImagePager` for several. Both support pinch zoom, pan and double tap.
+`ImageViewer` shows one page and `ImagePager` an ordered list; both support pinch zoom, pan and double tap. `ImagePager.direction` accepts `auto` (default), `ltr` or `rtl`.
 
 ```tsx
-import { ImagePager } from 'react-native-document-scanner'
+import { ImageViewer, ImagePager } from 'react-native-document-scanner'
 
-<ImagePager uris={pageUris} index={0} style={{ flex: 1 }} />
+<>
+  <ImageViewer session={session} pageId={selectedId} style={{ flex: 1 }} />
+  <ImagePager session={session} selectedPageId={selectedId} direction="auto"
+    onPageChange={setSelectedId} style={{ flex: 1 }} />
+</>
 ```
 
-For manual cropping, pass the original photo and an editable quad to `CropEditor`. Keep edits in state and call `renderDocument` after the user confirms them.
+`CropEditor` edits a page's corners. It starts from the saved crop; `submit()` applies the edit, and unmounting discards it.
 
 ```tsx
-import { CropEditor } from 'react-native-document-scanner'
+import { useRef } from 'react'
+import { CropEditor, type CropEditorRef } from 'react-native-document-scanner'
 
-<CropEditor originalUri={photo.originalUri} quad={quad}
-  onQuadChange={setQuad} style={{ flex: 1 }} />
+const cropEditor = useRef<CropEditorRef>(null)
+
+<CropEditor session={session} pageId={selectedId} ref={cropEditor} style={{ flex: 1 }} />
 ```
-
-Create a PDF from rendered page URIs. Supply an absolute output path or `file://` URI in an existing writable folder:
 
 ```ts
-const pdfUri = await DocumentScanner.createPdf({
-  outputPath,
-  pages: pageUris,
-  pageWidth: 595.28,
-  pageHeight: 841.89,
-  imageFit: 'contain',
-  targetDpi: 200,
-})
+await cropEditor.current!.setPreset('none') // No crop
+await cropEditor.current!.setPreset('auto') // Detected outline; rejects if there is none
+await cropEditor.current!.submit()          // Apply the edit to the page
+await session.setFilter(selectedId, 'grayscale')
+await session.setShadowRemoval(selectedId, false)
+await session.removePage(selectedId)
 ```
 
-The host app handles sharing, saving and navigation. A complete scanner UI is in [`example/`](example/).
+`onPresetChange` reports whether the draft is `none`, `auto` or `custom`, for toggle buttons. Custom controls can read `cropEditor.current.getQuad()` or set corners with `session.setDocumentCrop(pageId, corners)`. Edits apply immediately; the page keeps showing its previous image until the new render is ready.
+
+Export to an existing writable location:
+
+```ts
+const pdfUri = await session.createPdf({
+  outputPath, // Absolute path or file:// URI; parent must already exist.
+  pageWidth: 595.28, pageHeight: 841.89, imageFit: 'contain', targetDpi: 200,
+})
+const imageUris = await session.exportImages(outputDirectory)
+```
+
+Exports use the pages as they are when called; later edits don't change them. Pass page IDs first for a subset, a custom order or repeated pages. A failed export writes nothing. Exported files belong to your app: use unique destinations and delete them when done.
+
+Sharing, saving, navigation and layout are up to your app. See [`example/`](example/) for a complete app.
 
 ## Advanced features
 
@@ -115,56 +163,61 @@ The host app handles sharing, saving and navigation. A complete scanner UI is in
 
 | Option | Purpose |
 | --- | --- |
-| `mode="off"` | Release the camera while keeping the view mounted. |
+| `mode="off"` | Release the camera while keeping the view mounted, e.g. when the screen is inactive. |
 | `mode="camera"` | Use the general camera profile instead of the default scanner profile. |
 | `guide={false}` | Disable live document guidance. |
 | `adaptiveDetection` | Pause inference while tracking a detected page. Default: off. |
 | `squareFrame` | Crop preview, analysis and capture to 1:1. |
 | `torch="auto"` | Automatically light dark scenes. Also accepts `on` or `off`. |
-| `qualityGate={false}` | Capture without the scanner's focus and stability gate. |
+| `qualityGate={false}` | Capture without waiting for focus and stability. |
 | `captureFeedback={false}` | Disable the built-in capture animation and haptic feedback. |
-| `retainCapturePreview` | Keep the shutter frame until your review image is ready. Clear it after loading. |
-
-For a one-shot bypass (for example, on a long press), use `camera.current.takePhoto({ skipQualityGate: true })`. It skips document, focus, lighting and motion waits without changing camera settings. Camera readiness and permission checks still apply.
+| `minCornerScore` | Lowest live detection score accepted; default `0.95`, `0` accepts all. |
 | `showStats` | Show status, model score and timings above the preview. |
 
-Use `onCaptureStage`, `onCameraStateChange` and `onDocumentStateChange` for custom capture UI. Set `mode="off"` when the scanner screen is inactive.
+To skip the quality gate once (for example, on a long press), call `camera.current.takePhoto({ skipQualityGate: true })`.
+
+`onCaptureStage(stage, waitReason)` reports why capture is waiting (`document`, `focus`, `light`, `steady`), so you can show your own instructions; the camera draws no text. `onCaptureStateChange`, `onCameraStateChange`, `onDocumentStateChange` and `onError` cover the rest of the UI.
 
 ### Rendering options
 
 - `filter`: `none` (default), `enhance`, `grayscale` or `blackWhite`. `blackWhite` is high-contrast grayscale, not binary.
 - `removeShadows`: enabled by default.
-- `followPageEdges`: enabled by default; follows curved page edges. Disable it for a straight quad crop.
-- `paperSize`: width and height in centimetres; `dpi` defaults to 200. Rendering preserves the crop's proportions without enlarging source pixels.
-- `format`: `jpeg` (default) or `png`; PNG output is grayscale. `jpegQuality` accepts 0–1.
-
-Each render returns `outputUri` and `thumbnailUri`. Always render edits from the original photo.
+- `followPageEdges`: enabled by default; follows curved page edges. Disable it for a straight crop.
+- `paperSize`: width and height in centimetres; `dpi` defaults to 200. The page keeps its proportions and is never enlarged past the photo's pixels.
+- `format`: `jpeg` (default), `png` or `auto`. `auto` uses 4-bit grayscale PNG for `blackWhite` and JPEG otherwise. `png` quantizes to 16 gray levels. `jpegQuality` accepts 0–1.
 
 ### Custom corner models
 
-Provide the required model source as a camera prop:
+Pass a local model to the camera:
 
 ```tsx
-<Camera
-  quadTensorModel={localModelUri}
-  style={{ flex: 1 }}
-/>
+<Camera session={session} quadTensorModel={localModelUri} style={{ flex: 1 }} />
 ```
 
-Download, cache, report progress and verify hashes in your app first. The camera stays off until the local model validates and warms up. A missing source or failed load emits `onError({ code })` and keeps the camera suspended. Changing the source suspends the camera until the replacement is ready; there is no automatic fallback. Native owns loading and readiness; matching camera requests reuse the prepared model. Use the same model across mounted cameras because inference is shared process-wide.
+Download and verify the model in your app first. The camera stays off until the model loads; a missing or invalid model emits `onError` and keeps it off, with no fallback. All mounted cameras share one model, so use the same source. The bundled model is `'asset:///doccornernet/model.tflite'`.
 
-Input width and height are inferred from the model’s float32 `[1, height, width, 3]` tensor, including rectangular inputs. The output must be float32 `[1, 9]`. To use the bundled example model, explicitly pass `'asset:///doccornernet/model.tflite'`.
+The model takes a float32 `[1, height, width, 3]` input and returns float32 `[1, 9]`. Sources can be local paths, `file://`, `content://`, `android.resource://`, `asset:///` or raw resource names, up to 128 MiB; HTTP(S) is rejected.
 
-Supported sources are absolute local paths, `file://`, `content://`, `android.resource://`, `asset:///path`, raw resource names and packaged `file:///android_res/...` URIs. HTTP(S) sources are rejected. Models are limited to 128 MiB; loaded bytes remain owned by the module.
+### Errors
 
-### Errors and diagnostics
+Operations reject with `ScannerError` and a stable `code`, such as `capture/focus-timeout`; view errors arrive through `onError`. An operation replaced by a later one rejects with `ScannerCancellation` (`name === 'AbortError'`) instead, which handlers can ignore:
 
-Operations reject with `ScannerError` and a stable `code`, such as `capture/focus-timeout`. View errors arrive through `onError`; the host app chooses the message.
+```ts
+import { ScannerCancellation } from 'react-native-document-scanner'
 
-To collect samples for labelling and training, call `DocumentScanner.pickSampleFolder()`. While collection is on, `cameraRef.saveLiveSample()` saves the latest live inference frame and `DocumentScanner.saveCaptureSample(originalUri, quad)` saves a photo with the outline the user accepted and its last live frame before the shutter. Each image gets a JSON entry beside it that [`tools/label-samples`](tools/label-samples) opens directly. `DocumentScanner.setSampleCollection(false)` stops collecting but keeps the folder; `clearSampleFolder()` forgets it.
+try {
+  const pageId = await camera.current!.takePhoto()
+  select(pageId)
+} catch (error) {
+  if (error instanceof ScannerCancellation) return
+  report(error)
+}
+```
 
-`Camera.minCornerScore` defaults to `0.95`. Lower live scores clear tracking and pause inference until image movement is measured; set `0` to disable score rejection. It adds no separate score check to capture or photo analysis; the existing quality gate still uses the accepted live document. Raw scores remain visible in statistics and saved samples.
+### Training samples
 
-Full prop and option documentation: [Camera](src/DocumentScannerCamera.nitro.ts), [CropEditor](src/DocumentCropEditor.nitro.ts), [ImageViewer](src/ImageViewer.nitro.ts), [ImagePager](src/ImagePager.nitro.ts), [processing and PDF](src/DocumentScannerProcessor.nitro.ts).
+To collect images for labelling with [`tools/label-samples`](tools/label-samples), pick a folder with `DocumentScanner.pickSampleFolder()` (or `setSampleFolder(directoryUri)` and `setSampleCollection(true)`). Then `cameraRef.saveLiveSample()` saves the current live frame and `session.saveCaptureSample(pageId)` saves the image corner detection used for that page, each with the model's outline. `setSampleCollection(false)` pauses collection; `clearSampleFolder()` forgets the folder.
 
-Use `DocumentScanner.setSampleFolder(fileDirectoryUri)` to select a private sample directory; `setSampleCollection(true)` enables collection.
+## API reference
+
+Full prop and option documentation: [Camera](src/DocumentScannerCamera.nitro.ts), [CropEditor](src/DocumentCropEditor.nitro.ts), [ImageViewer](src/ImageViewer.nitro.ts), [ImagePager](src/ImagePager.nitro.ts), [render options](src/DocumentScannerProcessor.nitro.ts), [session commands and PDF](src/ScanSession.nitro.ts).

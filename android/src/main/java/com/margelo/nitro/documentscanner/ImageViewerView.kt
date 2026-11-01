@@ -41,6 +41,7 @@ internal class ImageViewerView(context: Context) : View(context) {
 
   /** Called when the view becomes visible: attached, shown, and in a visible window. */
   var onVisible: (() -> Unit)? = null
+  var onHidden: (() -> Unit)? = null
 
   /** Called when the view joins a window, as when a pager or list brings its page into its window. */
   var onAttach: (() -> Unit)? = null
@@ -67,7 +68,7 @@ internal class ImageViewerView(context: Context) : View(context) {
    * Shows [next], fading it in over the shown image, which stays opaque where it is drawn now and goes once the fade
    * ends, so the page never shows through. [fit] returns the zoom to the fit. A hidden view swaps at once.
    */
-  fun fadeIn(next: Bitmap, fit: Boolean) {
+  fun fadeIn(next: Bitmap, fit: Boolean, finished: () -> Unit = {}) {
     val previous = bitmap
     fade?.end()
     if (previous != null && previous !== next && laidOut && isShown) {
@@ -84,12 +85,13 @@ internal class ImageViewerView(context: Context) : View(context) {
           override fun onAnimationEnd(animation: Animator) {
             underneath = null
             fade = null
+            finished()
             invalidate()
           }
         })
         start()
       }
-    }
+    } else finished()
     bitmap = next
     if (fit) resetZoom()
   }
@@ -189,7 +191,7 @@ internal class ImageViewerView(context: Context) : View(context) {
 
   override fun onVisibilityAggregated(isVisible: Boolean) {
     super.onVisibilityAggregated(isVisible)
-    if (isVisible) onVisible?.invoke()
+    if (isVisible) onVisible?.invoke() else onHidden?.invoke()
   }
 
   private fun relayout() {

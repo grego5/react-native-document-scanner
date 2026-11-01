@@ -50,9 +50,10 @@ internal class CropEditorView(context: Context) : View(context) {
   var quad: DoubleArray = CropQuadEditing.FULL_FRAME
     private set
 
-  /** Replaces the crop, clamped inside the photo, and cancels a drag in progress. */
+  /** Replaces a validated in-frame crop and cancels a drag in progress. */
   fun replaceQuad(value: DoubleArray) {
-    quad = CropQuadEditing.clampToFrame(value)
+    requireInput(NativeQuadGeometry.editor(value)) { "Crop corners must form a valid in-frame quadrilateral." }
+    quad = value.copyOf()
     drag = null
     invalidate()
   }

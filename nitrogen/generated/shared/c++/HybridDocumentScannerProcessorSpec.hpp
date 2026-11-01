@@ -13,33 +13,20 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `SampleFolder` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct SampleFolder; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
-// Forward declaration of `DocumentAnalysis` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentAnalysis; }
-// Forward declaration of `RenderedDocument` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct RenderedDocument; }
-// Forward declaration of `DocumentRenderOptions` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
-// Forward declaration of `CreatePdfOptions` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct CreatePdfOptions; }
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
 #include "ScannerFailure.hpp"
-#include "SampleFolder.hpp"
 #include <variant>
+#include "SampleFolder.hpp"
 #include <NitroModules/Promise.hpp>
 #include <string>
-#include "DocumentQuad.hpp"
-#include <optional>
-#include "DocumentAnalysis.hpp"
-#include "RenderedDocument.hpp"
-#include "DocumentRenderOptions.hpp"
-#include "CreatePdfOptions.hpp"
-#include <vector>
 
 namespace margelo::nitro::documentscanner {
 
@@ -72,16 +59,12 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Methods
+      virtual std::variant<std::shared_ptr<HybridScanSessionSpec>, ScannerFailure> createSessionResult() = 0;
       virtual std::shared_ptr<Promise<std::variant<ScannerFailure, SampleFolder>>> pickSampleFolderResult() = 0;
       virtual SampleFolder getSampleFolder() = 0;
       virtual void clearSampleFolder() = 0;
       virtual void setSampleCollection(bool on) = 0;
       virtual void setSampleFolder(const std::string& uri) = 0;
-      virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveCaptureSampleResult(const std::string& originalUri, const std::optional<DocumentQuad>& quad) = 0;
-      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentAnalysis>>> analyzePhotoResult(const std::string& originalUri, const std::optional<DocumentQuad>& liveQuad) = 0;
-      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, RenderedDocument>>> renderDocumentResult(const std::string& originalUri, const DocumentQuad& quad, const std::optional<DocumentRenderOptions>& options) = 0;
-      virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> createPdfResult(const CreatePdfOptions& options) = 0;
-      virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> removeCachedImagesResult(const std::vector<std::string>& uris) = 0;
 
     protected:
       // Hybrid Setup

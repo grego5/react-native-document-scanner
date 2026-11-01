@@ -62,7 +62,9 @@ Coordinates are 0–1 relative to the upright original image. `quad` is null for
 
 ## Scanner samples
 
-A folder of samples the scanner collected opens directly: point `-Images` at it. Each image there has a `<stem>.json` entry in this format beside it, with extra fields (`prediction`, `model`, `device`, `source`) that the labeler keeps. A new image takes its starting `status` and `quad` from that entry: a photo is already `document` with the outline accepted in the app, and a live frame is `unlabeled` with the model's outline to correct. Every save also updates `status` and `quad` in the entry beside the image, so the labels travel with the images.
+Point `-Images` at a folder the scanner saved samples to. Each image is `<timestamp>-<long side>.png`: a live frame or the photo crop the corner model received. Its `<stem>.json` holds the model's outline, which the labeler shows as `unlabeled` for you to correct; saving writes your label back into that JSON.
+
+## Export and status
 
 The progress JSON is usable directly; no export step is needed. To write a separate JSON containing only reviewed entries:
 

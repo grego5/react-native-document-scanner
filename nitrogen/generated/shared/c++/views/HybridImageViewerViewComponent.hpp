@@ -17,11 +17,12 @@
 
 #include <string>
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
 #include <string>
 #include "ScannerFailure.hpp"
 #include <functional>
 #include <optional>
-#include <memory>
 #include "HybridImageViewerViewSpec.hpp"
 
 namespace margelo::nitro::documentscanner::views {
@@ -44,15 +45,17 @@ namespace margelo::nitro::documentscanner::views {
                                const react::RawProps& rawProps);
 
   public:
-    nitro::ReactProp<std::string> uri;
+    nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>> session;
+    nitro::ReactProp<std::string> pageId;
     nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* failure */)>>> onError;
-    nitro::ReactProp<std::optional<std::function<void(const std::string& /* uri */)>>> onLoad;
+    nitro::ReactProp<std::optional<std::function<void(const std::string& /* pageId */)>>> onLoad;
     nitro::ReactProp<std::optional<std::function<void(bool /* zoomed */)>>> onZoomChange;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridImageViewerViewSpec>& /* ref */)>>> hybridRef;
 
     [[nodiscard]]
     bool hasSameProps(const HybridImageViewerViewProps& other) const noexcept {
-      return uri.hasSameValue(other.uri) &&
+      return session.hasSameValue(other.session) &&
+             pageId.hasSameValue(other.pageId) &&
              onError.hasSameValue(other.onError) &&
              onLoad.hasSameValue(other.onLoad) &&
              onZoomChange.hasSameValue(other.onZoomChange) &&
@@ -61,7 +64,8 @@ namespace margelo::nitro::documentscanner::views {
 
     [[nodiscard]]
     bool hasAnyProvidedProps() const noexcept {
-      return uri.isProvided() ||
+      return session.isProvided() ||
+             pageId.isProvided() ||
              onError.isProvided() ||
              onLoad.isProvided() ||
              onZoomChange.isProvided() ||

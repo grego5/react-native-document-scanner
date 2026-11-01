@@ -57,6 +57,12 @@ namespace margelo::nitro::documentscanner {
         case ScannerErrorCode::CAPTURE_MOTION_TIMEOUT:
           static const auto fieldCAPTURE_MOTION_TIMEOUT = clazz->getStaticField<JScannerErrorCode>("CAPTURE_MOTION_TIMEOUT");
           return clazz->getStaticFieldValue(fieldCAPTURE_MOTION_TIMEOUT);
+        case ScannerErrorCode::CAPTURE_BUSY:
+          static const auto fieldCAPTURE_BUSY = clazz->getStaticField<JScannerErrorCode>("CAPTURE_BUSY");
+          return clazz->getStaticFieldValue(fieldCAPTURE_BUSY);
+        case ScannerErrorCode::CAPTURE_NOT_READY:
+          static const auto fieldCAPTURE_NOT_READY = clazz->getStaticField<JScannerErrorCode>("CAPTURE_NOT_READY");
+          return clazz->getStaticFieldValue(fieldCAPTURE_NOT_READY);
         case ScannerErrorCode::CAPTURE_FAILED:
           static const auto fieldCAPTURE_FAILED = clazz->getStaticField<JScannerErrorCode>("CAPTURE_FAILED");
           return clazz->getStaticFieldValue(fieldCAPTURE_FAILED);
@@ -72,9 +78,9 @@ namespace margelo::nitro::documentscanner {
         case ScannerErrorCode::EDITOR_FILTER_FAILED:
           static const auto fieldEDITOR_FILTER_FAILED = clazz->getStaticField<JScannerErrorCode>("EDITOR_FILTER_FAILED");
           return clazz->getStaticFieldValue(fieldEDITOR_FILTER_FAILED);
-        case ScannerErrorCode::PROCESSOR_BUSY:
-          static const auto fieldPROCESSOR_BUSY = clazz->getStaticField<JScannerErrorCode>("PROCESSOR_BUSY");
-          return clazz->getStaticFieldValue(fieldPROCESSOR_BUSY);
+        case ScannerErrorCode::PROCESSOR_SUPERSEDED:
+          static const auto fieldPROCESSOR_SUPERSEDED = clazz->getStaticField<JScannerErrorCode>("PROCESSOR_SUPERSEDED");
+          return clazz->getStaticFieldValue(fieldPROCESSOR_SUPERSEDED);
         case ScannerErrorCode::PROCESSOR_DISPOSED:
           static const auto fieldPROCESSOR_DISPOSED = clazz->getStaticField<JScannerErrorCode>("PROCESSOR_DISPOSED");
           return clazz->getStaticFieldValue(fieldPROCESSOR_DISPOSED);

@@ -44,8 +44,7 @@ internal object CornerInference {
     return Lease(context.applicationContext)
   }
 
-  private fun open(context: Context): DocCornerSession {
-    val selected = QuadModelStore.current
+  private fun open(context: Context, selected: QuadModelStore.Selection = QuadModelStore.current): DocCornerSession {
     if (selected !== selection) {
       session?.close()
       session = null
@@ -67,10 +66,10 @@ internal object CornerInference {
     var lastSelection: QuadModelStore.Selection? = null
       private set
 
-    private fun <T> useSession(operation: (DocCornerSession) -> T): T {
+    private fun <T> useSession(selected: QuadModelStore.Selection? = null, operation: (DocCornerSession) -> T): T {
       check(!closed) { "The corner model lease is closed." }
       return onWorker {
-        val model = open(context)
+        val model = if (selected == null) open(context) else open(context, selected)
         operation(model).also {
           lastPreprocessingMs = model.lastPreprocessingMs
           lastInferenceMs = model.lastInferenceMs
@@ -83,6 +82,8 @@ internal object CornerInference {
     override fun warmUp() = useSession { it.warmUp() }
     override fun analyze(image: ImageProxy): DocumentCandidate? = useSession { it.analyze(image) }
     fun analyze(bitmap: Bitmap): DocumentCandidate? = useSession { it.analyze(bitmap) }
+    fun analyze(bitmap: Bitmap, selected: QuadModelStore.Selection): DocumentCandidate? =
+      useSession(selected) { it.analyze(bitmap) }
 
     override fun close() {
       if (closed) return

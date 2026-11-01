@@ -1,5 +1,6 @@
 package com.margelo.nitro.documentscanner.processing
 
+import com.margelo.nitro.documentscanner.ScannerFiles
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -9,7 +10,6 @@ import android.graphics.Rect
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.facebook.proguard.annotations.DoNotStrip
-import com.margelo.nitro.documentscanner.CreatePdfOptions
 import com.margelo.nitro.documentscanner.InvalidInputException
 import com.margelo.nitro.documentscanner.requireInput
 import java.io.BufferedOutputStream
@@ -18,12 +18,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
 import java.io.RandomAccessFile
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 /** Android resource and publication adapter for the shared PDF serializer. */
 internal object PdfWriter {
-  fun write(options: CreatePdfOptions, decorateOutput: (OutputStream) -> OutputStream = { it }): String {
+  fun write(options: PdfWriteOptions, decorateOutput: (OutputStream) -> OutputStream = { it }): String {
     requireInput(options.pages.isNotEmpty()) { "No pages provided." }
     val output = localFile(options.outputPath, "Output path")
     val parent = output.parentFile ?: throw InvalidInputException("Output path '${output.path}' has no parent directory.")
@@ -37,7 +35,7 @@ internal object PdfWriter {
         out.flush()
         file.fd.sync()
       }
-      Files.move(temporary.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+      ScannerFiles.move(temporary, output)
       return Uri.fromFile(output).toString()
     } catch (error: Throwable) {
       temporary.delete()

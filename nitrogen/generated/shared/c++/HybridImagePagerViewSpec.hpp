@@ -13,12 +13,19 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
+// Forward declaration of `ImagePagerDirection` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class ImagePagerDirection; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
 #include <string>
 #include <vector>
 #include <optional>
+#include "ImagePagerDirection.hpp"
 #include <functional>
 #include "ScannerFailure.hpp"
 
@@ -49,22 +56,26 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Properties
-      virtual std::vector<std::string> getUris() = 0;
-      virtual void setUris(const std::vector<std::string>& uris) = 0;
-      virtual double getIndex() = 0;
-      virtual void setIndex(double index) = 0;
+      virtual std::shared_ptr<HybridScanSessionSpec> getSession() = 0;
+      virtual void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) = 0;
+      virtual std::optional<std::vector<std::string>> getPageIds() = 0;
+      virtual void setPageIds(const std::optional<std::vector<std::string>>& pageIds) = 0;
+      virtual std::optional<ImagePagerDirection> getDirection() = 0;
+      virtual void setDirection(std::optional<ImagePagerDirection> direction) = 0;
+      virtual std::string getSelectedPageId() = 0;
+      virtual void setSelectedPageId(const std::string& selectedPageId) = 0;
       virtual std::optional<bool> getSwipeEnabled() = 0;
       virtual void setSwipeEnabled(std::optional<bool> swipeEnabled) = 0;
-      virtual std::optional<std::function<void(double /* index */)>> getOnIndexChange() = 0;
-      virtual void setOnIndexChange(const std::optional<std::function<void(double /* index */)>>& onIndexChange) = 0;
-      virtual std::optional<std::function<void(const std::string& /* uri */)>> getOnLoad() = 0;
-      virtual void setOnLoad(const std::optional<std::function<void(const std::string& /* uri */)>>& onLoad) = 0;
+      virtual std::optional<std::function<void(const std::string& /* pageId */)>> getOnPageChange() = 0;
+      virtual void setOnPageChange(const std::optional<std::function<void(const std::string& /* pageId */)>>& onPageChange) = 0;
+      virtual std::optional<std::function<void(const std::string& /* pageId */)>> getOnLoad() = 0;
+      virtual void setOnLoad(const std::optional<std::function<void(const std::string& /* pageId */)>>& onLoad) = 0;
       virtual std::optional<std::function<void(const ScannerFailure& /* failure */)>> getOnError() = 0;
       virtual void setOnError(const std::optional<std::function<void(const ScannerFailure& /* failure */)>>& onError) = 0;
 
     public:
       // Methods
-      
+
 
     protected:
       // Hybrid Setup

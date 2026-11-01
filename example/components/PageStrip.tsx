@@ -1,12 +1,12 @@
 import { useEffect, useRef, type ComponentRef } from 'react'
-import { Image, Pressable, ScrollView, Text } from 'react-native'
+import { Pressable, ScrollView, Text } from 'react-native'
+import { memo } from 'react'
+import { PageThumbnail, type ScanSession } from 'react-native-document-scanner'
 import { styles } from '../styles'
 
-export interface PageThumbnail { id: string; uri: string }
-
 /** The same ordered pages as the preview pager, with the current page kept in view. */
-export function PageStrip({ pages, index, disabled, onSelect }: {
-  pages: PageThumbnail[]; index: number; disabled: boolean; onSelect: (index: number) => void
+export function PageStrip({ session, pageIds, index, disabled, onSelect }: {
+  session: ScanSession; pageIds: readonly string[]; index: number; disabled: boolean; onSelect: (index: number) => void
 }) {
   const strip = useRef<ComponentRef<typeof ScrollView>>(null)
   useEffect(() => {
@@ -15,15 +15,25 @@ export function PageStrip({ pages, index, disabled, onSelect }: {
   return (
     <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false}
       style={styles.pageStrip} contentContainerStyle={styles.pageStripContent}>
-      {pages.map((page, position) => (
-        <Pressable key={page.id} disabled={disabled} onPress={() => onSelect(position)}
-          accessibilityRole="button" accessibilityLabel={`Page ${position + 1}`}
-          accessibilityState={{ selected: position === index, disabled }}
-          style={[styles.pageThumbnail, position === index && styles.pageThumbnailSelected]}>
-          <Image source={{ uri: page.uri }} resizeMethod="resize" resizeMode="cover" style={styles.pageTileImage} />
-          <Text style={styles.pageTileLabel}>{position + 1}</Text>
-        </Pressable>
+      {pageIds.map((id, position) => (
+        <Tile key={id} session={session} pageId={id} position={position}
+          selected={position === index} disabled={disabled} onSelect={onSelect} />
       ))}
     </ScrollView>
   )
 }
+
+const Tile = memo(function Tile({ session, pageId, position, selected, disabled, onSelect }: {
+  session: ScanSession; pageId: string; position: number; selected: boolean; disabled: boolean
+  onSelect: (position: number) => void
+}) {
+  return (
+    <Pressable disabled={disabled} onPress={() => onSelect(position)}
+      accessibilityRole="button" accessibilityLabel={`Page ${position + 1}`}
+      accessibilityState={{ selected, disabled }}
+      style={[styles.pageThumbnail, selected && styles.pageThumbnailSelected]}>
+      <PageThumbnail session={session} pageId={pageId} resizeMode="cover" style={styles.pageTileImage} />
+      <Text style={styles.pageTileLabel}>{position + 1}</Text>
+    </Pressable>
+  )
+})

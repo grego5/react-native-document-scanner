@@ -30,18 +30,8 @@
 
 // Forward declaration of `DocumentQuad` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentQuad; }
-// Forward declaration of `DocumentCornerProvenance` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentCornerProvenance; }
-// Forward declaration of `DocumentSideProvenance` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentSideProvenance; }
-// Forward declaration of `DocumentA4PageEstimateRange` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentA4PageEstimateRange; }
 
 #include "DocumentQuad.hpp"
-#include "DocumentCornerProvenance.hpp"
-#include "DocumentSideProvenance.hpp"
-#include "DocumentA4PageEstimateRange.hpp"
-#include <optional>
 
 namespace margelo::nitro::documentscanner {
 
@@ -52,13 +42,10 @@ namespace margelo::nitro::documentscanner {
   public:
     DocumentQuad quad     SWIFT_PRIVATE;
     double score     SWIFT_PRIVATE;
-    DocumentCornerProvenance corners     SWIFT_PRIVATE;
-    DocumentSideProvenance sides     SWIFT_PRIVATE;
-    std::optional<DocumentA4PageEstimateRange> a4PageRange     SWIFT_PRIVATE;
 
   public:
     DocumentCandidate() = default;
-    explicit DocumentCandidate(DocumentQuad quad, double score, DocumentCornerProvenance corners, DocumentSideProvenance sides, std::optional<DocumentA4PageEstimateRange> a4PageRange): quad(quad), score(score), corners(corners), sides(sides), a4PageRange(a4PageRange) {}
+    explicit DocumentCandidate(DocumentQuad quad, double score): quad(quad), score(score) {}
 
   public:
     friend bool operator==(const DocumentCandidate& lhs, const DocumentCandidate& rhs) = default;
@@ -75,19 +62,13 @@ namespace margelo::nitro {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::documentscanner::DocumentCandidate(
         JSIConverter<margelo::nitro::documentscanner::DocumentQuad>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "quad"))),
-        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "score"))),
-        JSIConverter<margelo::nitro::documentscanner::DocumentCornerProvenance>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "corners"))),
-        JSIConverter<margelo::nitro::documentscanner::DocumentSideProvenance>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sides"))),
-        JSIConverter<std::optional<margelo::nitro::documentscanner::DocumentA4PageEstimateRange>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "a4PageRange")))
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "score")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::documentscanner::DocumentCandidate& arg) {
       jsi::Object obj(runtime);
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "quad"), JSIConverter<margelo::nitro::documentscanner::DocumentQuad>::toJSI(runtime, arg.quad));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "score"), JSIConverter<double>::toJSI(runtime, arg.score));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "corners"), JSIConverter<margelo::nitro::documentscanner::DocumentCornerProvenance>::toJSI(runtime, arg.corners));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "sides"), JSIConverter<margelo::nitro::documentscanner::DocumentSideProvenance>::toJSI(runtime, arg.sides));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "a4PageRange"), JSIConverter<std::optional<margelo::nitro::documentscanner::DocumentA4PageEstimateRange>>::toJSI(runtime, arg.a4PageRange));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -100,9 +81,6 @@ namespace margelo::nitro {
       }
       if (!JSIConverter<margelo::nitro::documentscanner::DocumentQuad>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "quad")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "score")))) return false;
-      if (!JSIConverter<margelo::nitro::documentscanner::DocumentCornerProvenance>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "corners")))) return false;
-      if (!JSIConverter<margelo::nitro::documentscanner::DocumentSideProvenance>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sides")))) return false;
-      if (!JSIConverter<std::optional<margelo::nitro::documentscanner::DocumentA4PageEstimateRange>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "a4PageRange")))) return false;
       return true;
     }
   };

@@ -112,7 +112,6 @@ class NativeTensorPreprocessorTest {
     assertEquals(values[0].toDouble(), candidate.quad.topLeft.x, 0.0)
     assertEquals(values[4].toDouble(), candidate.quad.bottomRight.x, 0.0)
     assertEquals(0.0, candidate.score, 0.0)
-    assertNull(candidate.a4PageRange)
     assertNull(DocCornerSession.decodeOutput(values.copyOf().apply { this[4] = 1.01f }))
     assertThrows(IllegalStateException::class.java) { DocCornerSession.decodeOutput(values.copyOf(8)) }
     assertThrows(IllegalStateException::class.java) {

@@ -1,5 +1,6 @@
+import type { ScanSession } from './ScanSession.nitro'
 import type { ScannerFailure } from './ScannerFailure'
-import type { DocumentCandidate } from './DocumentScannerProcessor.nitro'
+import type { DocumentRenderOptions } from './DocumentScannerProcessor.nitro'
 import type {
   HybridView,
   HybridViewMethods,
@@ -65,6 +66,10 @@ export type CameraMode = 'scanner' | 'camera' | 'off'
  * starts waiting reports nothing.
  */
 export type CaptureStage = 'waiting' | 'shooting' | 'captured' | 'failed'
+export type CaptureWaitReason = 'document' | 'focus' | 'light' | 'steady'
+
+/** Native readiness/progress; mode off always reports unavailable. */
+export type CameraCaptureState = 'unavailable' | 'ready' | 'waiting' | 'shooting' | 'saving'
 
 /**
  * Focus and motion settings; motion limits are a percent of frame width, and each field merges with its default. Blur is
@@ -98,38 +103,15 @@ export interface QualityGateConfig {
   requireFocus?: boolean
 }
 
-/** The unmodified JPEG written by CameraX, including its EXIF orientation. */
-export interface CapturedPhoto {
-  /** Original captured JPEG; the source is never re-encoded during capture. */
-  originalUri: string
-  /** Encoded pixel width before applying EXIF orientation. */
-  width: number
-  /** Encoded pixel height before applying EXIF orientation. */
-  height: number
-  /** Raw EXIF orientation tag (1–8). */
-  orientation: number
-  /** Clockwise rotation from the EXIF orientation tag. */
-  rotationDegrees: number
-  /**
-   * The live guide's page when the shutter fired: its outline in normalized upright photo coordinates and the score of
-   * the latest guide inference. Absent unless the guide was tracking a page with every corner inside the frame.
-   * It can seed an immediate crop preview while the saved photo is analyzed independently.
-   */
-  liveCandidate?: DocumentCandidate
-  /**
-   * A JPEG of the latest live analysis frame at the shutter, at that frame's own resolution: the `liveCandidate`
-   * page straightened when there is one, otherwise the whole frame upright. It can be shown at once while the photo
-   * is analyzed and rendered, and is the page's thumbnail until a render replaces it; an `ImageViewer` already holds it.
-   * Absent when no analysis frame arrived. A cached file like `originalUri`.
-   */
-  frameUri?: string
-}
-
 /**
  * The native CameraX session always uses the default back camera. Each callback fires on change only, starting with
  * the state at the time it is set.
  */
 export interface DocumentScannerCameraProps extends HybridViewProps {
+  /** Explicit owner of all captures; replacing or closing it invalidates pending publication. */
+  session: ScanSession
+  /** Render defaults for new pages, frozen when capture is admitted. Existing pages are unchanged. */
+  renderOptions: DocumentRenderOptions
   /** Required local model path/URI. Native prepares it before binding; dimensions come from the tensor. */
   quadTensorModel?: string
   /** Native camera failure. A model preparation failure keeps the camera suspended until the source changes. */
@@ -142,7 +124,7 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    * Live DocCornerNet guidance: the guide and its inference; defaults to true. False stops both without rebinding the
    * camera; preview, `takePhoto` and the quality gate continue.
    * Finite, convex, in-frame candidates are accepted immediately, then optical flow carries the outline while inference is paused.
-   * Camera-derived tilt is diagnostic and may show a hint to hold the phone parallel; it never rejects an outline.
+   * Camera-derived tilt is diagnostic; it never rejects an outline.
    */
   guide?: boolean
   /** Pause inference while optical flow tracks a trusted page outline; defaults to false for live
@@ -223,15 +205,14 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    * a red blink on failure. Defaults to true.
    */
   captureFeedback?: boolean
-  /** Retain the frozen shutter frame after capture until this becomes false. Defaults to false. */
-  retainCapturePreview?: boolean
   /** ARGB color of the capture feedback; the Camera wrapper takes a color string. Defaults to white. */
   captureColor?: number
   onCameraStateChange?: (state: CameraState) => void
+  onCaptureStateChange?: (state: CameraCaptureState) => void
   onAutofocusChange?: (state: AutofocusState) => void
   onDocumentStateChange?: (state: DocumentState) => void
-  /** Each stage of each `takePhoto` call as it happens; unlike the state callbacks, it is not re-sent when set. */
-  onCaptureStage?: (stage: CaptureStage) => void
+  /** Each capture stage and changes to its waiting reason, independent of captureFeedback. Reason is absent outside waiting (and before the first gate decision). Not re-sent when the handler is set. */
+  onCaptureStage?: (stage: CaptureStage, waitReason?: CaptureWaitReason) => void
 }
 
 /** Overrides for one capture; camera settings and later shots are unchanged. */
@@ -244,10 +225,10 @@ export interface TakePhotoOptions {
 
 export interface DocumentScannerCameraMethods extends HybridViewMethods {
   /**
-   * Native result transport for public `takePhoto`: one saved JPEG or a failure code. The view shows a frozen
+   * Native result transport for public `takePhoto`: one new session page ID or a failure code. The view shows a frozen
    * preview frame while the shot saves.
    */
-  takePhotoResult(options?: TakePhotoOptions): Promise<CapturedPhoto | ScannerFailure>
+  takePhotoResult(options?: TakePhotoOptions): Promise<string | ScannerFailure>
   /**
    * Native result transport for public `saveLiveSample`: saves the latest live inference frame, as the model saw it,
    * into the sample folder as `<ms>-<long edge>.png` beside `<ms>-<long edge>.json`, a `tools/label-samples`

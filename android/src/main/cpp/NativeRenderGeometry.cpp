@@ -13,9 +13,9 @@ using namespace document_scanner;
 // No Java address or OpenCV type crosses the portable interface.
 local_ref<JArrayDouble> renderNative(alias_ref<jclass>, jlong sourceAddress, jlong intoAddress,
                                      alias_ref<JArrayDouble> values, jdouble scale, jdouble paper, jboolean follow,
-                                     jint filter, jboolean shadows) {
-  if (!sourceAddress || !intoAddress || sourceAddress == intoAddress || !values || values->size() != 8 ||
-      filter < -1 || filter > 3)
+                                     jint filter, jboolean shadows, alias_ref<JArrayDouble> regionValues) {
+  if (!sourceAddress || !intoAddress || sourceAddress == intoAddress || !values || values->size() != 8 || filter < -1 ||
+      filter > 3)
     throwNewJavaException("java/lang/IllegalArgumentException",
                           "Expected distinct source/output matrices and eight quad coordinates.");
   auto owner = std::make_shared<cv::Mat>(*reinterpret_cast<const cv::Mat *>(sourceAddress));
@@ -31,13 +31,20 @@ local_ref<JArrayDouble> renderNative(alias_ref<jclass>, jlong sourceAddress, jlo
         {reinterpret_cast<const std::byte *>(owner->data),
          size_t(owner->rows - 1) * owner->step + size_t(owner->cols) * 4},
         {PixelFormat::rgba8, size, owner->step, 4, {0, 0, size.width, size.height}, Orientation::upright});
+    std::optional<RenderSourceRegion> region;
+    if (regionValues) {
+      if (regionValues->size() != 5)
+        throw std::invalid_argument("Expected five decoded-region coordinates.");
+      const auto r = regionValues->getRegion(0, 5);
+      region = RenderSourceRegion{r[0], r[1], r[2], r[3], r[4]};
+    }
     const std::optional<double> paperEdge = paper == -1 ? std::nullopt : std::optional<double>(paper);
     // Write straight into the output Mat. A filtered render keeps the warped RGBA lease alive for the
     // filter, which then writes BGR/gray into the output Mat: no intermediate Java Mat or copy.
     const auto info = [&]() -> GeometricRenderInfo {
       if (filter < 0)
-        return renderGeometry(source, quad, scale, paperEdge, follow, matAllocator(into));
-      const auto result = renderGeometry(source, quad, scale, paperEdge, follow);
+        return renderGeometry(source, quad, scale, paperEdge, follow, matAllocator(into), region);
+      const auto result = renderGeometry(source, quad, scale, paperEdge, follow, region);
       filterDocument(result.pixels.lease(), static_cast<DocumentFilter>(filter), shadows, PixelFormat::bgr8,
                      matAllocator(into));
       return {result.validContentPolygon, result.curved};

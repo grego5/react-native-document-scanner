@@ -42,6 +42,9 @@ namespace margelo::nitro::documentscanner {
     static jni::alias_ref<JDocumentImageFormat> fromCpp(DocumentImageFormat value) {
       static const auto clazz = javaClassStatic();
       switch (value) {
+        case DocumentImageFormat::AUTO:
+          static const auto fieldAUTO = clazz->getStaticField<JDocumentImageFormat>("AUTO");
+          return clazz->getStaticFieldValue(fieldAUTO);
         case DocumentImageFormat::JPEG:
           static const auto fieldJPEG = clazz->getStaticField<JDocumentImageFormat>("JPEG");
           return clazz->getStaticFieldValue(fieldJPEG);

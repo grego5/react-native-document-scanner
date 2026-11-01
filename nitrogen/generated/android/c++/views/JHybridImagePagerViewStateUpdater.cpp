@@ -54,14 +54,24 @@ void JHybridImagePagerViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
 
   // Update only props that differ from the previous State snapshot.
   if (oldProps == nullptr
-        ? newProps->uris.isProvided()
-        : !newProps->uris.hasSameValue(oldProps->uris)) {
-    hybridView->setUris(newProps->uris.get());
+        ? newProps->session.isProvided()
+        : !newProps->session.hasSameValue(oldProps->session)) {
+    hybridView->setSession(newProps->session.get());
   }
   if (oldProps == nullptr
-        ? newProps->index.isProvided()
-        : !newProps->index.hasSameValue(oldProps->index)) {
-    hybridView->setIndex(newProps->index.get());
+        ? newProps->pageIds.isProvided()
+        : !newProps->pageIds.hasSameValue(oldProps->pageIds)) {
+    hybridView->setPageIds(newProps->pageIds.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->direction.isProvided()
+        : !newProps->direction.hasSameValue(oldProps->direction)) {
+    hybridView->setDirection(newProps->direction.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->selectedPageId.isProvided()
+        : !newProps->selectedPageId.hasSameValue(oldProps->selectedPageId)) {
+    hybridView->setSelectedPageId(newProps->selectedPageId.get());
   }
   if (oldProps == nullptr
         ? newProps->swipeEnabled.isProvided()
@@ -69,9 +79,9 @@ void JHybridImagePagerViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
     hybridView->setSwipeEnabled(newProps->swipeEnabled.get());
   }
   if (oldProps == nullptr
-        ? newProps->onIndexChange.isProvided()
-        : !newProps->onIndexChange.hasSameValue(oldProps->onIndexChange)) {
-    hybridView->setOnIndexChange(newProps->onIndexChange.get());
+        ? newProps->onPageChange.isProvided()
+        : !newProps->onPageChange.hasSameValue(oldProps->onPageChange)) {
+    hybridView->setOnPageChange(newProps->onPageChange.get());
   }
   if (oldProps == nullptr
         ? newProps->onLoad.isProvided()

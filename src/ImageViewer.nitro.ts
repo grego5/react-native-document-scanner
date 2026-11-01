@@ -3,6 +3,7 @@ import type {
   HybridViewMethods,
   HybridViewProps,
 } from 'react-native-nitro-modules'
+import type { ScanSession } from './ScanSession.nitro'
 import type { ScannerFailure } from './ScannerFailure'
 
 /**
@@ -19,16 +20,17 @@ import type { ScannerFailure } from './ScannerFailure'
  */
 export interface ImageViewerViewProps extends HybridViewProps {
   /**
-   * Local file:// JPEG or PNG to show; its EXIF orientation is applied. It shows as a thumbnail at the live frame's
+   * Native session page to show; original EXIF orientation is applied. It shows as a thumbnail at the live frame's
    * size; zooming past 1.1x loads the full image, up to 4096 pixels on its long side, which replaces it in place while
-   * still zoomed. A different uri fades the new thumbnail in at the fit over the previous image; the previous image remains visible while
+   * still zoomed. A newly published render fades the new thumbnail in at the fit over the previous image; the previous image remains visible while
    * loading.
    */
-  uri: string
+  session: ScanSession
+  pageId: string
   /** Called when the image cannot be loaded; any previously displayed image remains visible. */
   onError?: (failure: ScannerFailure) => void
-  /** The current URI's thumbnail has been installed in the native view. */
-  onLoad?: (uri: string) => void
+  /** The current page's thumbnail has been installed in the native view. */
+  onLoad?: (pageId: string) => void
   /** The image was zoomed past the fit, or returned to it. */
   onZoomChange?: (zoomed: boolean) => void
 }

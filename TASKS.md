@@ -68,3 +68,7 @@ Plan-authoring verification: validate links, sequential numbers, required task s
 Task 14 revised: Android torch stays in Kotlin; Swift parity is pending Task 27. Both policies consume tests/fixtures/parity/torch.tsv. The C++/JNI torch migration was reversed because its boundary overhead outweighed the small policy.
 
 Task 16 Android optimization/integration pass: 181 release device tests, 10 core suites, 66 JVM tests and JS/typechecks passed. Native render/filter composition and direct Mat PNG input remove known copies. Full Kotlin/C++ timing remains frequency-confounded; physical camera evidence is pending. See Tasks/16-verify-android-engine-migration.md and .local/engine-optimization/report.md.
+
+Native-session migration history: [separate task plan](Tasks/native-sessions/TASKS.md).
+
+Task 16 integrated with current native-session main (2026-11-01): 252 Android tests, 128 JVM tests, 10 core suites, both typechecks and 39 JS contracts passed. Native sessions own orchestration/files; shared core owns processing stages. Physical camera/visible guidance evidence remains pending.

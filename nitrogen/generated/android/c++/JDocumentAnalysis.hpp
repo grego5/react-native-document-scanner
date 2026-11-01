@@ -10,22 +10,12 @@
 #include <fbjni/fbjni.h>
 #include "DocumentAnalysis.hpp"
 
-#include "DocumentA4PageEstimateRange.hpp"
 #include "DocumentCandidate.hpp"
-#include "DocumentCornerProvenance.hpp"
-#include "DocumentPageSide.hpp"
 #include "DocumentPoint.hpp"
-#include "DocumentPointProvenance.hpp"
 #include "DocumentQuad.hpp"
-#include "DocumentSideProvenance.hpp"
-#include "JDocumentA4PageEstimateRange.hpp"
 #include "JDocumentCandidate.hpp"
-#include "JDocumentCornerProvenance.hpp"
-#include "JDocumentPageSide.hpp"
 #include "JDocumentPoint.hpp"
-#include "JDocumentPointProvenance.hpp"
 #include "JDocumentQuad.hpp"
-#include "JDocumentSideProvenance.hpp"
 #include <optional>
 
 namespace margelo::nitro::documentscanner {

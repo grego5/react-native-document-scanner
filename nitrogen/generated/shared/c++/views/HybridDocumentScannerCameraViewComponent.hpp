@@ -17,6 +17,9 @@
 
 #include <string>
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
+#include "DocumentRenderOptions.hpp"
 #include <string>
 #include <optional>
 #include "ScannerFailure.hpp"
@@ -26,10 +29,11 @@
 #include "TorchMode.hpp"
 #include "CaptureMode.hpp"
 #include "CameraState.hpp"
+#include "CameraCaptureState.hpp"
 #include "AutofocusState.hpp"
 #include "DocumentState.hpp"
 #include "CaptureStage.hpp"
-#include <memory>
+#include "CaptureWaitReason.hpp"
 #include "HybridDocumentScannerCameraViewSpec.hpp"
 
 namespace margelo::nitro::documentscanner::views {
@@ -52,6 +56,8 @@ namespace margelo::nitro::documentscanner::views {
                                          const react::RawProps& rawProps);
 
   public:
+    nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>> session;
+    nitro::ReactProp<DocumentRenderOptions> renderOptions;
     nitro::ReactProp<std::optional<std::string>> quadTensorModel;
     nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* error */)>>> onError;
     nitro::ReactProp<std::optional<CameraMode>> mode;
@@ -72,17 +78,19 @@ namespace margelo::nitro::documentscanner::views {
     nitro::ReactProp<std::optional<bool>> showStats;
     nitro::ReactProp<std::optional<double>> guideColor;
     nitro::ReactProp<std::optional<bool>> captureFeedback;
-    nitro::ReactProp<std::optional<bool>> retainCapturePreview;
     nitro::ReactProp<std::optional<double>> captureColor;
     nitro::ReactProp<std::optional<std::function<void(CameraState /* state */)>>> onCameraStateChange;
+    nitro::ReactProp<std::optional<std::function<void(CameraCaptureState /* state */)>>> onCaptureStateChange;
     nitro::ReactProp<std::optional<std::function<void(AutofocusState /* state */)>>> onAutofocusChange;
     nitro::ReactProp<std::optional<std::function<void(DocumentState /* state */)>>> onDocumentStateChange;
-    nitro::ReactProp<std::optional<std::function<void(CaptureStage /* stage */)>>> onCaptureStage;
+    nitro::ReactProp<std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>>> onCaptureStage;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridDocumentScannerCameraViewSpec>& /* ref */)>>> hybridRef;
 
     [[nodiscard]]
     bool hasSameProps(const HybridDocumentScannerCameraViewProps& other) const noexcept {
-      return quadTensorModel.hasSameValue(other.quadTensorModel) &&
+      return session.hasSameValue(other.session) &&
+             renderOptions.hasSameValue(other.renderOptions) &&
+             quadTensorModel.hasSameValue(other.quadTensorModel) &&
              onError.hasSameValue(other.onError) &&
              mode.hasSameValue(other.mode) &&
              guide.hasSameValue(other.guide) &&
@@ -102,9 +110,9 @@ namespace margelo::nitro::documentscanner::views {
              showStats.hasSameValue(other.showStats) &&
              guideColor.hasSameValue(other.guideColor) &&
              captureFeedback.hasSameValue(other.captureFeedback) &&
-             retainCapturePreview.hasSameValue(other.retainCapturePreview) &&
              captureColor.hasSameValue(other.captureColor) &&
              onCameraStateChange.hasSameValue(other.onCameraStateChange) &&
+             onCaptureStateChange.hasSameValue(other.onCaptureStateChange) &&
              onAutofocusChange.hasSameValue(other.onAutofocusChange) &&
              onDocumentStateChange.hasSameValue(other.onDocumentStateChange) &&
              onCaptureStage.hasSameValue(other.onCaptureStage) &&
@@ -113,7 +121,9 @@ namespace margelo::nitro::documentscanner::views {
 
     [[nodiscard]]
     bool hasAnyProvidedProps() const noexcept {
-      return quadTensorModel.isProvided() ||
+      return session.isProvided() ||
+             renderOptions.isProvided() ||
+             quadTensorModel.isProvided() ||
              onError.isProvided() ||
              mode.isProvided() ||
              guide.isProvided() ||
@@ -133,9 +143,9 @@ namespace margelo::nitro::documentscanner::views {
              showStats.isProvided() ||
              guideColor.isProvided() ||
              captureFeedback.isProvided() ||
-             retainCapturePreview.isProvided() ||
              captureColor.isProvided() ||
              onCameraStateChange.isProvided() ||
+             onCaptureStateChange.isProvided() ||
              onAutofocusChange.isProvided() ||
              onDocumentStateChange.isProvided() ||
              onCaptureStage.isProvided() ||

@@ -14,15 +14,17 @@ import type {
   AutofocusState,
   CameraState,
   CaptureStage,
+  CaptureWaitReason,
   DocumentState,
-  CapturedPhoto,
+  CameraCaptureState,
   TakePhotoOptions,
   DocumentScannerCameraMethods,
   DocumentScannerCameraProps,
 } from './DocumentScannerCamera.nitro'
 import DocumentScannerCameraViewConfig from '../nitrogen/generated/shared/json/DocumentScannerCameraViewConfig.json'
-import { ScannerError, scannerOperation } from './ScannerError'
+import { ScannerError, ScannerCancellation, scannerOperation } from './ScannerError'
 import type { ScannerFailure } from './ScannerFailure'
+import { getNativeScanSession, synchronizeSession, type ScanSession } from './ScanSession'
 
 const NativeCamera = getHostComponent<
   DocumentScannerCameraProps,
@@ -31,8 +33,8 @@ const NativeCamera = getHostComponent<
 
 /** The camera permission is read and requested through `CameraPermission` or `useCameraPermission`. */
 export interface CameraRef {
-  /** Capture a full resolution JPEG and return its original file URI and EXIF orientation. */
-  takePhoto(options?: TakePhotoOptions): Promise<CapturedPhoto>
+  /** Capture into the required session. The returned page is in its published snapshot; rendering may continue. */
+  takePhoto(options?: TakePhotoOptions): Promise<string>
   /** See `DocumentScannerCameraMethods.saveLiveSampleResult`; resolves with the saved image's file name. */
   saveLiveSample(): Promise<string>
 }
@@ -45,8 +47,11 @@ const DEFAULT_QUALITY_GATE_CONFIG = {}
 const noop = callback(() => {})
 
 export interface CameraProps
-  extends Omit<DocumentScannerCameraProps, 'hybridRef' | 'guideColor' | 'captureColor' | 'onError'>,
+  extends Omit<DocumentScannerCameraProps, 'hybridRef' | 'guideColor' | 'captureColor' | 'onError' | 'session' | 'renderOptions'>,
     ViewProps {
+  /** Native session that owns new captures. */
+  session: ScanSession
+  renderOptions?: DocumentScannerCameraProps['renderOptions']
   /** Required local model source. Camera stays off until validation succeeds; failures emit onError. */
   quadTensorModel: string
   onError?: (error: ScannerError) => void
@@ -68,10 +73,14 @@ function nativeColor(prop: string, value: string | undefined, fallback: number):
   return fallback
 }
 
+const DEFAULT_RENDER_OPTIONS = {}
+
 /** CameraX preview and still capture, hosted by a Nitro native view on Android. */
 export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
   {
     quadTensorModel,
+    session,
+    renderOptions = DEFAULT_RENDER_OPTIONS,
     mode = 'scanner',
     guide = true,
     adaptiveDetection = false,
@@ -90,9 +99,9 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
     showStats = false,
     guideColor,
     captureFeedback = true,
-    retainCapturePreview = false,
     captureColor,
     onCameraStateChange,
+    onCaptureStateChange,
     onAutofocusChange,
     onDocumentStateChange,
     onCaptureStage,
@@ -103,11 +112,14 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
 ) {
   // Native re-sends the current state whenever a callback prop changes, so pass a stable wrapper that calls the
   // latest handler, and change it only when a handler is added or removed; without a handler it gets a no-op.
-  const handlers = useRef({ onCameraStateChange, onAutofocusChange, onDocumentStateChange, onCaptureStage, onError })
+  const captureSession = useRef(session)
+  useLayoutEffect(() => { captureSession.current = session }, [session])
+  const handlers = useRef({ onCaptureStateChange, onCameraStateChange, onAutofocusChange, onDocumentStateChange, onCaptureStage, onError })
   useLayoutEffect(() => {
-    handlers.current = { onCameraStateChange, onAutofocusChange, onDocumentStateChange, onCaptureStage, onError }
+    handlers.current = { onCaptureStateChange, onCameraStateChange, onAutofocusChange, onDocumentStateChange, onCaptureStage, onError }
   })
   const hasCameraState = onCameraStateChange != null
+  const hasCaptureState = onCaptureStateChange != null
   const hasAutofocus = onAutofocusChange != null
   const hasDocumentState = onDocumentStateChange != null
   const hasCaptureStage = onCaptureStage != null
@@ -117,6 +129,12 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       ? callback((state: CameraState) => handlers.current.onCameraStateChange?.(state))
       : noop,
     [hasCameraState],
+  )
+  const nativeCaptureState = useMemo(
+    () => hasCaptureState
+      ? callback((state: CameraCaptureState) => handlers.current.onCaptureStateChange?.(state))
+      : noop,
+    [hasCaptureState],
   )
   const nativeAutofocus = useMemo(
     () => hasAutofocus
@@ -132,7 +150,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
   )
   const nativeCaptureStage = useMemo(
     () => hasCaptureStage
-      ? callback((stage: CaptureStage) => handlers.current.onCaptureStage?.(stage))
+      ? callback((stage: CaptureStage, waitReason?: CaptureWaitReason) => handlers.current.onCaptureStage?.(stage, waitReason))
       : noop,
     [hasCaptureStage],
   )
@@ -166,7 +184,13 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       }
 
       return {
-        takePhoto: (options?: TakePhotoOptions) => scannerOperation(() => requireNativeView().takePhotoResult(options), 'capture/failed'),
+        takePhoto: async (options?: TakePhotoOptions) => {
+          const owner = captureSession.current
+          const id = await scannerOperation(() => requireNativeView().takePhotoResult(options), 'capture/failed')
+          synchronizeSession(owner)
+          if (owner.getSession().pages[id] === undefined) throw new ScannerCancellation('processor/superseded')
+          return id
+        },
         saveLiveSample: () => scannerOperation(() => requireNativeView().saveLiveSampleResult(), 'storage/write-failed'),
       }
     },
@@ -176,6 +200,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
   return (
     <NativeCamera
       {...props}
+      session={getNativeScanSession(session)}
       mode={mode}
       quadTensorModel={quadTensorModel ?? ''}
       onError={nativeError}
@@ -183,6 +208,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       adaptiveDetection={adaptiveDetection}
       minCornerScore={minCornerScore}
       qualityGate={qualityGate}
+      renderOptions={renderOptions}
       qualityGateConfig={qualityGateConfig}
       tapToFocus={tapToFocus}
       exposureCompensation={exposureCompensation}
@@ -197,9 +223,9 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       showStats={showStats}
       guideColor={nativeGuideColor}
       captureFeedback={captureFeedback}
-      retainCapturePreview={retainCapturePreview}
       captureColor={nativeCaptureColor}
       onCameraStateChange={nativeCameraState}
+      onCaptureStateChange={nativeCaptureState}
       onAutofocusChange={nativeAutofocus}
       onDocumentStateChange={nativeDocumentState}
       onCaptureStage={nativeCaptureStage}

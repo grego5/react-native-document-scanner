@@ -4,6 +4,7 @@ import type {
   HybridViewProps,
 } from 'react-native-nitro-modules'
 import type { DocumentFilter, DocumentQuad } from './DocumentScannerProcessor.nitro'
+import type { ScanSession } from './ScanSession.nitro'
 import type { ScannerFailure } from './ScannerFailure'
 
 /**
@@ -14,13 +15,9 @@ import type { ScannerFailure } from './ScannerFailure'
  * their size on screen, and the quad stays in photo coordinates.
  */
 export interface DocumentCropEditorProps extends HybridViewProps {
-  /** Local file:// JPEG to edit; its EXIF orientation is applied. */
-  originalUri: string
-  /**
-   * Crop in normalized upright photo coordinates. Setting a different quad replaces the crop, and the editor keeps its
-   * own edits until then, so reporting an edit back through this prop is not required.
-   */
-  quad: DocumentQuad
+  /** Native session page whose immutable original is edited; its EXIF orientation is applied. */
+  session: ScanSession
+  pageId: string
   /**
    * Previews the photo under a render filter; defaults to `none`. The whole photo is filtered, so the paper estimate
    * also sees what lies outside the crop and the preview can differ slightly from the rendered page. The preview is
@@ -28,9 +25,9 @@ export interface DocumentCropEditorProps extends HybridViewProps {
    * current image until it is done; a newer filter or photo discards an older one's result.
    */
   filter?: DocumentFilter
-  /** Called with the edited crop when a drag that changed it ends. */
-  onQuadChange?: (quad: DocumentQuad) => void
-  /** Called with the upright photo's decoded size, in pixels, each time a new `originalUri` is shown. */
+  /** Initial draft classification and changes after presets or corner drags. Full frame takes precedence over auto. */
+  onPresetChange?: (preset: CropDraftPreset) => void
+  /** Called with the upright photo's decoded size, in pixels, each time a new page is shown. */
   onLoad?: (width: number, height: number) => void
   /**
    * Called when the photo cannot be loaded, leaving the editor empty, or a filter preview cannot be prepared, leaving
@@ -39,7 +36,17 @@ export interface DocumentCropEditorProps extends HybridViewProps {
   onError?: (failure: ScannerFailure) => void
 }
 
-export interface DocumentCropEditorMethods extends HybridViewMethods {}
+export type CropPreset = 'none' | 'auto'
+export type CropDraftPreset = CropPreset | 'custom'
+
+export interface DocumentCropEditorMethods extends HybridViewMethods {
+  /** Validate and apply the native draft to the bound session page. */
+  submitResult(): Promise<boolean | ScannerFailure>
+  /** Read the native draft without committing it. Rejects after page removal or view disposal. */
+  getQuadResult(): Promise<DocumentQuad | ScannerFailure>
+  /** Replace only the editor draft; auto requires an available analysis candidate. */
+  setPresetResult(preset: CropPreset): Promise<boolean | ScannerFailure>
+}
 
 export type DocumentCropEditorView = HybridView<
   DocumentCropEditorProps,

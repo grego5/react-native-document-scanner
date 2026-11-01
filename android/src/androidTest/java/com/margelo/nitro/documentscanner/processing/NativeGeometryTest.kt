@@ -19,9 +19,9 @@ class NativeGeometryTest {
   @Test fun photoRegionRoundTripUsesTheSharedCrop() {
     assertNull(PhotoInferenceCrop.from(null, 1000, 2000))
     val crop = PhotoInferenceCrop.from(quad(.3, .3, .7, .7), 1000, 2000)!!
-    assertEquals(PhotoInferenceCrop(260, 520, 480, 960), crop)
-    assertArrayEquals(doubleArrayOf(.26, .26, .74, .26, .74, .74, .26, .74),
-      crop.toPhoto(quad(0.0, 0.0, 1.0, 1.0), 1000, 2000).coordinates(), 1e-9)
+    assertEquals(PhotoInferenceCrop(20, 520, 960, 960), crop)
+    assertArrayEquals(doubleArrayOf(.02, .26, .98, .26, .98, .74, .02, .74),
+      crop.toPhoto(quad(0.0, 0.0, 1.0, 1.0), 1000, 2000)!!.coordinates(), 1e-9)
     assertNull(PhotoInferenceCrop.from(quad(-.1, .2, .8, .9), 1000, 2000))
   }
 

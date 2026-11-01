@@ -1,133 +1,195 @@
-import { useEffect, useRef, useState } from 'react'
-import { Alert, BackHandler, Linking, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { ActivityIndicator, Alert, BackHandler, Linking, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Camera,
   DocumentScanner,
   useCameraPermission,
+  type ScanSession as NativeScanSession,
   type CameraRef,
-  type CameraState,
-} from 'react-native-document-scanner'
-import { DEFAULT_TUNING, OptionsPanel } from '../components/OptionsPanel'
-import { PrimaryButton } from '../components/PrimaryButton'
-import { ReviewPanel } from '../components/ReviewPanel'
-import { SheetModal } from '../components/SheetModal'
-import { ShutterButton } from '../components/ShutterButton'
-import { TuningSwitch } from '../components/TuningSwitch'
-import { useScanSession } from '../hooks/useScanSession'
-import { errorMessage } from '../lib/errorMessage'
-import { MAX_PAGES } from '../lib/scanSession'
-import { styles } from '../styles'
+  type CameraCaptureState,
+  type CaptureWaitReason,
+} from 'react-native-document-scanner';
+import { DEFAULT_TUNING, OptionsPanel } from '../components/OptionsPanel';
+import { PrimaryButton } from '../components/PrimaryButton';
+import { ReviewPanel } from '../components/ReviewPanel';
+import { SheetModal } from '../components/SheetModal';
+import { ShutterButton } from '../components/ShutterButton';
+import { ActionButton } from '../components/ActionButton';
+import { useScanReview } from '../hooks/useScanReview';
+import { errorMessage } from '../lib/errorMessage';
+import { removeOldPdfExports } from '../lib/pdfExports';
+import { CAPTURE_PAPER, MAX_PAGES } from '../lib/scanSession';
+import { styles } from '../styles';
+import { captureWaitLabels } from '../lib/labels';
 
-/**
- * The scan session. The camera stays mounted for the whole session; review and the page list cover it, and live
- * guidance pauses while it is covered. Its size never changes with notices or buttons: a resize rebinds the camera
- * and blanks the preview, so everything that comes and goes overlays it.
- */
-export default function ScanScreen() {
-  const cameraRef = useRef<CameraRef>(null)
-  const [tuning, setTuning] = useState(DEFAULT_TUNING)
-  const session = useScanSession()
-  const [message, setMessage] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [displayedDraft, setDisplayedDraft] = useState<string | null>(null)
-  const [cameraState, setCameraState] = useState<CameraState>('suspended')
-  const [optionsOpen, setOptionsOpen] = useState(false)
-  const [sampleFolder, setSampleFolder] = useState(() => DocumentScanner.getSampleFolder())
-  const sampling = sampleFolder.collecting
-  const permission = useCameraPermission()
-  const granted = permission.status === 'granted'
-  const { draft, pages } = session
-  const view = draft ? 'review' : session.summary && pages.length > 0 ? 'summary' : 'camera'
-  const full = pages.length >= MAX_PAGES
-  const awaitingReviewImage = draft != null && draft.pageId == null && displayedDraft !== draft.id
+/** One headless owner. Attached camera and review views borrow it. */
+export default function Scanner() {
+  const [native, setNative] = useState<NativeScanSession | null>(null);
+  const [scanKey, setScanKey] = useState(0);
+  const owner = useRef<NativeScanSession | null>(null);
+  const [tuning, setTuning] = useState(DEFAULT_TUNING);
+  const [removeShadows, setRemoveShadows] = useState(true);
+  const close = (session: NativeScanSession | null) => {
+    if (session)
+      void session.close().catch((error) => console.warn('Could not close scan.', error));
+  };
+  const newScan = () => {
+    close(owner.current);
+    owner.current = DocumentScanner.createSession();
+    setNative(owner.current);
+    setScanKey((key) => key + 1);
+  };
+  useEffect(() => {
+    newScan();
+    return () => {
+      close(owner.current);
+      owner.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    try {
+      removeOldPdfExports();
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
+      console.warn('Could not delete expired exports.', error);
+    }
+  }, []);
+  if (!native) return <View style={styles.screen} />;
+  return (
+    <ScanScreen
+      key={scanKey}
+      native={native}
+      onReset={newScan}
+      tuning={tuning}
+      setTuning={setTuning}
+      removeShadows={removeShadows}
+      setRemoveShadows={setRemoveShadows}
+    />
+  );
+}
+
+export function ScanScreen({
+  native,
+  onReset,
+  tuning,
+  setTuning,
+  removeShadows,
+  setRemoveShadows,
+}: {
+  native: NativeScanSession;
+  onReset: () => void;
+  tuning: typeof DEFAULT_TUNING;
+  setTuning: Dispatch<SetStateAction<typeof DEFAULT_TUNING>>;
+  removeShadows: boolean;
+  setRemoveShadows: (value: boolean) => void;
+}) {
+  const cameraRef = useRef<CameraRef>(null);
+  const session = useScanReview(native, onReset);
+  const [message, setMessage] = useState('');
+  const [captureState, setCaptureState] = useState<CameraCaptureState>('unavailable');
+  const [waitReason, setWaitReason] = useState<CaptureWaitReason>();
+  const capturing =
+    captureState === 'waiting' || captureState === 'shooting' || captureState === 'saving';
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [sampleFolder, setSampleFolder] = useState(() => DocumentScanner.getSampleFolder());
+  const sampling = sampleFolder.collecting;
+  const permission = useCameraPermission();
+  const granted = permission.status === 'granted';
+  const { screen, pageIds } = session;
+  const review = screen.type === 'review' ? screen : null;
+  const view = screen.type;
+  const full = pageIds.length >= MAX_PAGES;
 
   const confirmDiscard = (then: () => void) => {
-    const count = pages.length + (draft != null && draft.pageId == null ? 1 : 0)
+    const count = pageIds.length;
     if (count === 0) {
-      then()
-      return
+      then();
+      return;
     }
     Alert.alert(`Discard ${count} unsaved page${count === 1 ? '' : 's'}?`, undefined, [
       { text: 'Keep', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: then },
-    ])
-  }
+    ]);
+  };
 
-  // Back closes options or crop, drops a draft edit, then hides the retained pager.
+  // Back cancels crop drafts; saved page edits already belong to the native session.
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       // An export keeps the pager and its pages in place until it ends.
-      if (session.exporting || busy) return true
-      if (optionsOpen) setOptionsOpen(false)
+      if (session.working || capturing) return true;
+      if (optionsOpen) setOptionsOpen(false);
       else if (view === 'review') {
-        // Crop mode steps back to the rendered page; a render in flight is dropped with its draft.
-        if (draft?.cropQuad) session.endCrop(false)
-        else session.discardDraft()
-      } else if (view === 'summary') session.showSummary(false)
-      else if (pages.length > 0) {
+        // Crop Cancel issues no native command.
+        if (review?.cropping) session.cancelCrop();
+        else session.dismissReview();
+      } else if (view === 'summary') session.navigate('camera');
+      else if (pageIds.length > 0) {
         confirmDiscard(() => {
-          session.reset()
-          BackHandler.exitApp()
-        })
-      } else return false
-      return true
-    })
-    return () => subscription.remove()
-  })
+          session.reset();
+          BackHandler.exitApp();
+        });
+      } else return false;
+      return true;
+    });
+    return () => subscription.remove();
+  });
 
   const allowCamera = async () => {
     if (permission.status === 'blocked') {
       Linking.openSettings().catch(() => {
-        setMessage('Could not open app settings. Open Android settings and allow camera access for this app.')
-      })
-      return
+        setMessage(
+          'Could not open app settings. Open Android settings and allow camera access for this app.',
+        );
+      });
+      return;
     }
     try {
-      const status = await permission.request()
-      setMessage(status === 'denied' ? 'Camera access was denied. You can try again.' : '')
+      const status = await permission.request();
+      setMessage(status === 'denied' ? 'Camera access was denied. You can try again.' : '');
     } catch (error) {
-      setMessage(errorMessage(error, 'Could not request camera access.'))
+      if (error instanceof Error && error.name === 'AbortError') return;
+      setMessage(errorMessage(error, 'Could not request camera access.'));
     }
-  }
+  };
 
-  const takePhoto = async () => {
-    setBusy(true)
-    setMessage('')
-    const pressedAt = performance.now()
-    const { generation } = session
+  const takePhoto = () => session.run(async () => {
+    setMessage('');
+    const pressedAt = performance.now();
     try {
-      const photo = await cameraRef.current?.takePhoto()
-      if (!photo) throw new Error('The Camera view is not ready.')
-      console.log(`takePhoto resolved in ${Math.round(performance.now() - pressedAt)} ms`)
-      session.capture(photo, generation)
+      const photo = await cameraRef.current?.takePhoto();
+      if (!photo) throw new Error('The Camera view is not ready.');
+      console.log(`takePhoto resolved in ${Math.round(performance.now() - pressedAt)} ms`);
+      session.reviewCapture(photo);
     } catch (error) {
-      setMessage(errorMessage(error, 'Could not capture a photo.'))
-    } finally {
-      setBusy(false)
+      if (error instanceof Error && error.name === 'AbortError') return;
+      setMessage(errorMessage(error, 'Could not capture a photo.'));
     }
-  }
+  });
 
-  const saveLiveSample = () => {
-    cameraRef.current?.saveLiveSample().then(
-      (name) => setMessage(`Saved sample ${name}`),
-      (error: unknown) => setMessage(errorMessage(error, 'Could not save the sample.')),
-    )
-  }
+  const saveLiveSample = () => session.run(async () => {
+    try {
+      const name = await cameraRef.current?.saveLiveSample();
+      setMessage(`Saved sample ${name}`);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return; setMessage(errorMessage(error, 'Could not save the sample.')); }
+  });
 
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.screen}>
         <View style={styles.cameraStage}>
           <Camera
+            session={session.native}
+            renderOptions={{ ...CAPTURE_PAPER, format: 'auto', filter: 'none', removeShadows }}
             quadTensorModel="asset:///doccornernet/model.tflite"
             ref={cameraRef}
             {...tuning}
             mode={view === 'camera' && !optionsOpen ? tuning.mode : 'off'}
             guide={view === 'camera' && !optionsOpen}
-            retainCapturePreview={busy || awaitingReviewImage}
             showStats
-            onCameraStateChange={setCameraState}
+            onCaptureStateChange={setCaptureState}
+            onCaptureStage={(stage, reason) => setWaitReason(stage === 'waiting' ? reason : undefined)}
             onError={(error) => setMessage(errorMessage(error, 'Could not prepare the camera.'))}
             style={StyleSheet.absoluteFill}
           />
@@ -144,48 +206,86 @@ export default function ScanScreen() {
                 onPress={allowCamera}
               />
             )}
-            {full && <Text style={styles.notice}>This scan has {MAX_PAGES} pages, the most it can hold. Tap Done.</Text>}
-            {!!message && <Text style={styles.notice} numberOfLines={3}>{message}</Text>}
+            {full && (
+              <Text style={styles.notice}>
+                This scan has {MAX_PAGES} pages, the most it can hold. Tap Done.
+              </Text>
+            )}
+            {captureState === 'waiting' && waitReason && (
+              <Text style={styles.notice}>{captureWaitLabels[waitReason]}</Text>
+            )}
+            {!!message && (
+              <Text style={styles.notice} numberOfLines={3}>
+                {message}
+              </Text>
+            )}
           </View>
         </View>
         <View>
           <View style={styles.controls}>
             <View style={styles.shutterRow}>
               <View style={styles.shutterSide}>
-                {pages.length > 0 && (
-                  <TuningSwitch
-                    label={`Done · ${pages.length}`}
-                    disabled={busy || view !== 'camera'}
-                    onPress={() => session.showSummary(true)}
+                {pageIds.length > 0 && (
+                  <ActionButton
+                    label={`Done · ${pageIds.length}`}
+                    disabled={capturing || session.working || view !== 'camera'}
+                    onPress={() => session.navigate('summary')}
                   />
                 )}
                 {sampling && (
-                  <TuningSwitch label="Sample" disabled={view !== 'camera' || cameraState !== 'ready'}
-                    onPress={saveLiveSample} />
+                  <ActionButton
+                    label="Sample"
+                    disabled={session.working || view !== 'camera' || captureState !== 'ready'}
+                    onPress={saveLiveSample}
+                  />
                 )}
               </View>
               <ShutterButton
-                disabled={busy || !granted || cameraState !== 'ready' || !session.ready || full || draft != null}
+                disabled={
+                  capturing ||
+                  !granted ||
+                  captureState !== 'ready' ||
+                  full ||
+                  view !== 'camera' ||
+                  session.working
+                }
                 onPress={takePhoto}
               />
               <View style={styles.shutterSide}>
-                <TuningSwitch label="Options" disabled={busy || view !== 'camera'} onPress={() => setOptionsOpen(true)} />
+                <ActionButton
+                  label="Options"
+                  disabled={capturing || session.working || view !== 'camera'}
+                  onPress={() => setOptionsOpen(true)}
+                />
               </View>
             </View>
           </View>
         </View>
       </SafeAreaView>
       {/* Capture, saved pages, and export share one pager overlay. Crop is its separate editor screen. */}
-      <ReviewPanel visible={view !== 'camera'} draft={draft} session={session} awaitingImage={awaitingReviewImage}
+      <ReviewPanel
+        visible={view !== 'camera'}
+        session={session}
         sampling={sampling}
-        onPreviewReady={() => { if (draft) setDisplayedDraft(draft.id) }}
-        onOptions={() => setOptionsOpen(true)} onNewScan={() => confirmDiscard(session.reset)} />
+        onOptions={() => setOptionsOpen(true)}
+        onNewScan={() => confirmDiscard(session.reset)}
+      />
       <SheetModal visible={optionsOpen} onClose={() => setOptionsOpen(false)}>
-        <OptionsPanel tuning={tuning} disabled={busy || session.exporting}
-          removeShadows={session.removeShadows} onRemoveShadowsChange={session.setDefaultRemoveShadows}
-          sampleFolder={sampleFolder} onSampleFolderChange={setSampleFolder}
-          onChange={setTuning} onClose={() => setOptionsOpen(false)} />
+        <OptionsPanel
+          tuning={tuning}
+          disabled={capturing || session.working}
+          removeShadows={removeShadows}
+          onRemoveShadowsChange={setRemoveShadows}
+          sampleFolder={sampleFolder}
+          onSampleFolderChange={setSampleFolder}
+          onChange={setTuning}
+          onClose={() => setOptionsOpen(false)}
+        />
       </SheetModal>
+      {session.working && <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#0006' }]}>
+        <ActivityIndicator size="large" color="white" accessibilityLabel="Working" />
+      </View>}
     </View>
-  )
+  );
 }
+

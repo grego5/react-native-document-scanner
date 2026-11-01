@@ -23,16 +23,7 @@ data class DocumentCandidate(
   val quad: DocumentQuad,
   @DoNotStrip
   @Keep
-  val score: Double,
-  @DoNotStrip
-  @Keep
-  val corners: DocumentCornerProvenance,
-  @DoNotStrip
-  @Keep
-  val sides: DocumentSideProvenance,
-  @DoNotStrip
-  @Keep
-  val a4PageRange: DocumentA4PageEstimateRange?
+  val score: Double
 ) {
   /* primary constructor */
 
@@ -41,18 +32,12 @@ data class DocumentCandidate(
     if (other !is DocumentCandidate) return false
     return Objects.deepEquals(this.quad, other.quad)
       && Objects.deepEquals(this.score, other.score)
-      && Objects.deepEquals(this.corners, other.corners)
-      && Objects.deepEquals(this.sides, other.sides)
-      && Objects.deepEquals(this.a4PageRange, other.a4PageRange)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
       quad,
-      score,
-      corners,
-      sides,
-      a4PageRange
+      score
     ).contentDeepHashCode()
   }
 
@@ -64,8 +49,8 @@ data class DocumentCandidate(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(quad: DocumentQuad, score: Double, corners: DocumentCornerProvenance, sides: DocumentSideProvenance, a4PageRange: DocumentA4PageEstimateRange?): DocumentCandidate {
-      return DocumentCandidate(quad, score, corners, sides, a4PageRange)
+    private fun fromCpp(quad: DocumentQuad, score: Double): DocumentCandidate {
+      return DocumentCandidate(quad, score)
     }
   }
 }

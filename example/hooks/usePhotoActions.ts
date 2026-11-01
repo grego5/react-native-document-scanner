@@ -1,20 +1,20 @@
 import { Alert } from 'react-native'
 import * as MediaLibrary from 'expo-media-library'
 import * as Sharing from 'expo-sharing'
-import { DocumentScanner } from 'react-native-document-scanner'
+import { type ScanSession } from 'react-native-document-scanner'
 import type { PdfSettings } from '../components/ExportSheet'
 import { errorMessage } from '../lib/errorMessage'
-import { newPdfExport } from '../lib/pdfExports'
+import { newImageExport, newPdfExport } from '../lib/pdfExports'
 
-/** Gallery save and PDF share for finished pages, run through `run` so the session keeps the files until they end. */
-export function usePhotoActions(run: (operation: () => Promise<void>) => Promise<void>) {
+/** Gallery save and PDF share use independent exports and hold the app UX lock until completion. */
+export function usePhotoActions(session: ScanSession, run: (operation: () => Promise<void>) => Promise<void>) {
   const [libraryPermission, requestLibraryPermission] = MediaLibrary.usePermissions({
     writeOnly: true,
     granularPermissions: ['photo'],
   })
 
-  /** Saves `uris` in order, so the gallery lists them in page order. */
-  const saveAll = (uris: string[]) => run(async () => {
+  /** Exports the session and saves its independent copies in order, so the gallery lists them in page order. */
+  const saveAll = () => run(async () => {
     try {
       let permission = libraryPermission
       if (!permission?.granted) permission = await requestLibraryPermission()
@@ -22,9 +22,13 @@ export function usePhotoActions(run: (operation: () => Promise<void>) => Promise
         Alert.alert('Photo library access needed', 'Allow photo library access to save the pages.')
         return
       }
-      for (const uri of uris) await MediaLibrary.Asset.create(uri)
+      const uris = await session.exportImages(newImageExport().uri)
+      for (const uri of uris) {
+        await MediaLibrary.Asset.create(uri)
+      }
       Alert.alert(`Saved ${uris.length} page${uris.length === 1 ? '' : 's'} to the gallery.`)
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
       Alert.alert('Could not save the pages.', errorMessage(error, ''))
     }
   })
@@ -33,15 +37,15 @@ export function usePhotoActions(run: (operation: () => Promise<void>) => Promise
    * Writes a fresh PDF and opens the share sheet. The file stays available after the sheet closes because its
    * recipient may still be reading; old exports are cleaned on a later startup.
    */
-  const sharePdf = (uris: string[], settings: PdfSettings) => run(async () => {
+  const sharePdf = (settings: PdfSettings) => run(async () => {
     try {
-      const pdf = await DocumentScanner.createPdf({
+      const pdf = await session.createPdf({
         ...settings,
         outputPath: newPdfExport().uri,
-        pages: uris,
       })
       await Sharing.shareAsync(pdf, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' })
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
       Alert.alert('Could not export the PDF.', errorMessage(error, ''))
     }
   })

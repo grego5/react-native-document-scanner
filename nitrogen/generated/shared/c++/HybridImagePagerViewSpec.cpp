@@ -14,14 +14,18 @@ namespace margelo::nitro::documentscanner {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
-      prototype.registerHybridGetter("uris", &HybridImagePagerViewSpec::getUris);
-      prototype.registerHybridSetter("uris", &HybridImagePagerViewSpec::setUris);
-      prototype.registerHybridGetter("index", &HybridImagePagerViewSpec::getIndex);
-      prototype.registerHybridSetter("index", &HybridImagePagerViewSpec::setIndex);
+      prototype.registerHybridGetter("session", &HybridImagePagerViewSpec::getSession);
+      prototype.registerHybridSetter("session", &HybridImagePagerViewSpec::setSession);
+      prototype.registerHybridGetter("pageIds", &HybridImagePagerViewSpec::getPageIds);
+      prototype.registerHybridSetter("pageIds", &HybridImagePagerViewSpec::setPageIds);
+      prototype.registerHybridGetter("direction", &HybridImagePagerViewSpec::getDirection);
+      prototype.registerHybridSetter("direction", &HybridImagePagerViewSpec::setDirection);
+      prototype.registerHybridGetter("selectedPageId", &HybridImagePagerViewSpec::getSelectedPageId);
+      prototype.registerHybridSetter("selectedPageId", &HybridImagePagerViewSpec::setSelectedPageId);
       prototype.registerHybridGetter("swipeEnabled", &HybridImagePagerViewSpec::getSwipeEnabled);
       prototype.registerHybridSetter("swipeEnabled", &HybridImagePagerViewSpec::setSwipeEnabled);
-      prototype.registerHybridGetter("onIndexChange", &HybridImagePagerViewSpec::getOnIndexChange);
-      prototype.registerHybridSetter("onIndexChange", &HybridImagePagerViewSpec::setOnIndexChange);
+      prototype.registerHybridGetter("onPageChange", &HybridImagePagerViewSpec::getOnPageChange);
+      prototype.registerHybridSetter("onPageChange", &HybridImagePagerViewSpec::setOnPageChange);
       prototype.registerHybridGetter("onLoad", &HybridImagePagerViewSpec::getOnLoad);
       prototype.registerHybridSetter("onLoad", &HybridImagePagerViewSpec::setOnLoad);
       prototype.registerHybridGetter("onError", &HybridImagePagerViewSpec::getOnError);

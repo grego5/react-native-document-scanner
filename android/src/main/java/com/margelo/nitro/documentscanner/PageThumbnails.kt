@@ -46,6 +46,25 @@ internal object PageThumbnails {
     return SourceImageLoader.loadReduced(source, longSide).also { memory.put(uri, it) }
   }
 
+  /** A tile either borrows a shared cache bitmap or owns a never-published decode/scale. */
+  data class TilePixels(val bitmap: Bitmap, val shared: Boolean) {
+    fun discard() { if (!shared) bitmap.recycle() }
+  }
+
+  /** Tile-only path: use an available thumbnail or decode its leased small source at measured pixels. */
+  fun loadTile(source: SessionPageSource, longSide: Int): TilePixels {
+    require(longSide > 0)
+    val cached = memory.get(source.cacheUri)
+    if (cached == null) return TilePixels(SourceImageLoader.loadReduced(source.uri, longSide), false)
+    val side = maxOf(cached.width, cached.height)
+    if (side <= longSide) return TilePixels(cached, true)
+    val scale = longSide.toFloat() / side
+    val width = (cached.width * scale).toInt().coerceAtLeast(1)
+    val height = (cached.height * scale).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createScaledBitmap(cached, width, height, true)
+    return TilePixels(bitmap, bitmap === cached)
+  }
+
   /**
    * Forgets thumbnails of deleted [uris], whether pages or thumbnail files. Views still drawing a forgotten bitmap keep
    * it, since cached bitmaps are never recycled.

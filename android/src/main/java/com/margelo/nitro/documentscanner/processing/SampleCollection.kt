@@ -3,17 +3,15 @@ package com.margelo.nitro.documentscanner.processing
 import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
 import android.os.Build
-import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
-import android.system.Os
-import android.system.OsConstants
-import androidx.exifinterface.media.ExifInterface
 import com.margelo.nitro.core.Promise
+import com.margelo.nitro.documentscanner.DocumentAnalysis
 import com.margelo.nitro.documentscanner.DocumentCandidate
+import com.margelo.nitro.documentscanner.SessionResources
+import com.margelo.nitro.documentscanner.requireInput
 import com.margelo.nitro.documentscanner.DocumentQuad
 import com.margelo.nitro.documentscanner.InvalidInputException
 import com.margelo.nitro.documentscanner.SampleFolder
@@ -23,23 +21,20 @@ import java.io.Closeable
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
-import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
-import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Collections
 import java.util.Locale
 import java.util.WeakHashMap
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import org.json.JSONObject
 
-/** An `analyzePhoto` result on a pending photo, made by [model]; the size is upright. */
-private class PhotoAnalysis(
-  val width: Int,
-  val height: Int,
+/** An analysis result on a pending photo, made by [model]. */
+private class SamplePhotoAnalysis(
   val durationMs: Double,
   val candidate: DocumentCandidate?,
   val model: QuadModelStore.Selection,
@@ -47,7 +42,6 @@ private class PhotoAnalysis(
 
 /** A photo the Camera took while a folder was picked, kept until it is forgotten or pushed out by newer ones. */
 private class PendingCapture(val shutterMs: Long, val shutterNs: Long, val frame: LiveFrameSnapshot?) {
-  @Volatile var analysis: PhotoAnalysis? = null
   // Storage thread only.
   private var savedTree: Uri? = null
   private val saved = HashMap<String, Uri>()
@@ -59,26 +53,6 @@ private class PendingCapture(val shutterMs: Long, val shutterNs: Long, val frame
       savedTree = tree
     }
     return saved
-  }
-}
-
-/**
- * A photo opened before its save is queued, so deleting the file meanwhile cannot cut the save short. A cached photo
- * is a plain file, so each [read] starts over from its first byte; reads must not overlap.
- */
-private class OpenPhoto(private val descriptor: ParcelFileDescriptor) : Closeable {
-  fun read(): InputStream {
-    val copy = descriptor.dup()
-    Os.lseek(copy.fileDescriptor, 0, OsConstants.SEEK_SET)
-    return ParcelFileDescriptor.AutoCloseInputStream(copy)
-  }
-
-  override fun close() = descriptor.close()
-
-  companion object {
-    fun open(context: Context, uri: Uri): OpenPhoto = OpenPhoto(
-      if (uri.scheme == null) ParcelFileDescriptor.open(File(uri.toString()), ParcelFileDescriptor.MODE_READ_ONLY)
-      else context.contentResolver.openFileDescriptor(uri, "r") ?: throw IOException("Could not open $uri."))
   }
 }
 
@@ -250,13 +224,6 @@ internal object SampleCollection {
     }
   }
 
-  /** Any thread: notes [model]'s `analyzePhoto` result on a pending photo; [width] and [height] are upright. */
-  fun noteAnalysis(photoName: String, width: Double, height: Double, durationMs: Double, candidate: DocumentCandidate?,
-    model: QuadModelStore.Selection) {
-    synchronized(pending) { pending[photoName] }?.analysis =
-      PhotoAnalysis(width.toInt(), height.toInt(), durationMs, candidate, model)
-  }
-
   fun forget(photoNames: Collection<String>) {
     synchronized(pending) { photoNames.forEach(pending::remove) }
   }
@@ -272,64 +239,80 @@ internal object SampleCollection {
     }
   }
 
-  /**
-   * Saves the photo at [originalUri] with [label], the outline the user accepted, or unlabeled without one, and its
-   * pending live frame; resolves with the photo's name.
-   */
-  fun saveCapture(context: Context, originalUri: String, label: DocumentQuad?): Promise<String> {
-    val uri = Uri.parse(originalUri)
-    val capture = uri.lastPathSegment?.let { synchronized(pending) { pending[it] } }
-    val id = capture?.shutterMs ?: System.currentTimeMillis()
-    val photo = try {
-      OpenPhoto.open(context, uri)
-    } catch (error: Exception) {
-      return Promise<String>().also { it.reject(error) }
-    }
-    return submit(context, photo) { folder ->
-      val saved = capture?.savedIn(folder.tree)
-      val analysis = capture?.analysis
-      val (width, height) = analysis?.let { it.width to it.height } ?: uprightSize(photo)
-      val stem = "$id-${maxOf(width, height)}"
-      val frameName = capture?.frame?.let { frame ->
-        writeFrame(context, folder, id, frame, saved) { info ->
-          info.put("msBeforeShutter", (capture.shutterNs - frame.recordedNs) / 1_000_000.0)
+  /** ID admission has already pinned this original under the session state lock. */
+  fun saveCapture(context: Context, lease: SessionResources.Lease, worker: Executor = executor,
+    analysis: DocumentAnalysis? = null, model: QuadModelStore.Selection? = null, liveQuad: DocumentQuad? = null): Promise<String> =
+    try {
+      requireInput(analysis != null && model != null) { "Photo analysis is not available for this sample." }
+      val provenance = SamplePhotoAnalysis(analysis!!.duration, analysis.candidate, model!!)
+      val capture = synchronized(pending) { pending[lease.file.name] }
+      val id = capture?.shutterMs ?: System.currentTimeMillis()
+      submit(context, Closeable { lease.close() }, worker) { folder ->
+        val saved = capture?.savedIn(folder.tree)
+        val frameName = capture?.frame?.let { frame ->
+          writeFrame(context, folder, id, frame, saved) { info ->
+            info.put("msBeforeShutter", (capture.shutterNs - frame.recordedNs) / 1_000_000.0)
+          }
         }
+        writePhotoInput(context, folder, Uri.fromFile(lease.file).toString(), id, liveQuad, provenance, saved, frameName)
       }
-      val digest = MessageDigest.getInstance("SHA-256")
-      folder.write("$stem.jpg", "image/jpeg", saved) { output ->
-        DigestInputStream(photo.read(), digest).use { it.copyTo(output) }
-      }
-      val prediction = analysis?.candidate
-      val info = entry(context, "$stem.jpg", hex(digest.digest()), width, height, label ?: prediction?.quad, label != null,
-        analysis?.model)
-        .put("source", "photo")
-        .put("prediction", prediction?.let { JSONObject().put("quad", quad(it.quad)).put("score", it.score) } ?: JSONObject.NULL)
-        .put("analysisMs", analysis?.durationMs ?: JSONObject.NULL)
-        .put("liveFrame", frameName ?: JSONObject.NULL)
-      writeJson(folder, "$stem.json", info, saved)
-      "$stem.jpg"
     }
-  }
+    catch (error: Throwable) { lease.close(); Promise<String>().also { it.reject(error) } }
+
+  /** Recreate the lossless upright bitmap passed to photo inference, with the model's prediction on it. */
+  private fun writePhotoInput(context: Context, folder: FolderWriter, uri: String, id: Long, seed: DocumentQuad?,
+    analysis: SamplePhotoAnalysis, saved: MutableMap<String, Uri>?, frameName: String?): String =
+    SourceImageLoader.inspect(uri).let { header ->
+      val input = PhotoAnalysis.loadInput(header, seed)
+      val crop = input.region
+      val region = input.bitmap
+      try {
+        val png = ByteArrayOutputStream().also { check(region.compress(Bitmap.CompressFormat.PNG, 100, it)) }.toByteArray()
+        val stem = "$id-${maxOf(region.width, region.height)}"
+        folder.write("$stem.png", "image/png", saved) { it.write(png) }
+        val prediction = analysis.candidate
+        val mappedPrediction = prediction?.quad?.let { crop.fromPhoto(it, header.uprightWidth, header.uprightHeight) }
+        val info = entry(context, "$stem.png", hex(MessageDigest.getInstance("SHA-256").digest(png)),
+          region.width, region.height, mappedPrediction, analysis.model)
+          .put("source", "photo-input")
+          .put("prediction", if (mappedPrediction != null) JSONObject().put("quad", quad(mappedPrediction))
+            .put("score", prediction!!.score) else JSONObject.NULL)
+          .put("analysisMs", analysis.durationMs)
+          .put("liveFrame", frameName ?: JSONObject.NULL)
+        writeJson(folder, "$stem.json", info, saved)
+        "$stem.png"
+      } finally {
+        region.recycle()
+      }
+    }
 
   /** Queues [write] into the picked folder, then closes [held] whether or not it ran. */
-  private fun submit(context: Context, held: Closeable? = null, write: (FolderWriter) -> String): Promise<String> {
+  private fun submit(context: Context, held: Closeable? = null, worker: Executor = executor, write: (FolderWriter) -> String): Promise<String> {
     val promise = Promise<String>()
-    val tree = active(context)
+    val tree = try { active(context) } catch (error: Throwable) {
+      held?.close()
+      promise.reject(error)
+      return promise
+    }
     if (tree == null) {
       held?.close()
       promise.reject(InvalidInputException("Sample collection is off."))
       return promise
     }
-    executor.execute {
-      try {
-        promise.resolve(write(FolderWriter(context.contentResolver, tree)))
-      } catch (error: Throwable) {
-        // A grant revoked in settings shows up as a failed write; noticing it turns collection off.
-        refresh(context)
-        promise.reject(error)
-      } finally {
-        held?.close()
+    try {
+      worker.execute {
+        try {
+          promise.resolve(write(FolderWriter(context.contentResolver, tree)))
+        } catch (error: Throwable) {
+          // A grant revoked in settings shows up as a failed write; noticing it turns collection off.
+          try { refresh(context) } finally { promise.reject(error) }
+        } finally {
+          held?.close()
+        }
       }
+    } catch (error: Throwable) {
+      held?.close()
+      promise.reject(error)
     }
     return promise
   }
@@ -350,7 +333,7 @@ internal object SampleCollection {
     val png = uprightPng(frame)
     folder.write("$stem.png", "image/png", saved) { it.write(png) }
     val info = entry(context, "$stem.png", hex(MessageDigest.getInstance("SHA-256").digest(png)), width, height,
-      frame.candidate, false, frame.model)
+      frame.candidate, frame.model)
       .put("source", "live")
       .put("prediction", frame.candidate?.let { JSONObject().put("quad", quad(it)).put("score", frame.score) }
         ?: JSONObject.NULL)
@@ -362,11 +345,11 @@ internal object SampleCollection {
   }
 
   /**
-   * A `tools/label-samples` entry; [quad] starts the outline, confirmed only when [labeled]. [model] made the
+   * An unlabeled `tools/label-samples` entry; the model's [quad] starts the outline to correct. [model] made the
    * prediction; null when there is none.
    */
   private fun entry(context: Context, image: String, sha256: String, width: Int, height: Int, quad: DocumentQuad?,
-    labeled: Boolean, model: QuadModelStore.Selection?): JSONObject {
+    model: QuadModelStore.Selection?): JSONObject {
     return JSONObject()
       .put("version", 2)
       .put("coordinateSpace", "exifUprightNormalized")
@@ -374,7 +357,7 @@ internal object SampleCollection {
       .put("sha256", sha256)
       .put("sourceWidth", width)
       .put("sourceHeight", height)
-      .put("status", if (labeled) "document" else "unlabeled")
+      .put("status", "unlabeled")
       .put("quad", quad?.let(::quad) ?: JSONObject.NULL)
       .put("savedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date()))
       .put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
@@ -400,18 +383,6 @@ internal object SampleCollection {
       if (upright !== sensor) upright.recycle()
       sensor.recycle()
     }
-  }
-
-  /** The photo's width and height after its EXIF orientation. */
-  private fun uprightSize(photo: OpenPhoto): Pair<Int, Int> {
-    val orientation = photo.read().use {
-      ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-    }
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    photo.read().use { BitmapFactory.decodeStream(it, null, bounds) }
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Could not read the photo's size.")
-    val turned = orientation in ExifInterface.ORIENTATION_TRANSPOSE..ExifInterface.ORIENTATION_ROTATE_270
-    return if (turned) bounds.outHeight to bounds.outWidth else bounds.outWidth to bounds.outHeight
   }
 
   private fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }

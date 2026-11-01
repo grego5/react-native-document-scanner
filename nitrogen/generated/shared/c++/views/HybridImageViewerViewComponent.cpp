@@ -20,15 +20,17 @@ namespace margelo::nitro::documentscanner::views {
                                                          const HybridImageViewerViewProps& sourceProps,
                                                          const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
-    uri(nitro::ReactProp<std::string>::fromRawValue("ImageViewerView", "uri", rawProps, sourceProps.uri)),
+    session(nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>>::fromRawValue("ImageViewerView", "session", rawProps, sourceProps.session)),
+    pageId(nitro::ReactProp<std::string>::fromRawValue("ImageViewerView", "pageId", rawProps, sourceProps.pageId)),
     onError(nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* failure */)>>>::fromRawValue("ImageViewerView", "onError", rawProps, sourceProps.onError)),
-    onLoad(nitro::ReactProp<std::optional<std::function<void(const std::string& /* uri */)>>>::fromRawValue("ImageViewerView", "onLoad", rawProps, sourceProps.onLoad)),
+    onLoad(nitro::ReactProp<std::optional<std::function<void(const std::string& /* pageId */)>>>::fromRawValue("ImageViewerView", "onLoad", rawProps, sourceProps.onLoad)),
     onZoomChange(nitro::ReactProp<std::optional<std::function<void(bool /* zoomed */)>>>::fromRawValue("ImageViewerView", "onZoomChange", rawProps, sourceProps.onZoomChange)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridImageViewerViewSpec>& /* ref */)>>>::fromRawValue("ImageViewerView", "hybridRef", rawProps, sourceProps.hybridRef)) { }
 
   bool HybridImageViewerViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
-      case hashString("uri"): return true;
+      case hashString("session"): return true;
+      case hashString("pageId"): return true;
       case hashString("onError"): return true;
       case hashString("onLoad"): return true;
       case hashString("onZoomChange"): return true;

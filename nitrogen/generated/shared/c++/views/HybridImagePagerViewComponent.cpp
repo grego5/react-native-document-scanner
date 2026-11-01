@@ -20,20 +20,24 @@ namespace margelo::nitro::documentscanner::views {
                                                        const HybridImagePagerViewProps& sourceProps,
                                                        const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
-    uris(nitro::ReactProp<std::vector<std::string>>::fromRawValue("ImagePagerView", "uris", rawProps, sourceProps.uris)),
-    index(nitro::ReactProp<double>::fromRawValue("ImagePagerView", "index", rawProps, sourceProps.index)),
+    session(nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>>::fromRawValue("ImagePagerView", "session", rawProps, sourceProps.session)),
+    pageIds(nitro::ReactProp<std::optional<std::vector<std::string>>>::fromRawValue("ImagePagerView", "pageIds", rawProps, sourceProps.pageIds)),
+    direction(nitro::ReactProp<std::optional<ImagePagerDirection>>::fromRawValue("ImagePagerView", "direction", rawProps, sourceProps.direction)),
+    selectedPageId(nitro::ReactProp<std::string>::fromRawValue("ImagePagerView", "selectedPageId", rawProps, sourceProps.selectedPageId)),
     swipeEnabled(nitro::ReactProp<std::optional<bool>>::fromRawValue("ImagePagerView", "swipeEnabled", rawProps, sourceProps.swipeEnabled)),
-    onIndexChange(nitro::ReactProp<std::optional<std::function<void(double /* index */)>>>::fromRawValue("ImagePagerView", "onIndexChange", rawProps, sourceProps.onIndexChange)),
-    onLoad(nitro::ReactProp<std::optional<std::function<void(const std::string& /* uri */)>>>::fromRawValue("ImagePagerView", "onLoad", rawProps, sourceProps.onLoad)),
+    onPageChange(nitro::ReactProp<std::optional<std::function<void(const std::string& /* pageId */)>>>::fromRawValue("ImagePagerView", "onPageChange", rawProps, sourceProps.onPageChange)),
+    onLoad(nitro::ReactProp<std::optional<std::function<void(const std::string& /* pageId */)>>>::fromRawValue("ImagePagerView", "onLoad", rawProps, sourceProps.onLoad)),
     onError(nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* failure */)>>>::fromRawValue("ImagePagerView", "onError", rawProps, sourceProps.onError)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridImagePagerViewSpec>& /* ref */)>>>::fromRawValue("ImagePagerView", "hybridRef", rawProps, sourceProps.hybridRef)) { }
 
   bool HybridImagePagerViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
-      case hashString("uris"): return true;
-      case hashString("index"): return true;
+      case hashString("session"): return true;
+      case hashString("pageIds"): return true;
+      case hashString("direction"): return true;
+      case hashString("selectedPageId"): return true;
       case hashString("swipeEnabled"): return true;
-      case hashString("onIndexChange"): return true;
+      case hashString("onPageChange"): return true;
       case hashString("onLoad"): return true;
       case hashString("onError"): return true;
       case hashString("hybridRef"): return true;

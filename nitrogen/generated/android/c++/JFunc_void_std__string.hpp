@@ -19,7 +19,7 @@ namespace margelo::nitro::documentscanner {
   using namespace facebook;
 
   /**
-   * Represents the Java/Kotlin callback `(uri: String) -> Unit`.
+   * Represents the Java/Kotlin callback `(pageId: String) -> Unit`.
    * This can be passed around between C++ and Java/Kotlin.
    */
   struct JFunc_void_std__string: public jni::JavaClass<JFunc_void_std__string> {
@@ -30,9 +30,9 @@ namespace margelo::nitro::documentscanner {
     /**
      * Invokes the function this `JFunc_void_std__string` instance holds through JNI.
      */
-    void invoke(const std::string& uri) const {
-      static const auto method = javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* uri */)>("invoke");
-      method(self(), jni::make_jstring(uri));
+    void invoke(const std::string& pageId) const {
+      static const auto method = javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* pageId */)>("invoke");
+      method(self(), jni::make_jstring(pageId));
     }
   };
 
@@ -41,7 +41,7 @@ namespace margelo::nitro::documentscanner {
    */
   class JFunc_void_std__string_cxx final: public jni::HybridClass<JFunc_void_std__string_cxx, JFunc_void_std__string> {
   public:
-    static jni::local_ref<JFunc_void_std__string::javaobject> fromCpp(const std::function<void(const std::string& /* uri */)>& func) {
+    static jni::local_ref<JFunc_void_std__string::javaobject> fromCpp(const std::function<void(const std::string& /* pageId */)>& func) {
       return JFunc_void_std__string_cxx::newObjectCxxArgs(func);
     }
 
@@ -49,13 +49,13 @@ namespace margelo::nitro::documentscanner {
     /**
      * Invokes the C++ `std::function<...>` this `JFunc_void_std__string_cxx` instance holds.
      */
-    void invoke_cxx(jni::alias_ref<jni::JString> uri) {
-      _func(uri->toStdString());
+    void invoke_cxx(jni::alias_ref<jni::JString> pageId) {
+      _func(pageId->toStdString());
     }
 
   public:
     [[nodiscard]]
-    inline const std::function<void(const std::string& /* uri */)>& getFunction() const {
+    inline const std::function<void(const std::string& /* pageId */)>& getFunction() const {
       return _func;
     }
 
@@ -66,11 +66,11 @@ namespace margelo::nitro::documentscanner {
     }
 
   private:
-    explicit JFunc_void_std__string_cxx(const std::function<void(const std::string& /* uri */)>& func): _func(func) { }
+    explicit JFunc_void_std__string_cxx(const std::function<void(const std::string& /* pageId */)>& func): _func(func) { }
 
   private:
     friend HybridBase;
-    std::function<void(const std::string& /* uri */)> _func;
+    std::function<void(const std::string& /* pageId */)> _func;
   };
 
 } // namespace margelo::nitro::documentscanner

@@ -22,6 +22,21 @@ class RenderPipelineTest {
     OpenCvRuntime.ensureLoaded()
   }
 
+  @Test fun sampledRegionUsesPhotoCoordinatesThroughJni() {
+    val source = GeometricRenderTest().fixture("flat")
+    val local = Mat()
+    val mapped = Mat()
+    try {
+      val expected = NativeRenderGeometry.render(source, local,
+        doubleArrayOf(.25,.25,.75,.25,.75,.75,.25,.75), 2.0, null, false, DocumentFilter.GRAYSCALE)
+      val actual = NativeRenderGeometry.render(source, mapped,
+        doubleArrayOf(.375,.375,.625,.375,.625,.625,.375,.625), 2.0, null, false, DocumentFilter.GRAYSCALE,
+        region = doubleArrayOf(2560.0,1920.0,640.0,480.0,2.0))
+      assertEquals(expected, actual)
+      assertEquals(0.0, Core.norm(local, mapped, Core.NORM_INF), 0.0)
+    } finally { mapped.release(); local.release(); source.release() }
+  }
+
   @Test fun combinedStagesPreservePixelsMetadataAndBorrowedSource() {
     for (kind in listOf("flat", "bent", "outside", "scaled", "color")) {
       val source = GeometricRenderTest().fixture(kind)

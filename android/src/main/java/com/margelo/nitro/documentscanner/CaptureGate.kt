@@ -227,3 +227,11 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQu
     }, reason)
   }
 }
+
+/** Public wait status contains no presentation text. */
+internal fun WaitReason.toCaptureWaitReason(): CaptureWaitReason = when (this) {
+  WaitReason.DOCUMENT -> CaptureWaitReason.DOCUMENT
+  WaitReason.FOCUS -> CaptureWaitReason.FOCUS
+  WaitReason.LIGHT -> CaptureWaitReason.LIGHT
+  WaitReason.STEADY -> CaptureWaitReason.STEADY
+}

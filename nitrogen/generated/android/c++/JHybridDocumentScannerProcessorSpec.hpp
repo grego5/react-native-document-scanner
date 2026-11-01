@@ -54,16 +54,12 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
+    std::variant<std::shared_ptr<HybridScanSessionSpec>, ScannerFailure> createSessionResult() override;
     std::shared_ptr<Promise<std::variant<ScannerFailure, SampleFolder>>> pickSampleFolderResult() override;
     SampleFolder getSampleFolder() override;
     void clearSampleFolder() override;
     void setSampleCollection(bool on) override;
     void setSampleFolder(const std::string& uri) override;
-    std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveCaptureSampleResult(const std::string& originalUri, const std::optional<DocumentQuad>& quad) override;
-    std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentAnalysis>>> analyzePhotoResult(const std::string& originalUri, const std::optional<DocumentQuad>& liveQuad) override;
-    std::shared_ptr<Promise<std::variant<ScannerFailure, RenderedDocument>>> renderDocumentResult(const std::string& originalUri, const DocumentQuad& quad, const std::optional<DocumentRenderOptions>& options) override;
-    std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> createPdfResult(const CreatePdfOptions& options) override;
-    std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> removeCachedImagesResult(const std::vector<std::string>& uris) override;
 
   private:
     jni::global_ref<JHybridDocumentScannerProcessorSpec::JavaPart> _javaPart;

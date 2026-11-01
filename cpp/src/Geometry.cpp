@@ -132,15 +132,17 @@ RegionTransform centeredSquare(Size source) {
 }
 std::optional<Crop> photoInferenceCrop(const Quad &q, Size photo) {
   dimensions(photo);
-  if (!validPredictionQuad(q)) return std::nullopt;
+  if (!validPredictionQuad(q))
+    return std::nullopt;
   const auto [lx, rx] = std::minmax_element(q.begin(), q.end(), [](Point a, Point b) { return a.x < b.x; });
   const auto [ty, by] = std::minmax_element(q.begin(), q.end(), [](Point a, Point b) { return a.y < b.y; });
   const double x0 = lx->x * photo.width, x1 = rx->x * photo.width, y0 = ty->y * photo.height, y1 = by->y * photo.height;
   const double minX = std::max(0.0, x0 - (x1 - x0) * .10), maxX = std::min(double(photo.width), x1 + (x1 - x0) * .10);
   const double minY = std::max(0.0, y0 - (y1 - y0) * .10), maxY = std::min(double(photo.height), y1 + (y1 - y0) * .10);
-  const double ratio = double(photo.width) / photo.height;
-  const double w = std::min(std::max(maxX - minX, (maxY - minY) * ratio), double(photo.width));
-  const double h = std::min(w / ratio, double(photo.height));
+  // Match the current Android photo-input policy: expand toward a square, preserving margins.
+  const double side = std::max(maxX - minX, maxY - minY);
+  const double w = std::min(side, double(photo.width));
+  const double h = std::min(side, double(photo.height));
   const double x = std::clamp((minX + maxX - w) / 2, 0.0, photo.width - w);
   const double y = std::clamp((minY + maxY - h) / 2, 0.0, photo.height - h);
   const auto left = static_cast<uint32_t>(std::floor(x)), top = static_cast<uint32_t>(std::floor(y));

@@ -54,6 +54,16 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
 
   // Update only props that differ from the previous State snapshot.
   if (oldProps == nullptr
+        ? newProps->session.isProvided()
+        : !newProps->session.hasSameValue(oldProps->session)) {
+    hybridView->setSession(newProps->session.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->renderOptions.isProvided()
+        : !newProps->renderOptions.hasSameValue(oldProps->renderOptions)) {
+    hybridView->setRenderOptions(newProps->renderOptions.get());
+  }
+  if (oldProps == nullptr
         ? newProps->quadTensorModel.isProvided()
         : !newProps->quadTensorModel.hasSameValue(oldProps->quadTensorModel)) {
     hybridView->setQuadTensorModel(newProps->quadTensorModel.get());
@@ -154,11 +164,6 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setCaptureFeedback(newProps->captureFeedback.get());
   }
   if (oldProps == nullptr
-        ? newProps->retainCapturePreview.isProvided()
-        : !newProps->retainCapturePreview.hasSameValue(oldProps->retainCapturePreview)) {
-    hybridView->setRetainCapturePreview(newProps->retainCapturePreview.get());
-  }
-  if (oldProps == nullptr
         ? newProps->captureColor.isProvided()
         : !newProps->captureColor.hasSameValue(oldProps->captureColor)) {
     hybridView->setCaptureColor(newProps->captureColor.get());
@@ -167,6 +172,11 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
         ? newProps->onCameraStateChange.isProvided()
         : !newProps->onCameraStateChange.hasSameValue(oldProps->onCameraStateChange)) {
     hybridView->setOnCameraStateChange(newProps->onCameraStateChange.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->onCaptureStateChange.isProvided()
+        : !newProps->onCaptureStateChange.hasSameValue(oldProps->onCaptureStateChange)) {
+    hybridView->setOnCaptureStateChange(newProps->onCaptureStateChange.get());
   }
   if (oldProps == nullptr
         ? newProps->onAutofocusChange.isProvided()

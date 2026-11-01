@@ -29,8 +29,9 @@ namespace margelo::nitro::documentscanner {
    * An enum which can be represented as a JavaScript union (DocumentImageFormat).
    */
   enum class DocumentImageFormat {
-    JPEG      SWIFT_NAME(jpeg) = 0,
-    PNG      SWIFT_NAME(png) = 1,
+    AUTO      SWIFT_NAME(auto) = 0,
+    JPEG      SWIFT_NAME(jpeg) = 1,
+    PNG      SWIFT_NAME(png) = 2,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::documentscanner
@@ -43,6 +44,7 @@ namespace margelo::nitro {
     static inline margelo::nitro::documentscanner::DocumentImageFormat fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, arg);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
+        case hashString("auto"): return margelo::nitro::documentscanner::DocumentImageFormat::AUTO;
         case hashString("jpeg"): return margelo::nitro::documentscanner::DocumentImageFormat::JPEG;
         case hashString("png"): return margelo::nitro::documentscanner::DocumentImageFormat::PNG;
         default: [[unlikely]]
@@ -51,6 +53,7 @@ namespace margelo::nitro {
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, margelo::nitro::documentscanner::DocumentImageFormat arg) {
       switch (arg) {
+        case margelo::nitro::documentscanner::DocumentImageFormat::AUTO: return JSIConverter<std::string>::toJSI(runtime, "auto");
         case margelo::nitro::documentscanner::DocumentImageFormat::JPEG: return JSIConverter<std::string>::toJSI(runtime, "jpeg");
         case margelo::nitro::documentscanner::DocumentImageFormat::PNG: return JSIConverter<std::string>::toJSI(runtime, "png");
         default: [[unlikely]]
@@ -64,6 +67,7 @@ namespace margelo::nitro {
       }
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, value);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
+        case hashString("auto"):
         case hashString("jpeg"):
         case hashString("png"):
           return true;

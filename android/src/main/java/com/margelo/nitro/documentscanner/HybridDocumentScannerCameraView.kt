@@ -14,7 +14,6 @@ import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.MeteringRectangle
 import android.hardware.display.DisplayManager
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -61,23 +60,19 @@ import androidx.lifecycle.Observer
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.core.Promise
 import com.margelo.nitro.documentscanner.CameraPermissionStatus
-import com.margelo.nitro.documentscanner.CapturedPhoto
 import com.margelo.nitro.documentscanner.HybridDocumentScannerCameraViewSpec
 import com.facebook.react.uimanager.ThemedReactContext
 import java.io.File
 import java.util.IdentityHashMap
 import java.util.Locale
-import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import com.margelo.nitro.documentscanner.CameraState as ScannerCameraState
 import com.margelo.nitro.documentscanner.processing.CameraFrameState
 import com.margelo.nitro.documentscanner.processing.CameraOpticsReader
 import com.margelo.nitro.documentscanner.processing.QuadTensorModelLoader
-import com.margelo.nitro.documentscanner.processing.DocCornerSession
 import com.margelo.nitro.documentscanner.processing.LatestFrameCapture
 import com.margelo.nitro.documentscanner.processing.LiveFrame
 import com.margelo.nitro.documentscanner.processing.SampleTicket
@@ -103,7 +98,7 @@ private const val LOG_TAG = "RNDocumentScannerCamera"
 
 /** Android camera preview and still capture for the Nitro Hybrid View. */
 @DoNotStrip
-class HybridDocumentScannerCameraView(
+open class HybridDocumentScannerCameraView(
   private val themedContext: ThemedReactContext,
 ) : HybridDocumentScannerCameraViewSpec() {
   private val debugLoggingEnabled =
@@ -158,7 +153,7 @@ class HybridDocumentScannerCameraView(
       if (width > 0 && height > 0) this@HybridDocumentScannerCameraView.startCamera()
     }
   }
-  /** Main thread: the preview frame shown, over the live guide, from the shutter through capture and, optionally, the review handoff. */
+  /** Main thread: the preview frame shown, over the live guide, from the shutter through capture. */
   private val frozenFrame = ImageView(themedContext).apply {
     scaleType = ImageView.ScaleType.FIT_XY
     visibility = View.GONE
@@ -169,25 +164,10 @@ class HybridDocumentScannerCameraView(
   }
   /** Keep the displayed crop unchanged while a capture defers a use-case rebind. */
   private var previewSquareFrame = false
-  private val statusView = TextView(themedContext).apply {
-    setTextColor(Color.WHITE)
-    textSize = 16f
-    gravity = Gravity.CENTER
-    setPadding(dp(24), dp(16), dp(24), dp(16))
-    setBackgroundColor(0xCC101820.toInt())
-  }
   private val gyroscope = GyroscopeSource(themedContext, GyroHistory())
   private val liveOverlay = LiveQuadOverlay(themedContext)
   /** Over the frozen frame, so the shooting stage shows on the photo being taken. */
   private val captureFeedbackView = CaptureFeedbackView(themedContext, liveOverlay)
-  private val liveHint = TextView(themedContext).apply {
-    setTextColor(Color.WHITE)
-    textSize = 14f
-    gravity = Gravity.CENTER
-    setPadding(dp(16), dp(10), dp(16), dp(10))
-    setBackgroundColor(0xCC101820.toInt())
-    visibility = View.GONE
-  }
   // A fixed line count keeps the strip's height, and so the preview below it, steady as the figures change.
   private val statsLabel = TextView(themedContext).apply {
     setTextColor(Color.WHITE)
@@ -205,7 +185,6 @@ class HybridDocumentScannerCameraView(
   private var trackedGuide: DocumentCandidate? = null
   private val liveDetector = LiveDocumentDetector(themedContext, debugLoggingEnabled, gyro = gyroscope.history) { result ->
     latestModelScore = result.score ?: latestModelScore.takeIf { result.quad != null }
-    showHint(result.status)
     updateDocumentState(when (result.status) {
       LiveGuideStatus.SEARCHING, LiveGuideStatus.DETECTED -> DocumentState.SEARCHING
       LiveGuideStatus.TRACKING -> DocumentState.TRACKING
@@ -215,8 +194,8 @@ class HybridDocumentScannerCameraView(
     // A frame optical flow alone carried has no inference score; the guide keeps its latest one. Flow can carry corners
     // past the frame, which photo analysis rejects, so such an outline is not offered and the photo is detected afresh.
     trackedGuide = result.quad
-      ?.takeIf { result.status == LiveGuideStatus.TRACKING && DocCornerSession.validNormalizedQuad(DocCornerSession.corners(it)) }
-      ?.let { quad -> guideCandidate(quad, result.score ?: trackedGuide?.score ?: 0.0) }
+      ?.takeIf { result.status == LiveGuideStatus.TRACKING && NativeQuadGeometry.prediction(NativeQuadGeometry.coordinates(it)) }
+      ?.let { quad -> DocumentCandidate(quad, result.score ?: trackedGuide?.score ?: 0.0) }
     liveOverlay.show(result, previewView.outputTransform)
     renderStatus()
   }.apply {
@@ -348,8 +327,6 @@ class HybridDocumentScannerCameraView(
   /** The binding whose capture results are accepted; stopCamera retires it. */
   @Volatile private var metadataGeneration = 0L
   @Volatile private var autofocusState = AutofocusState.INACTIVE
-  /** Main-thread guidance retained while a capture's waiting reason takes priority. */
-  private var hintStatus = LiveGuideStatus.SEARCHING
   /** Auto-torch decision for the current binding, fed by capture results; guarded by [metadataLock]. */
   private val torchPolicy = TorchPolicy()
   @Volatile private var torchAuto = false
@@ -360,7 +337,7 @@ class HybridDocumentScannerCameraView(
     ::scheduleCaptureEvaluation, ::logLifecycle)
   /** Uptime when [autofocusState] last changed. */
   /** takePhoto calls in flight, until the shot has settled; guarded by this. */
-  private val captures = IdentityHashMap<Promise<*>, GatedCapture>()
+  private val captureAdmission = CaptureAdmission<GatedCapture>(this)
   /** Main thread: the bound camera moves its lens to focus; a fixed-focus camera never reports a focus state. */
   private var hasAutofocus = false
   /** Main thread: the bound camera's nearest focus in diopters when its lens can be parked, else null. */
@@ -383,7 +360,67 @@ class HybridDocumentScannerCameraView(
       field = value
       mainHandler.post { emittedDocumentState = null; updateDocumentState(documentState) }
     }
-  override var onCaptureStage: ((stage: CaptureStage) -> Unit)? = null
+  private var emittedCaptureState: CameraCaptureState? = null
+  override var onCaptureStateChange: ((CameraCaptureState) -> Unit)? = null
+    set(value) {
+      field = value
+      mainHandler.post {
+        if (field === value) { emittedCaptureState = null; updateCaptureState() }
+      }
+    }
+
+  @Volatile private var captureRenderOptions: DocumentRenderOptions? = null
+  override var renderOptions: DocumentRenderOptions
+    get() = captureRenderOptions ?: throw InvalidInputException("Camera render settings are not installed.")
+    set(value) { synchronized(this) { captureRenderOptions = value } }
+
+  @Volatile private var requestedSession: HybridScanSessionSpec? = null
+  private var sessionGeneration = 0L
+  private var observedSession: ScanSessionState? = null
+  private var removeSessionObserver: (() -> Unit)? = null
+  override var session: HybridScanSessionSpec
+    get() = requestedSession ?: throw InvalidInputException("Camera requires a session.")
+    set(value) {
+      synchronized(this) {
+        if (requestedSession === value) return
+        requestedSession = value
+        sessionGeneration++
+      }
+      mainHandler.post { updateSession() }
+    }
+
+  private fun updateSession() {
+    if (disposed) return
+    val next = (requestedSession as? HybridScanSession)?.state
+    if (next !== observedSession) {
+      removeSessionObserver?.invoke()
+      removeSessionObserver = null
+      clearCapturePreview()
+      observedSession = next
+      next?.let { owner ->
+        try {
+          removeSessionObserver = owner.observe { snapshot ->
+            if (observedSession === owner && snapshot.closed) {
+              if ((requestedSession as? HybridScanSession)?.state === owner) clearCapturePreview()
+              captureAdmission.current?.takeIf { it.source.session === owner }?.let { rejectPromise(it.promise, ScannerException(ScannerErrorCode.PROCESSOR_DISPOSED)) }
+              updateCaptureState()
+            }
+          }.unsubscribe
+        } catch (_: ScannerException) { /* Closed sessions remain unavailable. */ }
+      }
+    }
+    captureAdmission.current?.let {
+      if (!captureCurrent(it)) rejectPromise(it.promise, ScannerException(ScannerErrorCode.PROCESSOR_SUPERSEDED))
+    }
+    updateCaptureState()
+  }
+
+  private fun captureCurrent(capture: GatedCapture): Boolean = synchronized(this) {
+    capture.generation == sessionGeneration &&
+      (requestedSession as? HybridScanSession)?.state === capture.source.session &&
+      !capture.source.session.snapshot().closed
+  }
+  override var onCaptureStage: ((stage: CaptureStage, waitReason: CaptureWaitReason?) -> Unit)? = null
 
   // Raw React props; afterUpdate resolves them into [props] once per batch.
   override var quadTensorModel: String? = null
@@ -416,20 +453,19 @@ class HybridDocumentScannerCameraView(
   override var showStats: Boolean? = null
   override var guideColor: Double? = null
   override var captureFeedback: Boolean? = null
-  override var retainCapturePreview: Boolean? = null
   override var captureColor: Double? = null
   /** Applied prop values with defaults; main thread. */
-  private var props = resolveProps()
+  @Volatile private var props = resolveProps()
 
   /** Main thread, after each React prop batch; tests that set props directly call it themselves. */
   override fun afterUpdate() {
     if (disposed) return
+    updateSession()
     updateModel()
     val old = props
     val next = resolveProps()
     if (next == old) return
     props = next
-    if (!next.retainCapturePreview && !hasPendingCapture()) clearCapturePreview()
     liveDetector.adaptiveDetection = next.adaptiveDetection
     liveDetector.minCornerScore = next.minCornerScore
     if (old.guide != next.guide || old.documentFocus != next.documentFocus) {
@@ -490,10 +526,10 @@ class HybridDocumentScannerCameraView(
       liveOverlay.clear()
       trackedGuide = null
       latestModelScore = null
-      showHint(if (next.active && next.guide && liveDetector.hasFailed()) LiveGuideStatus.UNAVAILABLE else LiveGuideStatus.SEARCHING)
       updateDocumentState(boundDocumentState())
     }
     updateGyroscope()
+    updateCaptureState()
   }
 
 
@@ -575,7 +611,6 @@ class HybridDocumentScannerCameraView(
       // processColor yields a signed or unsigned 32-bit ARGB number.
       guideColor = guideColor?.toLong()?.toInt() ?: LiveQuadOverlay.DEFAULT_COLOR,
       captureFeedback = captureFeedback ?: true,
-      retainCapturePreview = retainCapturePreview ?: false,
       captureColor = captureColor?.toLong()?.toInt() ?: CaptureFeedbackView.DEFAULT_COLOR,
     )
   }
@@ -608,24 +643,11 @@ class HybridDocumentScannerCameraView(
       statsLabel,
       FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP),
     )
-    container.addView(
-      liveHint,
-      FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM),
-    )
-    container.addView(
-      statusView,
-      FrameLayout.LayoutParams(
-        FrameLayout.LayoutParams.MATCH_PARENT,
-        FrameLayout.LayoutParams.WRAP_CONTENT,
-        Gravity.CENTER,
-      ),
-    )
-    showPermissionState(readPermissionStatus())
   }
 
-  override fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_ScannerFailure_CapturedPhoto> =
+  override fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_String_ScannerFailure> =
     takePhoto(options).scannerResult(ScannerErrorCode.CAPTURE_FAILED,
-      { Variant_ScannerFailure_CapturedPhoto.create(it) }, { Variant_ScannerFailure_CapturedPhoto.create(it) })
+      { Variant_String_ScannerFailure.create(it) }, { Variant_String_ScannerFailure.create(it) })
 
   override fun saveLiveSampleResult(): Promise<Variant_String_ScannerFailure> {
     val frame = liveDetector.frameRecorder.latest()
@@ -640,15 +662,22 @@ class HybridDocumentScannerCameraView(
       { Variant_String_ScannerFailure.create(it) }, { Variant_String_ScannerFailure.create(it) })
   }
 
-  internal fun takePhoto(options: TakePhotoOptions? = null): Promise<CapturedPhoto> {
-    val promise = createPromise<CapturedPhoto>() ?: return Promise<CapturedPhoto>().also {
-      it.reject(ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE))
-    }
-    val skipQualityGate = options?.skipQualityGate == true
-    mainHandler.post { takePhotoOnMain(GatedCapture(promise, SystemClock.uptimeMillis(), skipQualityGate)) }
+  internal fun takePhoto(options: TakePhotoOptions? = null): Promise<String> {
+    val promise = Promise<String>()
+    try {
+      val capture = captureAdmission.admit {
+        if (disposed) throw ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE)
+        val owner = (requestedSession as? HybridScanSession)?.state
+          ?: throw ScannerException(ScannerErrorCode.CAPTURE_NOT_READY)
+        val source = SessionCapture.reserve(owner, captureRenderOptions)
+        pendingPromises[promise] = Unit
+        GatedCapture(promise, SystemClock.uptimeMillis(), options?.skipQualityGate == true,
+          source, props, sessionGeneration)
+      }
+      mainHandler.post { takePhotoOnMain(capture) }
+    } catch (error: Throwable) { promise.reject(error) }
     return promise
   }
-
   private fun onHostViewAttached() {
     targetRotation = currentDisplayRotation()
     logLifecycle("host attached rotation=$targetRotation permission=${readPermissionStatus()}")
@@ -658,13 +687,11 @@ class HybridDocumentScannerCameraView(
       displayListenerRegistered = true
     }
     if (removePermissionListener == null) removePermissionListener = CameraPermissions.addListener(::onPermissionChange)
-    showPermissionState(readPermissionStatus())
     onHostViewVisible()
   }
 
   private fun onPermissionChange(status: CameraPermissionStatus) {
     logLifecycle("permission changed=$status")
-    showPermissionState(status)
     if (status == CameraPermissionStatus.GRANTED) onHostViewVisible() else stopCamera("permission-$status")
   }
 
@@ -722,6 +749,8 @@ class HybridDocumentScannerCameraView(
       pendingPromises.keys.toList().also { pendingPromises.clear() }
     }
     promises.forEach { it.reject(ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE)) }
+    removeSessionObserver?.invoke()
+    removeSessionObserver = null
     removePermissionListener?.invoke()
     removePermissionListener = null
     removeActivityLifecycleObserver()
@@ -740,8 +769,12 @@ class HybridDocumentScannerCameraView(
   private fun takePhotoOnMain(capture: GatedCapture) {
     val promise = capture.promise
     if (!isPending(promise)) return
+    if (!captureCurrent(capture)) {
+      rejectPromise(promise, ScannerException(if (capture.source.session.snapshot().closed) ScannerErrorCode.PROCESSOR_DISPOSED else ScannerErrorCode.PROCESSOR_SUPERSEDED))
+      return
+    }
     if (!modelReady && !capture.registered) {
-      rejectPromise(promise, modelFailure ?: ScannerException(ScannerErrorCode.CAMERA_NOT_READY))
+      rejectPromise(promise, modelFailure ?: ScannerException(ScannerErrorCode.CAPTURE_NOT_READY))
       return
     }
     if (!props.active && !capture.registered) {
@@ -764,9 +797,9 @@ class HybridDocumentScannerCameraView(
       return
     }
     val captureUseCase = imageCapture
-    if (captureUseCase == null) {
-      logLifecycle("capture rejected: ImageCapture is not bound")
-      rejectPromise(capture.promise, ScannerException(ScannerErrorCode.CAMERA_NOT_READY))
+    if (captureUseCase == null || !capture.registered && previewView.previewStreamState.value != PreviewView.StreamState.STREAMING) {
+      logLifecycle("capture rejected: camera preview/capture is not ready")
+      rejectPromise(capture.promise, ScannerException(ScannerErrorCode.CAPTURE_NOT_READY))
       return
     }
     if (!capture.registered) {
@@ -774,7 +807,6 @@ class HybridDocumentScannerCameraView(
       // Judgment starts from the frames and focus that follow the press.
       capture.frameCursor = liveDetector.frameHistory.cursor()
       capture.focus = focus.snapshot
-      synchronized(this) { captures[promise] = capture }
       // Frame results reach main only while a capture waits; evaluateCaptures unsubscribes once none does.
       liveDetector.frameAnalysisListener = ::evaluateCaptures
       updateCameraState()
@@ -787,7 +819,7 @@ class HybridDocumentScannerCameraView(
    * through [takePhotoOnMain], so the view, permission and bound camera are rechecked after the wait.
    */
   private fun evaluateCaptures() {
-    val waiting = synchronized(this) { captures.values.filter { it.registered && it.stage == CaptureStage.WAITING } }
+    val waiting = listOfNotNull(captureAdmission.current?.takeIf { it.registered && it.stage == CaptureStage.WAITING })
     if (waiting.isEmpty()) liveDetector.frameAnalysisListener = null
     waiting.forEach(::takePhotoOnMain)
   }
@@ -807,18 +839,19 @@ class HybridDocumentScannerCameraView(
    */
   private fun evaluateCapture(capture: GatedCapture, captureUseCase: ImageCapture) {
     if (!isPending(capture.promise) || capture.stage != CaptureStage.WAITING) return
+    val config = capture.config
     val snapshot = focus.snapshot
     if (snapshot.generation != capture.focus.generation) {
       capture.focus = snapshot
       capture.stability.reset()
       capture.latest = null
     }
-    val blurLimit = props.maxCaptureBlur
-    val motionCheckEnabled = props.qualityGate && blurLimit > 0
-    val documentRequired = documentGate
+    val blurLimit = config.maxCaptureBlur
+    val motionCheckEnabled = config.qualityGate && blurLimit > 0
+    val documentRequired = config.qualityGate && config.documentFocus && config.guide
     val nowMs = SystemClock.uptimeMillis()
-    val focusCheckEnabled = props.qualityGate && (hasAutofocus || documentRequired) &&
-      !(props.focusTimeoutMs <= 0 && !props.requireFocus)
+    val focusCheckEnabled = config.qualityGate && (hasAutofocus || documentRequired) &&
+      !(config.focusTimeoutMs <= 0 && !config.requireFocus)
     // A frame's own autofocus state: document detection's scan, or a tap's, must still report its lock; otherwise
     // passive focus counts too.
     fun frameFocused(afState: Int?) = !hasAutofocus || afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED ||
@@ -853,11 +886,11 @@ class HybridDocumentScannerCameraView(
       else -> frameFocused(afState)
     }
     // Zero shutter lag saves only frames CameraX finds focused, exposed and balanced; otherwise it takes a new one.
-    val waitForZsl = props.qualityGate && binding?.zsl == true && hasAutofocus &&
-      !(props.focusTimeoutMs <= 0 && !props.requireFocus)
+    val waitForZsl = config.qualityGate && binding?.zsl == true && hasAutofocus &&
+      !(config.focusTimeoutMs <= 0 && !config.requireFocus)
     val torchPending = torchControl.pending
     val captureState = CaptureState(
-      nowMs, focusCheckEnabled, documentRequired, props.requireFocus, props.focusTimeoutMs,
+      nowMs, focusCheckEnabled, documentRequired, config.requireFocus, config.focusTimeoutMs,
       documentFound = latest?.guide != null,
       focused = focused,
       zslCheckEnabled = waitForZsl,
@@ -873,9 +906,11 @@ class HybridDocumentScannerCameraView(
     ))
     when (val decision = capture.gate.next(captureState)) {
       is CaptureDecision.Wait -> {
-        if (capture.reason != decision.reason) logLifecycle("capture waiting for ${decision.reason}")
-        capture.reason = decision.reason
-        showHint(hintStatus)
+        if (capture.reason != decision.reason) {
+          logLifecycle("capture waiting for ${decision.reason}")
+          capture.reason = decision.reason
+          onCaptureStage?.invoke(CaptureStage.WAITING, decision.reason.toCaptureWaitReason())
+        }
         mainHandler.removeCallbacksAndMessages(capture.deadlineToken)
         mainHandler.postAtTime({ evaluateCaptures() }, capture.deadlineToken, decision.untilMs)
       }
@@ -906,17 +941,12 @@ class HybridDocumentScannerCameraView(
     val requestedMs = capture.requestedMs
     mainHandler.removeCallbacksAndMessages(capture.deadlineToken)
     capture.reason = null
-    showHint(hintStatus)
-    val outputDirectory = File(themedContext.cacheDir, CACHE_DIRECTORY_NAME)
-    if (!outputDirectory.isDirectory && !outputDirectory.mkdirs()) {
-      rejectPromise(capture.promise, ScannerException(ScannerErrorCode.STORAGE_WRITE_FAILED))
-      return
-    }
-    val file = File(outputDirectory, "document-scan-${System.currentTimeMillis()}-${UUID.randomUUID()}.jpg")
+    val file = capture.source.original.file
     // Stage times in ms since the request, for comparing capture settings in the lifecycle log.
     val elapsed = { SystemClock.uptimeMillis() - requestedMs }
     logLifecycle("capture timing steady=${elapsed()}ms mode=${bound?.captureMode} jpegQuality=${bound?.jpegQuality}")
     previewView.bitmap?.let {
+      capture.preview = it
       frozenFrame.setImageBitmap(it)
       frozenFrame.visibility = View.VISIBLE
     }
@@ -926,9 +956,10 @@ class HybridDocumentScannerCameraView(
     capture.shutterRealtimeNs = SystemClock.elapsedRealtimeNanos()
     advanceCapture(capture, CaptureStage.SHOOTING)
     try {
+      capture.physicalInFlight = true
       saveShot(captureUseCase, file, capture, elapsed)
     } catch (error: Throwable) {
-      file.delete()
+      capture.physicalInFlight = false
       rejectPromise(capture.promise, ScannerException(ScannerErrorCode.CAPTURE_FAILED, error))
     }
   }
@@ -951,50 +982,59 @@ class HybridDocumentScannerCameraView(
         override fun onImageSaved(results: ImageCapture.OutputFileResults) {
           logLifecycle("capture shot saved=${elapsed()}ms bytes=${file.length()}")
           if (!isPending(promise)) {
-            file.delete()
+            capture.physicalInFlight = false
             endCapture(promise)
             return
           }
-          metadataExecutor.execute {
-            val described = runCatching { describePhoto(file, capture.liveCandidate, capture.frame) }
-            mainHandler.post {
-              val photo = described.getOrNull()
-              if (photo == null) {
-                logLifecycle("capture shot metadata read failed")
-                file.delete()
-                rejectPromise(promise, ScannerException(ScannerErrorCode.CAPTURE_METADATA_FAILED, described.exceptionOrNull()))
-                return@post
+          val owner = capture.source.session.resources.workOwner
+          owner.queue.submit(owner, ScannerWorkQueue.Kind.CAPTURE, capture.source.pageId,
+            operation = { describePhoto(capture) },
+            onSuccess = { photo -> mainHandler.post { finishSavedCapture(capture, photo, elapsed) } },
+            onFailure = { failure ->
+              mainHandler.post {
+                capture.physicalInFlight = false
+                val error = if (failure is ScannerException) failure else ScannerException(ScannerErrorCode.CAPTURE_METADATA_FAILED, failure)
+                rejectPromise(promise, error)
               }
-              // Registered before the photo resolves, so analysis of the photo always finds its capture.
-              capture.sample?.let { SampleCollection.remember(file.name, it) }
-              val kept = resolvePromise(promise, photo)
-              capture.delivered = kept
-              if (kept) advanceCapture(capture, CaptureStage.CAPTURED)
-              if (!kept) {
-                SampleCollection.forget(listOf(file.name))
-                file.delete()
-                photo.frameUri?.let { Uri.parse(it).path?.let(::File)?.delete() }
-              }
-              logLifecycle("capture complete total=${elapsed()}ms resolution=${photo.width}x${photo.height} " +
-                "orientation=${photo.orientation}")
-              endCapture(promise)
-            }
-          }
+            })
         }
 
         override fun onError(exception: ImageCaptureException) {
-          logLifecycle("capture shot failed code=${exception.imageCaptureError} message=${exception.message}")
+          capture.physicalInFlight = false
           Log.e(LOG_TAG, "CameraX photo capture failed with error ${exception.imageCaptureError}.", exception)
-          file.delete()
           rejectPromise(promise, ScannerException(ScannerErrorCode.CAPTURE_FAILED, exception))
         }
       },
     )
   }
 
-  /** Main thread: `scanner` mode with the guide, where a capture waits for document detection to own its focus. */
-  private val documentGate: Boolean get() = props.qualityGate && props.documentFocus && props.guide
-
+  /** Main owner: claims publication only for the captured session/generation, then settles unlocked. */
+  private fun finishSavedCapture(capture: GatedCapture, photo: SavedCapture, elapsed: () -> Long) {
+    val promise = capture.promise
+    capture.physicalInFlight = false
+    if (isPending(promise) && captureCurrent(capture)) advanceCapture(capture, CaptureStage.CAPTURED)
+    val kept = try {
+      val id = synchronized(this) {
+        if (!isPending(promise) || !captureCurrent(capture)) null else {
+          capture.sample?.let { SampleCollection.remember(capture.source.original.destination.name, it) }
+          val id = capture.source.publish(photo.frame, capture.liveCandidate?.quad)
+          if (settle(promise)) id else null
+        }
+      }
+      if (id != null) {
+        capture.preview?.let { capture.source.session.retainCapturePlaceholder(id, it) }
+        promise.resolve(id)
+      }
+      id != null
+    } catch (error: Throwable) {
+      rejectPromise(promise, error)
+      false
+    }
+    capture.delivered = kept
+    if (!kept && isPending(promise)) rejectPromise(promise, ScannerException(ScannerErrorCode.PROCESSOR_SUPERSEDED))
+    logLifecycle("capture complete total=${elapsed()}ms resolution=${photo.width}x${photo.height} orientation=${photo.orientation}")
+    endCapture(promise)
+  }
   /** Main thread; provisional geometry selects focus, but only focus-eligible accepted quads update its scale reference. */
   private fun onFocusCandidate(hint: LiveFocusCandidate) {
     if (!props.active || !props.guide || !hasAutofocus) return
@@ -1050,7 +1090,7 @@ class HybridDocumentScannerCameraView(
 
     val lifecycleOwner = themedContext.currentActivity as? LifecycleOwner
     if (lifecycleOwner == null) {
-      showMessage(R.string.document_scanner_camera_activity_unavailable)
+      onError?.invoke(scannerFailure(ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE), ScannerErrorCode.CAMERA_UNAVAILABLE))
       return
     }
     if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
@@ -1065,7 +1105,7 @@ class HybridDocumentScannerCameraView(
       cameraStartRequestInFlight = false
       updateCameraState()
       logLifecycle("camera provider request failed")
-      showMessage(R.string.document_scanner_camera_start_failed)
+      onError?.invoke(scannerFailure(ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE), ScannerErrorCode.CAMERA_UNAVAILABLE))
       return
     }
     future.addListener({
@@ -1081,7 +1121,6 @@ class HybridDocumentScannerCameraView(
       if (readPermissionStatus() != CameraPermissionStatus.GRANTED) {
         logLifecycle("camera provider result ignored: permission=${readPermissionStatus()}")
         updateCameraState()
-        showPermissionState(readPermissionStatus())
         return@addListener
       }
       try {
@@ -1173,19 +1212,19 @@ class HybridDocumentScannerCameraView(
           cameraStateObserver = observer
         }
         logLifecycle("CameraX bound generation=$generation container=${container.width}x${container.height} preview=${preview.resolutionInfo?.resolution} capture=${capture.resolutionInfo?.resolution} analysis=${analysis.resolutionInfo?.resolution} rotation=$targetRotation shown=${previewView.isShown}")
-        statusView.visibility = View.GONE
         updateCameraState()
         updateDocumentState(boundDocumentState())
       } catch (error: Throwable) {
         updateCameraState()
         logLifecycle("camera bind failed generation=$generation message=${error.message}")
         Log.e(LOG_TAG, "CameraX preview binding failed", error)
-        showMessage(R.string.document_scanner_camera_start_failed)
+        onError?.invoke(scannerFailure(ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE), ScannerErrorCode.CAMERA_UNAVAILABLE))
       }
     }, ContextCompat.getMainExecutor(themedContext))
   }
 
   private fun stopCamera(reason: String) {
+    captureAdmission.current?.let { rejectPromise(it.promise, ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE)) }
     rebindPending = false
     providerRequestGeneration += 1L
     cameraStartRequestInFlight = false
@@ -1210,7 +1249,6 @@ class HybridDocumentScannerCameraView(
     liveOverlay.clear()
     trackedGuide = null
     latestModelScore = null
-    showHint(LiveGuideStatus.SEARCHING)
     updateDocumentState(DocumentState.OFF)
     emitAutofocus()
     val useCases = listOfNotNull(previewUseCase, imageCapture, imageAnalysis).toTypedArray()
@@ -1288,42 +1326,6 @@ class HybridDocumentScannerCameraView(
     for (view in listOf(previewView, liveOverlay, frozenFrame, captureFeedbackView)) {
       place(view, cameraLeft, cameraTop, cameraWidth, cameraHeight)
     }
-    liveHint.measure(
-      View.MeasureSpec.makeMeasureSpec(cameraWidth, View.MeasureSpec.EXACTLY),
-      View.MeasureSpec.makeMeasureSpec(cameraHeight, View.MeasureSpec.AT_MOST),
-    )
-    liveHint.layout(cameraLeft, cameraTop + cameraHeight - liveHint.measuredHeight,
-      cameraLeft + cameraWidth, cameraTop + cameraHeight)
-    // Keep the centered status inside the camera region as well.
-    statusView.measure(
-      View.MeasureSpec.makeMeasureSpec(cameraWidth, View.MeasureSpec.EXACTLY),
-      View.MeasureSpec.makeMeasureSpec(cameraHeight, View.MeasureSpec.AT_MOST),
-    )
-    val statusTop = cameraTop + (cameraHeight - statusView.measuredHeight) / 2
-    statusView.layout(cameraLeft, statusTop, cameraLeft + cameraWidth, statusTop + statusView.measuredHeight)
-  }
-
-  /** Shows what a waiting capture waits for while capture feedback is on; otherwise the unavailable-detection hint for
-   * UNAVAILABLE, and nothing otherwise.
-   */
-  private fun showHint(status: LiveGuideStatus) {
-    hintStatus = status
-    val reason = synchronized(this) {
-      captures.values.firstOrNull { it.stage == CaptureStage.WAITING }?.reason
-    }
-    val waitingHint = when (reason) {
-      WaitReason.DOCUMENT -> R.string.document_scanner_wait_document
-      WaitReason.FOCUS -> R.string.document_scanner_wait_focus
-      WaitReason.LIGHT -> R.string.document_scanner_wait_light
-      WaitReason.STEADY -> R.string.document_scanner_hold_steady
-      null -> null
-    }
-    val text = if (props.captureFeedback && waitingHint != null) waitingHint else when {
-      status == LiveGuideStatus.UNAVAILABLE -> R.string.document_scanner_detection_unavailable
-      else -> null
-    }
-    if (text != null) liveHint.setText(text)
-    liveHint.visibility = if (text != null) View.VISIBLE else View.GONE
   }
 
   /** Unless tapToFocus is false, focuses and meters at the tapped point. */
@@ -1394,12 +1396,26 @@ class HybridDocumentScannerCameraView(
     Camera2CameraControl.from(camera.cameraControl).setCaptureRequestOptions(options.build())
   }
 
+  private fun updateCaptureState() {
+    if (disposed) return
+    val owner = (requestedSession as? HybridScanSession)?.state
+    val capture = captureAdmission.current
+    val available = props.active && modelReady && owner != null && !owner.snapshot().closed &&
+      container.isAttachedToWindow && readPermissionStatus() == CameraPermissionStatus.GRANTED &&
+      imageCapture != null && previewView.previewStreamState.value == PreviewView.StreamState.STREAMING &&
+      (capture == null || captureCurrent(capture))
+    val state = cameraCaptureState(available, capture?.stage, capture != null)
+    if (state == emittedCaptureState) return
+    emittedCaptureState = state
+    onCaptureStateChange?.invoke(state)
+  }
   private fun updateCameraState() {
     if (disposed) return
+    updateCaptureState()
     val state = when {
       cameraProvider == null -> if (cameraStartRequestInFlight) ScannerCameraState.STARTING else ScannerCameraState.SUSPENDED
       previewView.previewStreamState.value != PreviewView.StreamState.STREAMING -> ScannerCameraState.STARTING
-      synchronized(this) { captures.isNotEmpty() } -> ScannerCameraState.CAPTURING
+      hasPendingCapture() -> ScannerCameraState.CAPTURING
       else -> ScannerCameraState.READY
     }
     if (state == emittedCameraState) return
@@ -1464,7 +1480,7 @@ class HybridDocumentScannerCameraView(
         mainHandler.post {
           if (generation != metadataGeneration) return@post
           val shutterNs = synchronized(this@HybridDocumentScannerCameraView) {
-            captures.values.firstOrNull { it.shutterRealtimeNs != 0L }?.shutterRealtimeNs
+            captureAdmission.current?.takeIf { it.shutterRealtimeNs != 0L }?.shutterRealtimeNs
           }
           logLifecycle("capture still frame reprocess=$reprocess intent=$intent " +
             "exposedVsShutter=${shutterNs?.let { (sensorNs - it) / 1_000_000 } ?: "-"}ms")
@@ -1502,107 +1518,45 @@ class HybridDocumentScannerCameraView(
 
   private fun readPermissionStatus(): CameraPermissionStatus = CameraPermissions.status()
 
-  private fun showPermissionState(status: CameraPermissionStatus) {
-    when (status) {
-      CameraPermissionStatus.GRANTED -> statusView.visibility = View.GONE
-      CameraPermissionStatus.NOT_DETERMINED -> showMessage(R.string.document_scanner_permission_needed)
-      CameraPermissionStatus.DENIED -> showMessage(R.string.document_scanner_permission_denied)
-      CameraPermissionStatus.BLOCKED -> showMessage(R.string.document_scanner_permission_blocked)
-    }
-  }
+  private data class SavedCapture(val width: Int, val height: Int, val orientation: Int, val frame: SessionResources.Resource?)
 
-  private fun showMessage(message: Int) {
-    statusView.setText(message)
-    statusView.visibility = View.VISIBLE
-  }
-
-  private fun describePhoto(file: File, liveCandidate: DocumentCandidate?, frame: Future<LiveFrame>?): CapturedPhoto {
-    val exif = ExifInterface(file.absolutePath)
-    val orientation = exif.getAttributeInt(
-      ExifInterface.TAG_ORIENTATION,
-      ExifInterface.ORIENTATION_NORMAL,
-    )
+  private fun describePhoto(capture: GatedCapture): SavedCapture {
+    val output = capture.source.original
+    val exif = ExifInterface(output.file.absolutePath)
+    val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    BitmapFactory.decodeFile(output.file.absolutePath, bounds)
     val width = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, bounds.outWidth)
     val height = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, bounds.outHeight)
-    val rotationDegrees = when (orientation) {
-      ExifInterface.ORIENTATION_ROTATE_90,
-      ExifInterface.ORIENTATION_TRANSPOSE -> 90
-      ExifInterface.ORIENTATION_ROTATE_180 -> 180
-      ExifInterface.ORIENTATION_ROTATE_270,
-      ExifInterface.ORIENTATION_TRANSVERSE -> 270
-      else -> 0
+    check(width > 0 && height > 0) { "Captured JPEG has no valid dimensions." }
+    output.commit()
+    val frame = capture.frame?.let { pending ->
+      runCatching {
+        LatestFrameCapture.write(pending.get(FRAME_WAIT_MS, TimeUnit.MILLISECONDS), capture.liveCandidate?.quad, capture.source.frame)
+      }.onFailure { logLifecycle("latest frame capture unavailable: ${it.javaClass.simpleName}") }.getOrNull()
     }
-    return CapturedPhoto(
-      originalUri = Uri.fromFile(file).toString(),
-      width = width.toDouble(),
-      height = height.toDouble(),
-      orientation = orientation.toDouble(),
-      rotationDegrees = rotationDegrees.toDouble(),
-      liveCandidate = liveCandidate,
-      frameUri = frame?.let { writeLatestFrameCapture(file, it, liveCandidate) },
-    )
+    return SavedCapture(width, height, orientation, frame)
   }
-
-  /**
-   * Writes the analysis frame taken at the shutter beside [photo] as its latest-frame capture and returns its uri; null when no
-   * frame arrived in time or it could not be written. The photo's own save usually outlasts the wait.
-   */
-  private fun writeLatestFrameCapture(photo: File, frame: Future<LiveFrame>, liveCandidate: DocumentCandidate?): String? {
-    val latestFrame = File(photo.parentFile, "frame-${photo.nameWithoutExtension}.jpg")
-    return runCatching {
-      LatestFrameCapture.write(frame.get(FRAME_WAIT_MS, TimeUnit.MILLISECONDS), liveCandidate?.quad, latestFrame)
-      Uri.fromFile(latestFrame).toString()
-    }.onFailure {
-      latestFrame.delete()
-      logLifecycle("latest frame capture unavailable: ${it.javaClass.simpleName}")
-    }.getOrNull()
-  }
-
-  /** The guide outline as a model candidate; every corner and side is the model's prediction, as in its own output. */
-  private fun guideCandidate(quad: DocumentQuad, score: Double): DocumentCandidate {
-    val predicted = DocumentPointProvenance.PREDICTED
-    return DocumentCandidate(quad, score, DocumentCornerProvenance(predicted, predicted, predicted, predicted),
-      DocumentSideProvenance(predicted, predicted, predicted, predicted), null)
-  }
-
-  private fun <T> createPromise(): Promise<T>? {
-    val promise = Promise<T>()
-    val accepted = synchronized(this) {
-      if (disposed) false else {
-        pendingPromises[promise] = Unit
-        true
-      }
-    }
-    if (!accepted) return null
-    return promise
-  }
-
   private fun isPending(promise: Promise<*>): Boolean = synchronized(this) {
     pendingPromises.containsKey(promise)
   }
 
-  private fun <T> resolvePromise(promise: Promise<T>, result: T): Boolean {
-    val accepted = settle(promise)
-    if (accepted) promise.resolve(result)
-    return accepted
-  }
-
   /** Main thread: reports [stage] once per capture, and shows it unless feedback is off. Failure follows any stage. */
   private fun advanceCapture(capture: GatedCapture, stage: CaptureStage) {
+    if (disposed || stage != CaptureStage.FAILED && (!isPending(capture.promise) || !captureCurrent(capture))) return
     val current = capture.stage
     if (current == stage || current == CaptureStage.FAILED) return
     if (stage == CaptureStage.CAPTURED && current != CaptureStage.SHOOTING) return
     capture.stage = stage
-    showHint(hintStatus)
+    updateCaptureState()
     if (props.captureFeedback) captureFeedbackView.show(stage)
-    onCaptureStage?.invoke(stage)
+    onCaptureStage?.invoke(stage, if (stage == CaptureStage.WAITING) capture.reason?.toCaptureWaitReason() else null)
   }
 
   /** Main thread. Also ends a capture: a capture rejects only while its shot is not in flight. */
   private fun <T> rejectPromise(promise: Promise<T>, error: Throwable) {
-    val capture = synchronized(this) { captures[promise] }
+    val capture = captureAdmission.current?.takeIf { it.promise === promise }
+    capture?.source?.invalidate()
     if (settle(promise)) {
       promise.reject(error)
       if (capture != null) advanceCapture(capture, CaptureStage.FAILED)
@@ -1618,10 +1572,12 @@ class HybridDocumentScannerCameraView(
   }
 
   /** Ends [promise]'s capture once its shot is not in flight, which can be after the promise resolved: the last
-   * capture to end releases the preview unless retained for review, and applies a deferred rebind.
+   * capture to end releases the camera preview and applies a deferred rebind.
    */
   private fun endCapture(promise: Promise<*>) {
-    val ended = synchronized(this) { captures.remove(promise) } ?: return
+    val ended = captureAdmission.current?.takeIf { it.promise === promise } ?: return
+    if (ended.physicalInFlight || !captureAdmission.finish(ended)) return
+    ended.source.close()
     // A rejected capture leaves no scheduled deadline callback.
     mainHandler.removeCallbacksAndMessages(ended.deadlineToken)
     mainHandler.post {
@@ -1629,7 +1585,7 @@ class HybridDocumentScannerCameraView(
       if (!hasShotInFlight()) focus.afterCapture(documentWanted = props.guide)
       if (!hasPendingCapture() && modelLoadPending) loadRequestedModel()
       if (!hasPendingCapture()) {
-        if (!ended.delivered || !props.retainCapturePreview) clearCapturePreview()
+        clearCapturePreview()
         applyTorch()
       }
       if (!disposed && !props.active && !hasPendingCapture()) {
@@ -1641,12 +1597,10 @@ class HybridDocumentScannerCameraView(
     }
   }
 
-  private fun hasPendingCapture(): Boolean = synchronized(this) { captures.isNotEmpty() }
+  private fun hasPendingCapture(): Boolean = captureAdmission.current != null
 
   /** A capture has requested its shot, whose focus and exposure must not change until it settles. */
-  private fun hasShotInFlight(): Boolean = synchronized(this) {
-    captures.values.any { it.stage != null && it.stage != CaptureStage.WAITING }
-  }
+  private fun hasShotInFlight(): Boolean = captureAdmission.current?.physicalInFlight == true
 
   /** Main thread: rebinds for a change deferred by a capture once the last capture settles; binding reads current props. */
   private fun applyPendingRebind() {
@@ -1663,7 +1617,9 @@ class HybridDocumentScannerCameraView(
   private data class BoundCapture(val captureMode: CaptureMode, val jpegQuality: Int, val zsl: Boolean)
 
   /** One takePhoto's progress through its gate; main thread. */
-  private class GatedCapture(val promise: Promise<CapturedPhoto>, val requestedMs: Long, skipQualityGate: Boolean) {
+  private class GatedCapture(val promise: Promise<String>, val requestedMs: Long, skipQualityGate: Boolean,
+    val source: SessionCapture, val config: ResolvedProps, val generation: Long) {
+    var physicalInFlight = false
     var registered = false
     /** Owns the capture's deadlines and decides each evaluation. */
     val gate = CaptureGate(STEADY_TIMEOUT_MS, skipQualityGate)
@@ -1683,9 +1639,10 @@ class HybridDocumentScannerCameraView(
     /** The last stage reported; null before the capture waits. */
     var stage: CaptureStage? = null
     var delivered = false
-    /** The guide at the shutter, for `CapturedPhoto.liveCandidate`. */
+    /** The guide at the shutter, to seed authoritative photo analysis. */
+    var preview: android.graphics.Bitmap? = null
     var liveCandidate: DocumentCandidate? = null
-    /** The first analysis frame after the shutter, for `CapturedPhoto.frameUri`. */
+    /** The first analysis frame after the shutter, for the session placeholder. */
     var frame: CompletableFuture<LiveFrame>? = null
     /** While sample collection is on, what the photo keeps for a sample. */
     var sample: SampleTicket? = null
@@ -1706,7 +1663,6 @@ class HybridDocumentScannerCameraView(
     const val STATS_LINES = 8
 
 
-    const val CACHE_DIRECTORY_NAME = "react-native-document-scanner"
 
   }
 }
@@ -1742,6 +1698,5 @@ private data class ResolvedProps(
   val showStats: Boolean,
   val guideColor: Int,
   val captureFeedback: Boolean,
-  val retainCapturePreview: Boolean,
   val captureColor: Int,
 )

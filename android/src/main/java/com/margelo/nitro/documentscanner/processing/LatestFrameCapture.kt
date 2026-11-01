@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.net.Uri
 import com.margelo.nitro.documentscanner.DocumentQuad
 import com.margelo.nitro.documentscanner.PageThumbnails
+import com.margelo.nitro.documentscanner.SessionResources
+import com.margelo.nitro.documentscanner.LocalSessionFiles
+import com.margelo.nitro.documentscanner.requireInput
 import java.io.File
 import kotlin.math.hypot
 import kotlin.math.max
@@ -26,6 +29,19 @@ import org.opencv.imgproc.Imgproc
 internal object LatestFrameCapture {
   /** [quad] is normalized in the upright frame; null keeps the whole frame. */
   fun write(frame: LiveFrame, quad: DocumentQuad?, file: File) {
+    requireInput(!LocalSessionFiles.isSessionFile(file)) { "Session frames require a native output transaction." }
+    writeTo(frame, quad, file, file)
+  }
+
+  /** Native session destination; consumes the writer pin and cleans partial/stale output. */
+  fun write(frame: LiveFrame, quad: DocumentQuad?, output: SessionResources.Output): SessionResources.Resource =
+    output.use {
+      requireInput(output.resource.kind == SessionResources.Kind.FRAME) { "Expected a session frame destination." }
+      writeTo(frame, quad, output.file, output.destination)
+      output.commit()
+    }
+
+  private fun writeTo(frame: LiveFrame, quad: DocumentQuad?, file: File, cachedFile: File) {
     OpenCvRuntime.ensureLoaded()
     val mats = mutableListOf<Mat>()
     fun mat() = Mat().also(mats::add)
@@ -45,7 +61,7 @@ internal object LatestFrameCapture {
       check(Imgcodecs.imwrite(file.absolutePath, bgr, parameters)) { "The latest frame could not be encoded." }
       val bitmap = Bitmap.createBitmap(page.cols(), page.rows(), Bitmap.Config.ARGB_8888)
       Utils.matToBitmap(page, bitmap)
-      PageThumbnails.put(Uri.fromFile(file).toString(), bitmap)
+      PageThumbnails.put(Uri.fromFile(cachedFile).toString(), bitmap)
     } finally {
       mats.forEach(Mat::release)
     }

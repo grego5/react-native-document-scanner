@@ -17,13 +17,14 @@
 
 #include <string>
 
+#include <memory>
+#include "HybridScanSessionSpec.hpp"
 #include <string>
-#include "DocumentQuad.hpp"
 #include "DocumentFilter.hpp"
 #include <optional>
+#include "CropDraftPreset.hpp"
 #include <functional>
 #include "ScannerFailure.hpp"
-#include <memory>
 #include "HybridDocumentCropEditorViewSpec.hpp"
 
 namespace margelo::nitro::documentscanner::views {
@@ -46,20 +47,20 @@ namespace margelo::nitro::documentscanner::views {
                                       const react::RawProps& rawProps);
 
   public:
-    nitro::ReactProp<std::string> originalUri;
-    nitro::ReactProp<DocumentQuad> quad;
+    nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>> session;
+    nitro::ReactProp<std::string> pageId;
     nitro::ReactProp<std::optional<DocumentFilter>> filter;
-    nitro::ReactProp<std::optional<std::function<void(const DocumentQuad& /* quad */)>>> onQuadChange;
+    nitro::ReactProp<std::optional<std::function<void(CropDraftPreset /* preset */)>>> onPresetChange;
     nitro::ReactProp<std::optional<std::function<void(double /* width */, double /* height */)>>> onLoad;
     nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* failure */)>>> onError;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridDocumentCropEditorViewSpec>& /* ref */)>>> hybridRef;
 
     [[nodiscard]]
     bool hasSameProps(const HybridDocumentCropEditorViewProps& other) const noexcept {
-      return originalUri.hasSameValue(other.originalUri) &&
-             quad.hasSameValue(other.quad) &&
+      return session.hasSameValue(other.session) &&
+             pageId.hasSameValue(other.pageId) &&
              filter.hasSameValue(other.filter) &&
-             onQuadChange.hasSameValue(other.onQuadChange) &&
+             onPresetChange.hasSameValue(other.onPresetChange) &&
              onLoad.hasSameValue(other.onLoad) &&
              onError.hasSameValue(other.onError) &&
              hybridRef.hasSameValue(other.hybridRef);
@@ -67,10 +68,10 @@ namespace margelo::nitro::documentscanner::views {
 
     [[nodiscard]]
     bool hasAnyProvidedProps() const noexcept {
-      return originalUri.isProvided() ||
-             quad.isProvided() ||
+      return session.isProvided() ||
+             pageId.isProvided() ||
              filter.isProvided() ||
-             onQuadChange.isProvided() ||
+             onPresetChange.isProvided() ||
              onLoad.isProvided() ||
              onError.isProvided() ||
              hybridRef.isProvided();

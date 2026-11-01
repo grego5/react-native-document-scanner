@@ -10,7 +10,7 @@ import android.os.ParcelFileDescriptor
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.margelo.nitro.documentscanner.CreatePdfOptions
+import com.margelo.nitro.documentscanner.processing.PdfWriteOptions
 import com.margelo.nitro.documentscanner.ImageFit
 import java.io.File
 import java.io.ByteArrayOutputStream
@@ -180,7 +180,7 @@ class PdfWriterTest {
     val image = jpeg("failure.jpg", 400, 300)
     val output = File(directory, "preserved.pdf")
     val original = "existing destination".toByteArray()
-    val options = CreatePdfOptions(output.absolutePath, arrayOf(image.absolutePath), null, null, null, null,
+    val options = PdfWriteOptions(output.absolutePath, arrayOf(image.absolutePath), null, null, null, null,
       null, null, null)
     for (failAt in listOf(1, 12, 14)) {
       output.writeBytes(original)
@@ -214,7 +214,7 @@ class PdfWriterTest {
     val image = jpeg("forced.jpg", 400, 300, ExifInterface.ORIENTATION_ROTATE_90)
     val output = File(directory, "options.pdf")
     for (widthFirst in listOf(false, true)) {
-      val options = CreatePdfOptions(output.absolutePath, arrayOf(image.absolutePath), ImageFit.CONTAIN,
+      val options = PdfWriteOptions(output.absolutePath, arrayOf(image.absolutePath), ImageFit.CONTAIN,
         false, 0.0, 72.0, if (widthFirst) 200.0 else null, if (widthFirst) null else 100.0, 2.0)
       PdfWriter.write(options)
       val bytes = output.readBytes()
@@ -232,7 +232,7 @@ class PdfWriterTest {
     val output = File(directory, "validation.pdf")
     val original = byteArrayOf(1, 2, 3)
     output.writeBytes(original)
-    val invalid = CreatePdfOptions(output.absolutePath, arrayOf(image.absolutePath), null, null, null, 72.0,
+    val invalid = PdfWriteOptions(output.absolutePath, arrayOf(image.absolutePath), null, null, null, 72.0,
       null, null, null)
     try {
       PdfWriter.write(invalid)
@@ -251,7 +251,7 @@ class PdfWriterTest {
     jpegQuality: Double? = null,
   ): File {
     val output = File(directory, "out.pdf")
-    val uri = PdfWriter.write(CreatePdfOptions(
+    val uri = PdfWriter.write(PdfWriteOptions(
       outputPath = output.absolutePath,
       pages = pages.map { Uri.fromFile(it).toString() }.toTypedArray(),
       imageFit = imageFit,

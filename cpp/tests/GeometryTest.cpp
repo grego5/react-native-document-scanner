@@ -80,16 +80,16 @@ void coordinatesAndRegions() {
 void inferenceRegions() {
   // Migrated PhotoInferenceCropTest assertions, with the same margin, rounding and limits.
   const auto crop = *g::photoInferenceCrop(rect(.3, .3, .7, .7), {1000, 2000});
-  check(crop.left == 260 && crop.top == 520 && crop.width == 480 && crop.height == 960, "Centered seed crop");
+  check(crop.left == 20 && crop.top == 520 && crop.width == 960 && crop.height == 960, "Centered seed crop");
   const g::RegionTransform transform({1000, 2000},
                                      {double(crop.left), double(crop.top), double(crop.width), double(crop.height)});
   const auto mapped = transform.toSource(rect(0, 0, 1, 1));
-  near(mapped[0].x, .26);
+  near(mapped[0].x, .02);
   near(mapped[2].y, .74);
   const auto edge = *g::photoInferenceCrop(rect(.01, .2, .31, .8), {1000, 2000});
   check(edge.left <= 10 && edge.left + edge.width >= 340 && edge.top <= 280 && edge.top + edge.height >= 1720,
         "Shift at photo edge");
-  near(double(edge.width) / edge.height, .5, .002);
+  check(edge.width == 1000 && edge.height == 1440, "Square framing clipped at photo width");
   const auto full = *g::photoInferenceCrop(rect(0, 0, 1, 1), {1200, 800});
   check(full.left == 0 && full.top == 0 && full.width == 1200 && full.height == 800, "Full photo crop");
   check(!g::photoInferenceCrop(rect(-.1, .2, .8, .9), {1000, 2000}), "Outside seed rejected");
