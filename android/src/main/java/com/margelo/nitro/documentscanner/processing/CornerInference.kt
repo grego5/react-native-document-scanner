@@ -62,9 +62,6 @@ internal object CornerInference {
       private set
     override var lastScore: Double? = null
       private set
-    /** The model the last call ran, which a swap since then does not change. */
-    var lastSelection: QuadModelStore.Selection? = null
-      private set
 
     private fun <T> useSession(selected: QuadModelStore.Selection? = null, operation: (DocCornerSession) -> T): T {
       check(!closed) { "The corner model lease is closed." }
@@ -74,7 +71,6 @@ internal object CornerInference {
           lastPreprocessingMs = model.lastPreprocessingMs
           lastInferenceMs = model.lastInferenceMs
           lastScore = model.lastScore
-          lastSelection = selection
         }
       }
     }

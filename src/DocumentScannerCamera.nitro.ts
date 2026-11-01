@@ -229,15 +229,6 @@ export interface DocumentScannerCameraMethods extends HybridViewMethods {
    * preview frame while the shot saves.
    */
   takePhotoResult(options?: TakePhotoOptions): Promise<string | ScannerFailure>
-  /**
-   * Native result transport for public `saveLiveSample`: saves the latest live inference frame, as the model saw it,
-   * into the sample folder as `<ms>-<long edge>.png` beside `<ms>-<long edge>.json`, a `tools/label-samples`
-   * entry with the model's outline as its unconfirmed starting quad and the model's raw prediction, never the guide
-   * after stabilizing or optical flow. `<ms>` is the save time. Resolves
-   * with the image's file name; fails with `input/invalid` while sample collection is off and `camera/not-ready` before the
-   * first inference.
-   */
-  saveLiveSampleResult(): Promise<string | ScannerFailure>
 }
 
 export type DocumentScannerCameraView = HybridView<

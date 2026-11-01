@@ -62,7 +62,7 @@ Coordinates are 0–1 relative to the upright original image. `quad` is null for
 
 ## Scanner samples
 
-Point `-Images` at a folder the scanner saved samples to. Each image is `<timestamp>-<long side>.png`: a live frame or the photo crop the corner model received. Its `<stem>.json` holds the model's outline, which the labeler shows as `unlabeled` for you to correct; saving writes your label back into that JSON.
+Point `-Images` at a folder the scanner saved samples to. Each image is `<timestamp>-<long side>.png`, the photo crop the corner model received. Its `<stem>.json` holds the model's outline, which the labeler shows as `unlabeled` for you to correct; saving writes your label back into that JSON.
 
 ## Export and status
 

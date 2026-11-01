@@ -35,8 +35,6 @@ const NativeCamera = getHostComponent<
 export interface CameraRef {
   /** Capture into the required session. The returned page is in its published snapshot; rendering may continue. */
   takePhoto(options?: TakePhotoOptions): Promise<string>
-  /** See `DocumentScannerCameraMethods.saveLiveSampleResult`; resolves with the saved image's file name. */
-  saveLiveSample(): Promise<string>
 }
 
 // React sends null for a prop that a render removes, and Nitro rejects null for optional props, so every native
@@ -191,7 +189,6 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
           if (owner.getSession().pages[id] === undefined) throw new ScannerCancellation('processor/superseded')
           return id
         },
-        saveLiveSample: () => scannerOperation(() => requireNativeView().saveLiveSampleResult(), 'storage/write-failed'),
       }
     },
     [],

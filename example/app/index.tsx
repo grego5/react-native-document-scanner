@@ -167,14 +167,6 @@ export function ScanScreen({
     }
   });
 
-  const saveLiveSample = () => session.run(async () => {
-    try {
-      const name = await cameraRef.current?.saveLiveSample();
-      setMessage(`Saved sample ${name}`);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return; setMessage(errorMessage(error, 'Could not save the sample.')); }
-  });
-
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.screen}>
@@ -230,13 +222,6 @@ export function ScanScreen({
                     label={`Done · ${pageIds.length}`}
                     disabled={capturing || session.working || view !== 'camera'}
                     onPress={() => session.navigate('summary')}
-                  />
-                )}
-                {sampling && (
-                  <ActionButton
-                    label="Sample"
-                    disabled={session.working || view !== 'camera' || captureState !== 'ready'}
-                    onPress={saveLiveSample}
                   />
                 )}
               </View>

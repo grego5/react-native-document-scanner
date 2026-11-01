@@ -150,7 +150,6 @@ namespace margelo::nitro::documentscanner {
     public:
       // Methods
       virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) = 0;
-      virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveLiveSampleResult() = 0;
 
     protected:
       // Hybrid Setup

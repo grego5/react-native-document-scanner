@@ -113,8 +113,6 @@ internal class LiveDocumentDetector(
   @Volatile internal var inferenceThrottling = true
   /** Pause inference above this framing speed, independent of exposure or autofocus. */
   @Volatile internal var maxInferenceSpeedFraction = .05
-  /** Keeps each inference frame and its raw model output in [frameRecorder] while sample collection is on. */
-  internal val frameRecorder = LiveFrameRecorder(context)
   private val frameRequest = AtomicReference<((LiveFrame) -> Unit)?>(null)
 
   /**
@@ -457,8 +455,6 @@ internal class LiveDocumentDetector(
           guideEligible = !scoreRejected, flowRetained = flowRetained,
         ))
       }
-      frameRecorder.record(image, sensorTimestampNs, prediction,
-        (runtime as? CornerInference.Lease)?.lastSelection ?: checkNotNull(modelSelection))
       postFocusCandidate(token, startedAt, LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.quad, sourceTransform, width, height,
         output.status == LiveQuadStatus.TRACKING, frame?.outOfFocus == true))
       tracking = output.status != LiveQuadStatus.SEARCHING

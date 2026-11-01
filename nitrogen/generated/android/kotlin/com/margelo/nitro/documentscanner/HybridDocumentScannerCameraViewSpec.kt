@@ -249,10 +249,6 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @Keep
   abstract fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_String_ScannerFailure>
 
-  @DoNotStrip
-  @Keep
-  abstract fun saveLiveSampleResult(): Promise<Variant_String_ScannerFailure>
-
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {
     return "[HybridObject DocumentScannerCameraView]"

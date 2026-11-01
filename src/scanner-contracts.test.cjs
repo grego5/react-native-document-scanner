@@ -902,7 +902,6 @@ test('camera keeps capture-state callback identity and forwards only committed h
   const requests = []
   second.props.hybridRef({
     takePhotoResult: async (options) => { requests.push(options); fixture.emit(sourceSnapshot(1, { 'native-page-id': sessionPage('native-page-id') })); return 'native-page-id' },
-    saveLiveSampleResult: async () => 'sample.png',
   })
   const options = { skipQualityGate: true }
   assert.equal(await ref.current.takePhoto(options), 'native-page-id')

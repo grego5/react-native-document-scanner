@@ -216,7 +216,7 @@ try {
 
 ### Training samples
 
-To collect images for labelling with [`tools/label-samples`](tools/label-samples), pick a folder with `DocumentScanner.pickSampleFolder()` (or `setSampleFolder(directoryUri)` and `setSampleCollection(true)`). Then `cameraRef.saveLiveSample()` saves the current live frame and `session.saveCaptureSample(pageId)` saves the image corner detection used for that page, each with the model's outline. `setSampleCollection(false)` pauses collection; `clearSampleFolder()` forgets the folder.
+To collect images for labelling with [`tools/label-samples`](tools/label-samples), pick a folder with `DocumentScanner.pickSampleFolder()` (or `setSampleFolder(directoryUri)` and `setSampleCollection(true)`). Then `session.saveCaptureSample(pageId)` saves the image corner detection used for that page, with the model's outline. `setSampleCollection(false)` pauses collection; `clearSampleFolder()` forgets the folder.
 
 ## API reference
 

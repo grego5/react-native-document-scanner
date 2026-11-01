@@ -444,21 +444,5 @@ namespace margelo::nitro::documentscanner {
       return __promise;
     }();
   }
-  std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> JHybridDocumentScannerCameraViewSpec::saveLiveSampleResult() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("saveLiveSampleResult");
-    auto __result = method(_javaPart);
-    return [&]() {
-      auto __promise = Promise<std::variant<std::string, ScannerFailure>>::create();
-      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
-        auto __result = jni::static_ref_cast<JVariant_String_ScannerFailure>(__boxedResult);
-        __promise->resolve(__result->toCpp());
-      });
-      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
-        jni::JniException __jniError(__throwable);
-        __promise->reject(std::make_exception_ptr(__jniError));
-      });
-      return __promise;
-    }();
-  }
 
 } // namespace margelo::nitro::documentscanner

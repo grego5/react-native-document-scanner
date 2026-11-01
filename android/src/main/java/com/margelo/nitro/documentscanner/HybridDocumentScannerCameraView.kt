@@ -649,19 +649,6 @@ open class HybridDocumentScannerCameraView(
     takePhoto(options).scannerResult(ScannerErrorCode.CAPTURE_FAILED,
       { Variant_String_ScannerFailure.create(it) }, { Variant_String_ScannerFailure.create(it) })
 
-  override fun saveLiveSampleResult(): Promise<Variant_String_ScannerFailure> {
-    val frame = liveDetector.frameRecorder.latest()
-    val saved = if (frame == null && SampleCollection.active(themedContext) != null) {
-      Promise<String>().also { it.reject(ScannerException(ScannerErrorCode.CAMERA_NOT_READY)) }
-    } else if (frame == null) {
-      Promise<String>().also { it.reject(InvalidInputException("Sample collection is off.")) }
-    } else {
-      SampleCollection.saveLive(themedContext.applicationContext, frame)
-    }
-    return saved.scannerResult(ScannerErrorCode.STORAGE_WRITE_FAILED,
-      { Variant_String_ScannerFailure.create(it) }, { Variant_String_ScannerFailure.create(it) })
-  }
-
   internal fun takePhoto(options: TakePhotoOptions? = null): Promise<String> {
     val promise = Promise<String>()
     try {
@@ -952,7 +939,7 @@ open class HybridDocumentScannerCameraView(
     }
     capture.liveCandidate = trackedGuide
     capture.frame = CompletableFuture<LiveFrame>().also { frame -> liveDetector.requestFrame { frame.complete(it) } }
-    capture.sample = SampleCollection.beginCapture(themedContext, liveDetector.frameRecorder)
+    capture.sample = SampleCollection.beginCapture(themedContext)
     capture.shutterRealtimeNs = SystemClock.elapsedRealtimeNanos()
     advanceCapture(capture, CaptureStage.SHOOTING)
     try {

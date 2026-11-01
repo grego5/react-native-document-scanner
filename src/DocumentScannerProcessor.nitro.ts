@@ -109,9 +109,7 @@ export interface DocumentScannerProcessor
   createSessionResult(): ScanSession | ScannerFailure
   /**
    * Opens the system folder picker for sample collection, such as a folder in Downloads or Documents, and resolves with
-   * the folder now in use. While collection is on, the Camera keeps its latest live inference frame and each photo's last
-   * frame before the shutter in memory, so `saveLiveSample` and `saveCaptureSample` can save them; nothing is written
-   * until one of them is called. The library keeps the grant across restarts and releases the previous folder's;
+   * the folder now in use. Nothing is written until `saveCaptureSample` is called. The library keeps the grant across restarts and releases the previous folder's;
    * cancelling keeps the current folder. Picking a folder turns collection on. Needs a foreground Activity.
    */
   pickSampleFolderResult(): Promise<SampleFolder | ScannerFailure>
@@ -120,8 +118,8 @@ export interface DocumentScannerProcessor
   /** Releases the picked folder and turns sample collection off. */
   clearSampleFolder(): void
   /**
-   * Turns sample collection on or off while keeping the picked folder, across restarts. Off drops the frames kept for
-   * samples, including photos not saved yet. On without a folder does nothing.
+   * Turns sample collection on or off while keeping the picked folder, across restarts. On without a folder does
+   * nothing.
    */
   setSampleCollection(on: boolean): void
   /** Set a private file directory or persisted SAF tree; preserves collection enabled state. */

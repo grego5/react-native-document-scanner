@@ -71,7 +71,6 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridGetter("onCaptureStage", &HybridDocumentScannerCameraViewSpec::getOnCaptureStage);
       prototype.registerHybridSetter("onCaptureStage", &HybridDocumentScannerCameraViewSpec::setOnCaptureStage);
       prototype.registerHybridMethod("takePhotoResult", &HybridDocumentScannerCameraViewSpec::takePhotoResult);
-      prototype.registerHybridMethod("saveLiveSampleResult", &HybridDocumentScannerCameraViewSpec::saveLiveSampleResult);
     });
   }
 

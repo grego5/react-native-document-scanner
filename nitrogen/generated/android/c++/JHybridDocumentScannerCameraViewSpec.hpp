@@ -110,7 +110,6 @@ namespace margelo::nitro::documentscanner {
   public:
     // Methods
     std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override;
-    std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveLiveSampleResult() override;
 
   private:
     jni::global_ref<JHybridDocumentScannerCameraViewSpec::JavaPart> _javaPart;
