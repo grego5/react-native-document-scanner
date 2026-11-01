@@ -5,9 +5,13 @@ import java.io.IOException
 import java.io.OutputStream
 import java.io.RandomAccessFile
 import kotlin.math.min
+import org.opencv.core.Mat
 
 /** Sixteen evenly spaced gray levels, no palette, alpha channel or dithering. Caller owns each stream. */
 internal object GrayscalePng {
+  /** Borrow native grayscale storage for this call; no per-row Java callback or pixel copy. */
+  fun write4(output: OutputStream, source: Mat) = NativeGrayscalePng.writeMatNative(output, source.nativeObj, false)
+
   /** [readRow] fills one borrowed gray row; the shared writer owns quantization/PNG/zlib. */
   fun write4(output: OutputStream, width: Int, height: Int, readRow: (Int, ByteArray) -> Unit) =
     NativeGrayscalePng.write(output, width, height, false, readRow)

@@ -59,35 +59,29 @@ internal object DocumentRenderer {
         OpenCvRuntime.ensureLoaded()
         val sourceBitmap = upright.bitmap
         val sourceMat = Mat()
-        val warped = Mat()
+        val filtered = Mat()
         val bgr = Mat()
         val parameters = MatOfInt(Imgcodecs.IMWRITE_JPEG_QUALITY, config.quality)
         try {
           Utils.bitmapToMat(sourceBitmap, sourceMat)
           // Pixels in the original per pixel of the sampled bitmap, so output sizing preserves the original.
           val originalScale = max(upright.encodedWidth, upright.encodedHeight).toDouble() / max(sourceBitmap.width, sourceBitmap.height)
-          val target = NativeRenderGeometry.render(sourceMat, warped, sourcePoints.coordinates(), originalScale,
-            config.paperLongEdge, config.followPageEdges)
-          // Shadows go first, so the filter's own paper estimate sees an evenly lit page.
-          val filtered = DocumentFilters.apply(warped, config.filter, config.removeShadows)
-          val thumbnailBitmap: Bitmap
-          try {
-            if (config.format == DocumentImageFormat.PNG) {
-              FileOutputStream(temporary).use { output ->
-                GrayscalePng.write4(output, filtered.cols(), filtered.rows()) { row, bytes -> filtered.get(row, 0, bytes) }
-              }
-            } else {
-              // A JPEG stays three-channel, so other PDF writers can also embed it unchanged.
-              val encoded = if (filtered.channels() == 1) {
-                Imgproc.cvtColor(filtered, bgr, Imgproc.COLOR_GRAY2BGR)
-                bgr
-              } else filtered
-              check(Imgcodecs.imwrite(temporary.absolutePath, encoded, parameters)) { "Corrected image could not be encoded." }
+          // Shared warp and filtering stay together; only the final BGR/gray image returns to Android.
+          val target = NativeRenderGeometry.render(sourceMat, filtered, sourcePoints.coordinates(), originalScale,
+            config.paperLongEdge, config.followPageEdges, config.filter, config.removeShadows)
+          if (config.format == DocumentImageFormat.PNG) {
+            FileOutputStream(temporary).use { output ->
+              GrayscalePng.write4(output, filtered)
             }
-            thumbnailBitmap = writeThumbnail(filtered, PageThumbnails.longSide, thumbnailTemporary)
-          } finally {
-            filtered.release()
+          } else {
+            // A JPEG stays three-channel, so other PDF writers can also embed it unchanged.
+            val encoded = if (filtered.channels() == 1) {
+              Imgproc.cvtColor(filtered, bgr, Imgproc.COLOR_GRAY2BGR)
+              bgr
+            } else filtered
+            check(Imgcodecs.imwrite(temporary.absolutePath, encoded, parameters)) { "Corrected image could not be encoded." }
           }
+          val thumbnailBitmap = writeThumbnail(filtered, PageThumbnails.longSide, thumbnailTemporary)
           if (config.format == DocumentImageFormat.JPEG) ExifInterface(temporary.absolutePath).apply {
             setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
             saveAttributes()
@@ -109,7 +103,7 @@ internal object DocumentRenderer {
           )
         } finally {
           sourceMat.release()
-          warped.release()
+          filtered.release()
           bgr.release()
           parameters.release()
         }

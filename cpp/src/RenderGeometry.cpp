@@ -1,14 +1,15 @@
 #include <document_scanner/RenderGeometry.hpp>
 #include <document_scanner/Geometry.hpp>
 #include "internal/PageEdges.hpp"
+#include "internal/PixelTargets.hpp"
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
 namespace document_scanner {
-GeometricRenderResult renderGeometry(const PixelLease &lease, const Quad &normalized, double scale,
-                                     std::optional<double> paper, bool follow) {
+GeometricRenderInfo renderGeometry(const PixelLease &lease, const Quad &normalized, double scale,
+                                   std::optional<double> paper, bool follow, const PixelAllocator &allocate) {
   namespace g = geometry;
   const auto &layout = lease.view().layout();
   const auto size = layout.size;
@@ -36,19 +37,12 @@ GeometricRenderResult renderGeometry(const PixelLease &lease, const Quad &normal
                  layout.rowStride);
   const auto output = target.size;
   const cv::Size outputSize(int(output.width), int(output.height));
-  std::vector<std::byte> pixels(size_t(output.width) * output.height * 4);
-  cv::Mat warped(outputSize, CV_8UC4, pixels.data());
   const bool inside = std::all_of(
       q.begin(), q.end(), [&](Point p) { return p.x >= 0 && p.x <= size.width && p.y >= 0 && p.y <= size.height; });
   internal::PageEdges edges;
   if (follow && inside)
     edges = internal::findPageEdges(source, homography, int(output.width), int(output.height));
   const bool curved = std::any_of(edges.begin(), edges.end(), [](const auto &edge) { return edge.has_value(); });
-  if (curved)
-    internal::remapPageEdges(source, warped, inverse, edges);
-  else
-    cv::warpPerspective(source, warped, homography, outputSize, cv::INTER_LINEAR, cv::BORDER_CONSTANT,
-                        cv::Scalar(248, 248, 248, 255));
   cv::Mat sourceMask(source.rows, source.cols, CV_8UC1, cv::Scalar(255)), warpedMask;
   cv::warpPerspective(sourceMask, warpedMask, homography, outputSize, cv::INTER_NEAREST, cv::BORDER_CONSTANT,
                       cv::Scalar(0));
@@ -59,12 +53,20 @@ GeometricRenderResult renderGeometry(const PixelLease &lease, const Quad &normal
   auto polygon = g::normalizedOutputPolygon(g::clipImageToQuad(q, size), h, output);
   if (polygon.size() < 3)
     throw std::runtime_error("The selected document does not overlap the captured image.");
-  return {OwnedPixels(std::move(pixels), {PixelFormat::rgba8,
-                                          output,
-                                          size_t(output.width) * 4,
-                                          4,
-                                          {0, 0, output.width, output.height},
-                                          Orientation::upright}),
-          std::move(polygon), curved};
+  const auto out = internal::target(allocate, PixelFormat::rgba8, outputSize);
+  cv::Mat warped = out.mat;
+  if (curved)
+    internal::remapPageEdges(source, warped, inverse, edges);
+  else
+    cv::warpPerspective(source, warped, homography, outputSize, cv::INTER_LINEAR, cv::BORDER_CONSTANT,
+                        cv::Scalar(248, 248, 248, 255));
+  out.kept(warped);
+  return {std::move(polygon), curved};
+}
+GeometricRenderResult renderGeometry(const PixelLease &lease, const Quad &normalized, double scale,
+                                     std::optional<double> paper, bool follow) {
+  internal::OwnedTarget out;
+  auto info = renderGeometry(lease, normalized, scale, paper, follow, out.allocator());
+  return {std::move(out).publish(), info.validContentPolygon, info.curved};
 }
 } // namespace document_scanner

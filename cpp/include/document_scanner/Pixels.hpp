@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <vector>
@@ -11,7 +12,8 @@ namespace document_scanner {
 // TIFF/EXIF orientation of encoded pixels. Crop is in encoded pixel coordinates.
 enum class Orientation : uint8_t { upright = 1, mirrorHorizontal, rotate180, mirrorVertical,
                                    transpose, rotate90, transverse, rotate270 };
-enum class PixelFormat { gray8, rgb8, rgba8, bgra8 };
+enum class PixelFormat { gray8, rgb8, bgr8, rgba8, bgra8 };
+size_t bytesPerPixel(PixelFormat format);
 struct Size final { const uint32_t width, height; };
 struct Crop final { const uint32_t left, top, width, height; };
 struct Point final { const double x, y; };
@@ -52,6 +54,12 @@ private:
   std::shared_ptr<const void> owner_;
   PixelView view_;
 };
+
+// Caller-owned writable storage for one synchronous call. The callee writes every
+// pixel and never retains it; layout is upright and uncropped, padded rows allowed.
+struct PixelTarget final { std::span<std::byte> bytes; size_t rowStride; };
+// Called once per producing call with the result format and size; returns caller-owned storage.
+using PixelAllocator = std::function<PixelTarget(PixelFormat format, Size size)>;
 
 // Immutable publication: storage/allocation is private, leases survive this handle.
 class OwnedPixels final {

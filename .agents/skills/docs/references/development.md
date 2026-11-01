@@ -68,3 +68,9 @@ Replay limits:
 - Live guidance runs at a median 14.6 Hz, with 27 ms from analysis to overlay.
 - Six recorded scenes (3,562 frames): of 491 raw-candidate disagreements, 28 reached the guide. The held guide shows on 4% of accepted frames when steady, 16% in quick pans and 24% with a hand in the way.
 - A triggered focus scan costs 450–650 ms.
+
+## Android engine profiling
+
+Use `npm run test:device -- -Device <verified-id> -BuildType Release -Measure -Class com.margelo.nitro.documentscanner.processing.RenderBoundaryTimingTest` for opt-in paired render/filter and native-Mat PNG measurements. `EngineParityTimingTest` measures complete production renders and exports synthetic unencoded filters for a historical checkout comparison. Neither test opens a camera or takes a photo. Without -Measure, measurement tests skip; ordinary device checks still default to Debug.
+
+Full-render comparisons need sustained warm-up, actual worker affinity, frequency and thermal/order evidence. FastCores affinity alone does not hold frequency fixed. EngineParityTimingTest keeps the scope active, warms each case for at least two seconds, and records eleven samples. External profiling may be needed to verify actual scheduling and frequency. Record idle-start latency separately from sustained throughput. Historical source may contain the already-fixed sharpening alias bug; use corrected Kotlin for equal-output comparisons and label historical measurements explicitly. Artifacts and the isolated-checkout Gradle override are under .local/engine-optimization/.

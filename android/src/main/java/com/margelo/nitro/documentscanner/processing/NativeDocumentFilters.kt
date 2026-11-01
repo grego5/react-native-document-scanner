@@ -5,7 +5,7 @@ import com.margelo.nitro.documentscanner.DocumentFilter
 import com.margelo.nitro.documentscanner.ReactNativeDocumentScannerOnLoad
 import org.opencv.core.Mat
 
-/** Synchronous core stage; source stays borrowed until the independent output is copied. */
+/** Synchronous core stage; source stays borrowed while the core writes directly into [into]. */
 @DoNotStrip
 internal object NativeDocumentFilters {
   init { ReactNativeDocumentScannerOnLoad.initializeNative() }

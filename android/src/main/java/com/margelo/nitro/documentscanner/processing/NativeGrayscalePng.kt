@@ -19,4 +19,5 @@ internal object NativeGrayscalePng {
   }
   @JvmStatic @DoNotStrip private external fun writeNative(output: OutputStream, width: Int, height: Int,
     rows: GrayPngRows, compressedOnly: Boolean)
+  @JvmStatic @DoNotStrip external fun writeMatNative(output: OutputStream, address: Long, compressedOnly: Boolean)
 }

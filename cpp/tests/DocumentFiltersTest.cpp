@@ -160,12 +160,68 @@ void boundaries() {
     check(equal(input, output), "Empty page shadow changed");
   }
 }
+// Caller targets: padded rows, requested channel order, and in-place shadow correction
+// match the owned results byte for byte; padding bytes are left untouched.
+void callerTargets() {
+  auto source = page();
+  const auto lease = source.lease();
+  constexpr size_t padding = 9;
+  for (auto filter :
+       {DocumentFilter::none, DocumentFilter::enhance, DocumentFilter::grayscale, DocumentFilter::blackWhite}) {
+    const auto expected = filterDocument(lease, filter, true);
+    const auto reference = expected.lease();
+    const auto &layout = reference.view().layout();
+    std::vector<std::byte> bytes;
+    size_t stride = 0;
+    PixelFormat written = PixelFormat::rgba8;
+    filterDocument(lease, filter, true, PixelFormat::bgr8, [&](PixelFormat format, Size size) {
+      check(bytes.empty(), "Filter allocated twice");
+      written = format;
+      stride = size.width * bytesPerPixel(format) + padding;
+      bytes.assign(stride * size.height, std::byte{7});
+      return PixelTarget{bytes, stride};
+    });
+    check(written == (layout.format == PixelFormat::rgb8 ? PixelFormat::bgr8 : PixelFormat::gray8),
+          "Wrong caller target format");
+    const PixelView view(bytes, {written, layout.size, stride, bytesPerPixel(written),
+                                 {0, 0, layout.size.width, layout.size.height}, Orientation::upright});
+    for (uint32_t y = 0; y < layout.size.height; ++y) {
+      check(bytes[y * stride + stride - 1] == std::byte{7}, "Filter wrote row padding");
+      for (uint32_t x = 0; x < layout.size.width; ++x) {
+        const auto a = reference.view().at(x, y), b = view.at(x, y);
+        check(a.red == b.red && a.green == b.green && a.blue == b.blue, "Caller target differs from owned result");
+      }
+    }
+  }
+  std::vector<std::byte> copy(lease.view().bytes().begin(), lease.view().bytes().end());
+  const auto &layout = lease.view().layout();
+  const PixelLease shared(std::make_shared<int>(), copy, layout);
+  removeDocumentShadows(shared, [&](PixelFormat, Size) { return PixelTarget{copy, layout.rowStride}; });
+  const auto corrected = removeDocumentShadows(lease);
+  const auto expected = corrected.lease();
+  for (uint32_t y = 0; y < layout.size.height; ++y)
+    for (uint32_t x = 0; x < layout.size.width; x += 7) {
+      const auto a = expected.view().at(x, y), b = shared.view().at(x, y);
+      check(a.red == b.red && a.green == b.green && a.blue == b.blue && a.alpha == b.alpha,
+            "In-place shadows differ");
+    }
+  rejects([&] {
+    filterDocument(lease, DocumentFilter::none, false, PixelFormat::rgba8,
+                   [](PixelFormat, Size) -> PixelTarget { throw std::logic_error("Allocated rejected format"); });
+  });
+  rejects([&] {
+    std::vector<std::byte> small(16);
+    filterDocument(lease, DocumentFilter::grayscale, false, PixelFormat::rgb8,
+                   [&](PixelFormat, Size size) { return PixelTarget{small, size.width}; });
+  });
+}
 } // namespace
 int main() {
   try {
     filtersAndOwnership();
     sharpnessIsRepeatableAcrossOwnedOutputs();
     boundaries();
+    callerTargets();
     std::cout << "Document filter contracts passed\n";
   } catch (const std::exception &e) {
     std::cerr << e.what() << '\n';

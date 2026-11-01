@@ -1,14 +1,16 @@
 #include <document_scanner/DocumentFilters.hpp>
 #include "internal/Kernels.hpp"
+#include "internal/PixelTargets.hpp"
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <stdexcept>
 
 namespace document_scanner {
 namespace {
+using internal::OwnedTarget;
+using internal::target;
 int roundPositive(double value) { return int(std::floor(value + .5)); }
 int odd(double value) { return std::max(3, roundPositive(value)) | 1; }
 cv::Mat sourceMat(const PixelLease &source) {
@@ -20,15 +22,6 @@ cv::Mat sourceMat(const PixelLease &source) {
     throw std::invalid_argument("Document filters require full upright RGBA8 pixels up to 4096 per side.");
   return cv::Mat(int(l.size.height), int(l.size.width), CV_8UC4, const_cast<std::byte *>(view.bytes().data()),
                  l.rowStride);
-}
-OwnedPixels publish(const cv::Mat &mat, PixelFormat format) {
-  const Size size{uint32_t(mat.cols), uint32_t(mat.rows)};
-  const size_t stride = size_t(mat.cols) * mat.elemSize();
-  std::vector<std::byte> bytes(stride * mat.rows);
-  for (int r = 0; r < mat.rows; ++r)
-    std::memcpy(bytes.data() + r * stride, mat.ptr(r), stride);
-  return OwnedPixels(std::move(bytes),
-                     {format, size, stride, mat.elemSize(), {0, 0, size.width, size.height}, Orientation::upright});
 }
 void shadows(cv::Mat &rgba) {
   if (std::min(rgba.cols, rgba.rows) < 8)
@@ -240,26 +233,41 @@ void finish(std::vector<cv::Mat> &channels, const InkDetail &detail, bool docume
     cv::LUT(channel, curve, channel);
 }
 } // namespace
-OwnedPixels removeDocumentShadows(const PixelLease &source) {
-  auto rgba = sourceMat(source).clone();
-  shadows(rgba);
-  return publish(rgba, PixelFormat::rgba8);
+void removeDocumentShadows(const PixelLease &source, const PixelAllocator &allocate) {
+  const cv::Mat rgba = sourceMat(source);
+  const auto out = target(allocate, PixelFormat::rgba8, rgba.size());
+  cv::Mat corrected = out.mat;
+  if (corrected.data != rgba.data)
+    rgba.copyTo(corrected);
+  shadows(corrected);
+  out.kept(corrected);
 }
-OwnedPixels filterDocument(const PixelLease &source, DocumentFilter filter, bool removeShadows) {
+OwnedPixels removeDocumentShadows(const PixelLease &source) {
+  OwnedTarget out;
+  removeDocumentShadows(source, out.allocator());
+  return std::move(out).publish();
+}
+void filterDocument(const PixelLease &source, DocumentFilter filter, bool removeShadows, PixelFormat color,
+                    const PixelAllocator &allocate) {
   if (filter != DocumentFilter::none && filter != DocumentFilter::enhance && filter != DocumentFilter::grayscale &&
       filter != DocumentFilter::blackWhite)
     throw std::invalid_argument("Unknown document filter.");
+  if (color != PixelFormat::rgb8 && color != PixelFormat::bgr8)
+    throw std::invalid_argument("Document color output must be RGB8 or BGR8.");
   cv::Mat rgba = sourceMat(source);
   if (removeShadows) {
     rgba = rgba.clone();
     shadows(rgba);
   }
+  if (filter == DocumentFilter::none) {
+    const auto out = target(allocate, color, rgba.size());
+    cv::Mat converted = out.mat;
+    cv::cvtColor(rgba, converted, color == PixelFormat::rgb8 ? cv::COLOR_RGBA2RGB : cv::COLOR_RGBA2BGR);
+    out.kept(converted);
+    return;
+  }
   cv::Mat page;
   cv::cvtColor(rgba, page, cv::COLOR_RGBA2BGR);
-  if (filter == DocumentFilter::none) {
-    cv::cvtColor(page, page, cv::COLOR_BGR2RGB);
-    return publish(page, PixelFormat::rgb8);
-  }
   const auto paper = evenLighting(page);
   // The JNI kernel boundary previously narrowed gains and scales separately.
   const std::array<float, 3> gains{float(paper.gains[0]), float(paper.gains[1]), float(paper.gains[2])};
@@ -276,15 +284,26 @@ OwnedPixels filterDocument(const PixelLease &source, DocumentFilter filter, bool
     cv::Mat gray;
     cv::cvtColor(page, gray, cv::COLOR_BGR2GRAY);
     finish(channels, measure(gray), false);
-    cv::merge(channels, page);
-    cv::cvtColor(page, page, cv::COLOR_BGR2RGB);
-    return publish(page, PixelFormat::rgb8);
+    // Merging in the requested channel order replaces a separate color conversion pass.
+    if (color == PixelFormat::rgb8)
+      std::swap(channels[0], channels[2]);
+    const auto out = target(allocate, color, page.size());
+    cv::Mat merged = out.mat;
+    cv::merge(channels, merged);
+    out.kept(merged);
+    return;
   }
   const float weights[]{.114f, .587f, .299f};
-  cv::Mat gray(page.size(), CV_8U);
+  const auto out = target(allocate, PixelFormat::gray8, page.size());
+  cv::Mat gray = out.mat;
   internal::grayDivide(page, gray, paper.level, weights, gains.data(), 255.f);
   std::vector<cv::Mat> channels{gray};
   finish(channels, measure(gray), filter == DocumentFilter::blackWhite);
-  return publish(gray, PixelFormat::gray8);
+  out.kept(channels[0]);
+}
+OwnedPixels filterDocument(const PixelLease &source, DocumentFilter filter, bool removeShadows) {
+  OwnedTarget out;
+  filterDocument(source, filter, removeShadows, PixelFormat::rgb8, out.allocator());
+  return std::move(out).publish();
 }
 } // namespace document_scanner

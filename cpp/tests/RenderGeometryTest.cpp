@@ -192,12 +192,52 @@ void failuresAndUnsupported() {
                      {PixelFormat::rgba8, {4097, 1}, 4097 * 4, 4, {0, 0, 4097, 1}, Orientation::rotate90});
   rejects([&] { renderGeometry(rotated, invalid, 1); });
 }
+// Caller targets: padded rows receive the same curved and straight pixels as owned output, padding
+// stays untouched, and a rejected render never allocates.
+void callerTargets() {
+  auto source = fixture("bent");
+  const auto lease = source.lease();
+  for (bool follow : {true, false}) {
+    const auto expected = renderGeometry(lease, page, 1, std::nullopt, follow);
+    const auto reference = expected.pixels.lease();
+    const auto &layout = reference.view().layout();
+    std::vector<std::byte> bytes;
+    size_t stride = 0;
+    const auto info = renderGeometry(lease, page, 1, std::nullopt, follow, [&](PixelFormat format, Size size) {
+      check(bytes.empty() && format == PixelFormat::rgba8, "Render allocated twice or in the wrong format");
+      stride = size.width * 4 + 12;
+      bytes.assign(stride * size.height, std::byte{7});
+      return PixelTarget{bytes, stride};
+    });
+    check(info.curved == expected.curved && samePolygon(info.validContentPolygon, expected.validContentPolygon),
+          "Caller render metadata differs");
+    const auto packed = reference.view().bytes();
+    for (uint32_t y = 0; y < layout.size.height; ++y) {
+      const auto row = layout.size.width * 4;
+      check(std::equal(packed.begin() + y * layout.rowStride, packed.begin() + y * layout.rowStride + row,
+                       bytes.begin() + y * stride),
+            "Caller render pixels differ");
+      check(bytes[y * stride + row] == std::byte{7}, "Render wrote row padding");
+    }
+  }
+  bool allocated = false, rejected = false;
+  try {
+    renderGeometry(lease, rect(1.1, .1, 1.5, .5), 1, std::nullopt, true, [&](PixelFormat, Size) {
+      allocated = true;
+      return PixelTarget{};
+    });
+  } catch (const std::runtime_error &) {
+    rejected = true;
+  }
+  check(rejected && !allocated, "Rejected render allocated caller storage");
+}
 } // namespace
 int main() {
   try {
     identityAndOwnership();
     renderFixtures();
     failuresAndUnsupported();
+    callerTargets();
     std::cout << "Geometric render contracts passed\n";
   } catch (const std::exception &e) {
     std::cerr << e.what() << '\n';

@@ -4,15 +4,15 @@
 #include <utility>
 
 namespace document_scanner {
-namespace {
-size_t channels(PixelFormat format) {
+size_t bytesPerPixel(PixelFormat format) {
   switch (format) {
     case PixelFormat::gray8: return 1;
-    case PixelFormat::rgb8: return 3;
+    case PixelFormat::rgb8: case PixelFormat::bgr8: return 3;
     case PixelFormat::rgba8: case PixelFormat::bgra8: return 4;
   }
   throw std::invalid_argument("Unknown pixel format");
 }
+namespace {
 size_t add(size_t a, size_t b) {
   if (b > std::numeric_limits<size_t>::max() - a) throw std::invalid_argument("Pixel span overflow");
   return a + b;
@@ -25,7 +25,7 @@ size_t multiply(size_t a, size_t b) {
 PixelView::PixelView(std::span<const std::byte> bytes, PixelLayout layout) : bytes_(bytes), layout_(layout) {
   const auto& s = layout.size;
   const auto& c = layout.crop;
-  const auto n = channels(layout.format);
+  const auto n = bytesPerPixel(layout.format);
   const auto o = static_cast<unsigned>(layout.orientation);
   if (!bytes.data() || !s.width || !s.height || layout.pixelStride < n ||
       !c.width || !c.height || c.left > s.width || c.top > s.height ||
@@ -42,6 +42,7 @@ Rgba PixelView::at(uint32_t x, uint32_t y) const {
   switch (layout_.format) {
     case PixelFormat::gray8: return {value(0), value(0), value(0), 255};
     case PixelFormat::rgb8: return {value(0), value(1), value(2), 255};
+    case PixelFormat::bgr8: return {value(2), value(1), value(0), 255};
     case PixelFormat::rgba8: return {value(0), value(1), value(2), value(3)};
     case PixelFormat::bgra8: return {value(2), value(1), value(0), value(3)};
   }

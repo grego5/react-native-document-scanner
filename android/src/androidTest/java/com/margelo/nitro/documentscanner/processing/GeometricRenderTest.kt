@@ -69,7 +69,7 @@ class GeometricRenderTest {
       assertFalse(into.empty())
     } finally {source.release();before.release();into.release()}
   }
-  private fun fixture(name: String): Mat {
+  internal fun fixture(name: String): Mat {
     fun bend(a: Double,b: Double,t: Double)=t*(1-t)*(a+b*t)
     fun shade(sx: Double,sy: Double): Int {
       var x=sx-80;var y=sy-60

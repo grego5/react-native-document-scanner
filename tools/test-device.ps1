@@ -11,6 +11,8 @@ param(
     [string[]]$Class = @(),
     # Runs the measurements (`-e measure true`).
     [switch]$Measure,
+    [ValidateSet('Debug', 'Release')]
+    [string]$BuildType = 'Debug',
     # Further instrumentation arguments as name=value, passed as `-e name value`.
     [string[]]$Argument = @(),
     [ValidateSet('arm64-v8a', 'x86_64')]
@@ -24,7 +26,8 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $androidRoot = Join-Path $repositoryRoot 'example/android'
 $wrapper = Join-Path $androidRoot 'gradlew.bat'
-$apk = Join-Path $repositoryRoot 'android/build/outputs/apk/androidTest/debug/react-native-document-scanner-debug-androidTest.apk'
+$variant = $BuildType.ToLowerInvariant()
+$apk = Join-Path $repositoryRoot "android/build/outputs/apk/androidTest/$variant/react-native-document-scanner-$variant-androidTest.apk"
 $runner = 'com.margelo.nitro.documentscanner.test/androidx.test.runner.AndroidJUnitRunner'
 if (-not (Test-Path -LiteralPath $wrapper -PathType Leaf)) {
     throw 'The prepared example Android project is missing. This script does not run Expo prebuild.'
@@ -41,7 +44,7 @@ if (-not $SkipBuild) {
     Push-Location -LiteralPath $androidRoot
     try {
         $env:JAVA_HOME = $JavaHome
-        & $wrapper ':react-native-document-scanner:assembleDebugAndroidTest' "-PreactNativeArchitectures=$Architecture" '--console=plain' '-q'
+        & $wrapper ":react-native-document-scanner:assemble${BuildType}AndroidTest" "-PdocumentScannerTestBuildType=$variant" "-PreactNativeArchitectures=$Architecture" '--console=plain' '-q'
         if ($LASTEXITCODE -ne 0) { throw "The instrumentation APK did not build (exit $LASTEXITCODE); nothing was installed." }
     } finally {
         $env:JAVA_HOME = $savedJavaHome
