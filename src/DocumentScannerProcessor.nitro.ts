@@ -102,7 +102,9 @@ export interface SampleFolder {
   collecting: boolean
 }
 
-/** Native result transport; the public DocumentScanner facade unwraps values and rejects typed failures. */
+/** Native result transport; the public DocumentScanner facade unwraps values and rejects typed failures.
+ * Originals stay native/session-private. Android sources use its existing JPEG loader;
+ * the iOS source layer accepts TIFF/JPEG/PNG with EXIF applied before pixel consumers. */
 export interface DocumentScannerProcessor
   extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   /** Creates an explicitly owned session; close it when its pages are no longer needed. */

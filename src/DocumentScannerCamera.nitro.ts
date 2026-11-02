@@ -226,7 +226,8 @@ export interface TakePhotoOptions {
 export interface DocumentScannerCameraMethods extends HybridViewMethods {
   /**
    * Native result transport for public `takePhoto`: one new session page ID or a failure code. The view shows a frozen
-   * preview frame while the shot saves.
+   * preview frame while the shot saves. Originals remain private session resources: Android captures JPEG;
+   * the iOS source layer uses provisional JPEG backing and can reopen TIFF/JPEG/PNG.
    */
   takePhotoResult(options?: TakePhotoOptions): Promise<string | ScannerFailure>
 }

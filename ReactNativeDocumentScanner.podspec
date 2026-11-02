@@ -12,11 +12,12 @@ Pod::Spec.new do |s|
   s.platform = :ios, '18.0'
   s.swift_version = '6.0'
   s.source_files = ['ios/*.{swift,h,mm}', 'cpp/include/**/*.hpp', 'cpp/src/**/*.{hpp,cpp}']
+  s.public_header_files = ['ios/ScannerSourcePixels.h']
   s.private_header_files = ['cpp/include/**/*.hpp', 'cpp/src/**/*.hpp']
   s.resource_bundles = { 'DocumentScannerModels' => ['resources/doccornernet/*'] }
   s.dependency 'DocumentScannerOpenCV', '4.12.0'
   s.dependency 'TensorFlowLiteC', '2.17.0'
-  s.frameworks = ['UIKit', 'Accelerate', 'AVFoundation', 'CoreMedia', 'CoreVideo']
+  s.frameworks = ['UIKit', 'Accelerate', 'AVFoundation', 'CoreMedia', 'CoreVideo', 'ImageIO', 'UniformTypeIdentifiers']
   s.libraries = ['c++', 'z']
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '$(inherited) "$(PODS_TARGET_SRCROOT)/cpp/include" "$(PODS_TARGET_SRCROOT)/cpp/src"',

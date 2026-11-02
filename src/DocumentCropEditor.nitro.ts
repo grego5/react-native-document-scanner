@@ -15,7 +15,8 @@ import type { ScannerFailure } from './ScannerFailure'
  * their size on screen, and the quad stays in photo coordinates.
  */
 export interface DocumentCropEditorProps extends HybridViewProps {
-  /** Native session page whose immutable original is edited; its EXIF orientation is applied. */
+  /** Native session page whose immutable original is edited; EXIF orientation is applied.
+   * Native source formats: Android JPEG; iOS TIFF/JPEG/PNG. Source paths remain session-private. */
   session: ScanSession
   pageId: string
   /**

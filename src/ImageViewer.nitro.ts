@@ -20,7 +20,8 @@ import type { ScannerFailure } from './ScannerFailure'
  */
 export interface ImageViewerViewProps extends HybridViewProps {
   /**
-   * Native session page to show; original EXIF orientation is applied. It shows as a thumbnail at the live frame's
+   * Native session page to show; original EXIF orientation is applied. Native originals are Android JPEG or
+   * iOS TIFF/JPEG/PNG; rendered pages use JPEG/PNG. Paths remain session-private. It shows as a thumbnail at the live frame's
    * size; zooming past 1.1x loads the full image, up to 4096 pixels on its long side, which replaces it in place while
    * still zoomed. A newly published render fades the new thumbnail in at the fit over the previous image; the previous image remains visible while
    * loading.

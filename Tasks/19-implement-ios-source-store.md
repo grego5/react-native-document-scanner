@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Completed — initial native validation passed; local post-review corrections not rerun on iOS
 Complexity: High
 Dependencies: [04](04-verify-ios-feasibility.md), [17](17-add-ios-package-and-nitro-bindings.md)
 
@@ -66,3 +66,114 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 
 feat(ios): add bounded source storage and pixel leases
 
+
+## Implementation and validation — 2026-11-02
+
+The lookup map above predates native-session main: CapturedPhoto/originalUri and
+processor URI operations are no longer public APIs. This task preserves the
+session/page-ID boundary. Real local source URLs stay internal; no public source
+URI API or second view-owned resource owner was introduced.
+
+Changed native files:
+
+- ios/SourceStore.swift: process-wide SourceStore.shared, serial source queue,
+  immutable file publication, canonical lookup, one full-resolution resident and
+  one thumbnail slot (maximum 512 px), file pins and owned-file retirement.
+- ios/SourceImageLoader.swift: TIFF/JPEG/PNG inspection and ImageIO decode,
+  immutable opaque sRGB RGBA8 allocations, lifetime-based budget tickets,
+  provisional JPEG publication metadata and typed native errors.
+- ios/ScannerSourcePixels.h/.mm: generic coordinate-space adaptation through the
+  existing shared orientation geometry, and a retained-owner C++ PixelLease bridge.
+  The core receives upright RGBA8/full-crop metadata and no platform handles.
+- ios/Tests/SourceStoreTests.swift and ios/Tests/DependencyLinkTests.mm: source,
+  memory, lifecycle, cache boundary and native owner-retention coverage.
+- ReactNativeDocumentScanner.podspec: ImageIO/UniformTypeIdentifiers dependencies
+  and export of the authored bridge header. No generated source was edited.
+- ios/README.md and capture/processor/editor/viewer/pager spec comments document
+  formats and ownership without widening Android's source contract.
+
+Chosen owner and admission policy: the process-wide service is shared by future
+camera/processor/view consumers; sessions logically own their source IDs/URLs and
+explicitly retire their files. Entries/pins/publication/decoding are queue-owned;
+shutdown admission and byte accounting have independent locks. The default budget
+is 256 MiB, with dimensions limited to 16384 per side and 32 million pixels. All
+live resident/evicted Swift, CGImage and C++-owned allocations remain charged until
+their final owner releases them. Admission also reserves three RGBA-size units of
+pixel staging before creating the output allocation. Exceeding the budget fails
+with native memoryLimit (mapped to processor/unavailable); it never waits for a
+lease or permits an unbounded chain of evicted buffers. These are source allocation
+limits, not a measured total-process RSS limit; opaque codec bookkeeping and the
+caller's borrowed capture buffers are outside this owner's accounting.
+
+Memory warnings evict cache slots while leases survive. Nonblocking shutdown marks
+closed before queued work enters, rejects pending/new work with disposed, cancels
+stale publication, and queues cache/observer release. Final publication/admission
+is linearized with shutdown. Durable backing survives shutdown; explicit whole-
+request-validated retirement refuses foreign files, directories and symlink paths,
+rejects new reads and waits for the last file pin before physical deletion.
+
+Validation passed:
+
+- npm run check: both TypeScript checks and all 40 JS contracts.
+- npm run nitrogen: all eight objects generated; no generated diff.
+- CocoaPods installation in the existing isolated Task 17 package host.
+- Verified Xcode 26.6 (17F113), Swift 6.3.3 (swiftlang-6.3.3.1.3), iOS simulator SDK
+  26.5 and deployment target iOS 18. In
+  /Users/admin/Projects/react-native-document-scanner/.local/task17/host:
+  `DEVELOPER_DIR="/Users/admin/Downloads/Xcode 2.app/Contents/Developer" xcodebuild -workspace ScannerPackageValidation.xcworkspace -scheme ReactNativeDocumentScanner-Unit-ScaffoldTests -configuration Debug -destination "platform=iOS Simulator,id=7C539F34-E6DA-4D55-AF59-98A50A35C2D7" -derivedDataPath ../derived-data CODE_SIGNING_ALLOWED=NO build-for-testing`
+  succeeded.
+- The existing external standalone simulator runner executed 30 XCTest cases with
+  zero failures (7.748 s test time): 12 source-store cases, one new C++ retained-
+  owner lease test and the existing 17 permission/package cases. Source cases
+  cover all eight EXIF orientations for TIFF/JPEG/PNG headers AND pixels, capture
+  normalization without a first decode, resident pointer reuse, JPEG reopen,
+  cropped dimensions/capture metadata, multiple outstanding evicted leases,
+  concurrent publish/acquire/evict/retire, memory warnings/disposal, shutdown with
+  queued acquisition/running publication, write rollback, whole-request validation,
+  symlinks, already-removed files and deferred deletion through CGImage owners.
+- Authored tracked/untracked file whitespace checks passed; package dry-run includes
+  all new native sources and tests.
+
+Earlier attempts exposed an unexported authored helper, Swift typing/test-module
+interop issues, Quartz top-left/bottom-left transform differences for EXIF 5–8,
+wrong crop placement, and URL directory-flag comparison on newly created folders.
+The authored export/typing fixes, native Swift error assertions, generic Quartz
+coordinate conversion and canonical path comparison resolve them; the final suite
+above supersedes those failed attempts. Goldens were retained and per-format pixel
+assertions strengthened. Tests assert typed errors at this native owner boundary;
+Hybrid payload transport belongs to the later operation implementation.
+
+Evidence: ignored .local/task19-ios-build.log, task19-ios-xctest.log,
+task19-pods.log, task19-check.log and task19-nitrogen.log. Build/test infrastructure
+remains outside this repository; the authorized Mac snapshot is under its existing
+project's ignored .local/task17 folder.
+
+Limits: JPEG backing is provisional and lossy. Resident capture pixels are reused
+exactly; reopened JPEG access preserves geometry/content with quantization (the
+synthetic tests allow at most 12 intensity levels), not bitwise raw equality. No
+real-photo quality/performance measurement, physical-device run, camera capture,
+model inference or full React Native iOS sample was attempted. TIFF/JPEG device
+comparison remains deferred per user direction. Later tasks connect this tested
+native source service to session orchestration, inference, cameras and views;
+Task 19 does not claim those implementations or iOS release readiness. Android
+runtime code and portable algorithms remain unchanged.
+
+### Local post-review corrections — 2026-11-02
+
+Addressed both P2 findings in SourceStore.swift. Successful/already-completed file
+removal now drops the full Entry/header after its last pin. Only the latest 256
+completed retirement URLs remain in FIFO bookkeeping for idempotent absent-file
+removal; older URLs are rejected as no longer owned. Recreated files at remembered
+URLs are rejected and left untouched. Shutdown clears entries and retirement
+history; outstanding pins retain only their own needed state until unpin drains.
+
+Memory-warning delivery now enqueues weak-owner eviction and returns without
+waiting for the source worker. Explicit evict() remains synchronous. Added focused
+XCTest regressions for bounded retirement recognition/replacement-file protection
+and nonblocking notification delivery while publication is gated, followed by
+actual queued eviction. README records the reclamation/notification policy.
+
+Per the request for local corrections, no Mac build or XCTest rerun was performed.
+The earlier 30-test result above applies to the pre-review snapshot; the two new
+regressions and revised Swift source have not yet been compiled/executed. Local
+npm run check and authored whitespace checks passed after these corrections.

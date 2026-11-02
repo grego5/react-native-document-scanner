@@ -15,7 +15,9 @@ export type ImagePagerDirection = 'auto' | 'ltr' | 'rtl'
  * decodes its full image. Gestures stay on the main thread and never cross into JavaScript.
  */
 export interface ImagePagerViewProps extends HybridViewProps {
-  /** Native session pages in logical input order. New renders retain the previous image until replacement decodes. */
+  /** Native session pages in logical input order. Originals use the native ImageViewer source formats
+   * (Android JPEG; iOS TIFF/JPEG/PNG); renders use JPEG/PNG. Paths stay session-private.
+   * New renders retain the previous image until replacement decodes. */
   session: ScanSession
   /** Optional complete order to apply to the session. Omit to follow its stored order. */
   pageIds?: string[]
