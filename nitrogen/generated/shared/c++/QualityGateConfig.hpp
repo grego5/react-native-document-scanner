@@ -48,7 +48,9 @@ namespace margelo::nitro::documentscanner {
     explicit QualityGateConfig(std::optional<double> captureBlurPercent, std::optional<double> focusTimeout, std::optional<bool> requireFocus): captureBlurPercent(captureBlurPercent), focusTimeout(focusTimeout), requireFocus(requireFocus) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const QualityGateConfig& lhs, const QualityGateConfig& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

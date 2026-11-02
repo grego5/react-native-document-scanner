@@ -60,7 +60,9 @@ namespace margelo::nitro::documentscanner {
     explicit DocumentRenderOptions(std::optional<bool> removeShadows, std::optional<double> jpegQuality, std::optional<DocumentFilter> filter, std::optional<DocumentImageFormat> format, std::optional<PaperSize> paperSize, std::optional<double> dpi, std::optional<bool> followPageEdges): removeShadows(removeShadows), jpegQuality(jpegQuality), filter(filter), format(format), paperSize(paperSize), dpi(dpi), followPageEdges(followPageEdges) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const DocumentRenderOptions& lhs, const DocumentRenderOptions& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

@@ -179,6 +179,6 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Methods
-
+  
 
 } // namespace margelo::nitro::documentscanner

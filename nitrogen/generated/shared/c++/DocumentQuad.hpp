@@ -50,7 +50,9 @@ namespace margelo::nitro::documentscanner {
     explicit DocumentQuad(DocumentPoint topLeft, DocumentPoint topRight, DocumentPoint bottomRight, DocumentPoint bottomLeft): topLeft(topLeft), topRight(topRight), bottomRight(bottomRight), bottomLeft(bottomLeft) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const DocumentQuad& lhs, const DocumentQuad& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

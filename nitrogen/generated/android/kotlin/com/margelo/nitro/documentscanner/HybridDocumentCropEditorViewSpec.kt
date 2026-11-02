@@ -33,21 +33,21 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
   @set:DoNotStrip
   @set:Keep
   abstract var session: HybridScanSessionSpec
-
+  
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var pageId: String
-
+  
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var filter: DocumentFilter?
-
+  
   abstract var onPresetChange: ((preset: CropDraftPreset) -> Unit)?
-
+  
   private var onPresetChange_cxx: Func_void_CropDraftPreset?
     @Keep
     @DoNotStrip
@@ -59,9 +59,9 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
     set(value) {
       onPresetChange = value?.let { it }
     }
-
+  
   abstract var onLoad: ((width: Double, height: Double) -> Unit)?
-
+  
   private var onLoad_cxx: Func_void_double_double?
     @Keep
     @DoNotStrip
@@ -73,9 +73,9 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
     set(value) {
       onLoad = value?.let { it }
     }
-
+  
   abstract var onError: ((failure: ScannerFailure) -> Unit)?
-
+  
   private var onError_cxx: Func_void_ScannerFailure?
     @Keep
     @DoNotStrip
@@ -92,11 +92,11 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
   @DoNotStrip
   @Keep
   abstract fun submitResult(): Promise<Variant_Boolean_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun getQuadResult(): Promise<Variant_ScannerFailure_DocumentQuad>
-
+  
   @DoNotStrip
   @Keep
   abstract fun setPresetResult(preset: CropPreset): Promise<Variant_Boolean_ScannerFailure>

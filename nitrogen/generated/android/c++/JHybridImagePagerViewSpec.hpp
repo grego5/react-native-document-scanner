@@ -69,7 +69,7 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
-
+    
 
   private:
     jni::global_ref<JHybridImagePagerViewSpec::JavaPart> _javaPart;

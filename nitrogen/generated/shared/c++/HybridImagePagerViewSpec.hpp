@@ -75,7 +75,7 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Methods
-
+      
 
     protected:
       // Hybrid Setup

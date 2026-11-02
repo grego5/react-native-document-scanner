@@ -29,30 +29,31 @@ namespace margelo::nitro::documentscanner {
    * An enum which can be represented as a JavaScript union (ScannerErrorCode).
    */
   enum class ScannerErrorCode {
-    CAMERA_UNAVAILABLE      SWIFT_NAME(cameraUnavailable) = 0,
-    CAMERA_PERMISSION_DENIED      SWIFT_NAME(cameraPermissionDenied) = 1,
-    CAMERA_NOT_READY      SWIFT_NAME(cameraNotReady) = 2,
-    CAPTURE_FOCUS_TIMEOUT      SWIFT_NAME(captureFocusTimeout) = 3,
-    CAPTURE_MOTION_TIMEOUT      SWIFT_NAME(captureMotionTimeout) = 4,
-    CAPTURE_BUSY      SWIFT_NAME(captureBusy) = 5,
-    CAPTURE_NOT_READY      SWIFT_NAME(captureNotReady) = 6,
-    CAPTURE_FAILED      SWIFT_NAME(captureFailed) = 7,
-    CAPTURE_METADATA_FAILED      SWIFT_NAME(captureMetadataFailed) = 8,
-    STORAGE_WRITE_FAILED      SWIFT_NAME(storageWriteFailed) = 9,
-    IMAGE_LOAD_FAILED      SWIFT_NAME(imageLoadFailed) = 10,
-    EDITOR_FILTER_FAILED      SWIFT_NAME(editorFilterFailed) = 11,
-    PROCESSOR_SUPERSEDED      SWIFT_NAME(processorSuperseded) = 12,
-    PROCESSOR_DISPOSED      SWIFT_NAME(processorDisposed) = 13,
-    PROCESSOR_UNAVAILABLE      SWIFT_NAME(processorUnavailable) = 14,
-    ANALYSIS_FAILED      SWIFT_NAME(analysisFailed) = 15,
-    RENDER_FAILED      SWIFT_NAME(renderFailed) = 16,
-    PDF_WRITE_FAILED      SWIFT_NAME(pdfWriteFailed) = 17,
-    CACHE_DELETE_FAILED      SWIFT_NAME(cacheDeleteFailed) = 18,
-    PERMISSION_REQUEST_FAILED      SWIFT_NAME(permissionRequestFailed) = 19,
-    PERMISSION_UNAVAILABLE      SWIFT_NAME(permissionUnavailable) = 20,
-    MODEL_LOAD_FAILED      SWIFT_NAME(modelLoadFailed) = 21,
-    MODEL_SUPERSEDED      SWIFT_NAME(modelSuperseded) = 22,
-    INPUT_INVALID      SWIFT_NAME(inputInvalid) = 23,
+    FEATURE_UNSUPPORTED      SWIFT_NAME(featureUnsupported) = 0,
+    CAMERA_UNAVAILABLE      SWIFT_NAME(cameraUnavailable) = 1,
+    CAMERA_PERMISSION_DENIED      SWIFT_NAME(cameraPermissionDenied) = 2,
+    CAMERA_NOT_READY      SWIFT_NAME(cameraNotReady) = 3,
+    CAPTURE_FOCUS_TIMEOUT      SWIFT_NAME(captureFocusTimeout) = 4,
+    CAPTURE_MOTION_TIMEOUT      SWIFT_NAME(captureMotionTimeout) = 5,
+    CAPTURE_BUSY      SWIFT_NAME(captureBusy) = 6,
+    CAPTURE_NOT_READY      SWIFT_NAME(captureNotReady) = 7,
+    CAPTURE_FAILED      SWIFT_NAME(captureFailed) = 8,
+    CAPTURE_METADATA_FAILED      SWIFT_NAME(captureMetadataFailed) = 9,
+    STORAGE_WRITE_FAILED      SWIFT_NAME(storageWriteFailed) = 10,
+    IMAGE_LOAD_FAILED      SWIFT_NAME(imageLoadFailed) = 11,
+    EDITOR_FILTER_FAILED      SWIFT_NAME(editorFilterFailed) = 12,
+    PROCESSOR_SUPERSEDED      SWIFT_NAME(processorSuperseded) = 13,
+    PROCESSOR_DISPOSED      SWIFT_NAME(processorDisposed) = 14,
+    PROCESSOR_UNAVAILABLE      SWIFT_NAME(processorUnavailable) = 15,
+    ANALYSIS_FAILED      SWIFT_NAME(analysisFailed) = 16,
+    RENDER_FAILED      SWIFT_NAME(renderFailed) = 17,
+    PDF_WRITE_FAILED      SWIFT_NAME(pdfWriteFailed) = 18,
+    CACHE_DELETE_FAILED      SWIFT_NAME(cacheDeleteFailed) = 19,
+    PERMISSION_REQUEST_FAILED      SWIFT_NAME(permissionRequestFailed) = 20,
+    PERMISSION_UNAVAILABLE      SWIFT_NAME(permissionUnavailable) = 21,
+    MODEL_LOAD_FAILED      SWIFT_NAME(modelLoadFailed) = 22,
+    MODEL_SUPERSEDED      SWIFT_NAME(modelSuperseded) = 23,
+    INPUT_INVALID      SWIFT_NAME(inputInvalid) = 24,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::documentscanner
@@ -65,6 +66,7 @@ namespace margelo::nitro {
     static inline margelo::nitro::documentscanner::ScannerErrorCode fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, arg);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
+        case hashString("feature/unsupported"): return margelo::nitro::documentscanner::ScannerErrorCode::FEATURE_UNSUPPORTED;
         case hashString("camera/unavailable"): return margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_UNAVAILABLE;
         case hashString("camera/permission-denied"): return margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_PERMISSION_DENIED;
         case hashString("camera/not-ready"): return margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_NOT_READY;
@@ -95,6 +97,7 @@ namespace margelo::nitro {
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, margelo::nitro::documentscanner::ScannerErrorCode arg) {
       switch (arg) {
+        case margelo::nitro::documentscanner::ScannerErrorCode::FEATURE_UNSUPPORTED: return JSIConverter<std::string>::toJSI(runtime, "feature/unsupported");
         case margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_UNAVAILABLE: return JSIConverter<std::string>::toJSI(runtime, "camera/unavailable");
         case margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_PERMISSION_DENIED: return JSIConverter<std::string>::toJSI(runtime, "camera/permission-denied");
         case margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_NOT_READY: return JSIConverter<std::string>::toJSI(runtime, "camera/not-ready");
@@ -130,6 +133,7 @@ namespace margelo::nitro {
       }
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, value);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
+        case hashString("feature/unsupported"):
         case hashString("camera/unavailable"):
         case hashString("camera/permission-denied"):
         case hashString("camera/not-ready"):

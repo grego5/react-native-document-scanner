@@ -16,5 +16,5 @@ export interface PageThumbnailViewMethods extends HybridViewMethods {}
 export type PageThumbnailView = HybridView<
   PageThumbnailViewProps,
   PageThumbnailViewMethods,
-  { android: 'kotlin' }
+  { ios: 'swift'; android: 'kotlin' }
 >

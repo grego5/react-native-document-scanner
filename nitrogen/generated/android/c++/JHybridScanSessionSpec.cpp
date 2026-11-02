@@ -118,7 +118,7 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Properties
-
+  
 
   // Methods
   std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> JHybridScanSessionSpec::createPdfResult(const std::optional<std::vector<std::string>>& pageIds, const SessionPdfOptions& options) {

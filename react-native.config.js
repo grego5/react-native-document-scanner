@@ -7,7 +7,7 @@ module.exports = {
           'import com.margelo.nitro.documentscanner.ReactNativeDocumentScannerPackage;',
         packageInstance: 'new ReactNativeDocumentScannerPackage()',
       },
-      ios: null,
+      ios: {},
     },
   },
 }

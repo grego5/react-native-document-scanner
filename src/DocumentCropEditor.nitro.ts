@@ -51,5 +51,5 @@ export interface DocumentCropEditorMethods extends HybridViewMethods {
 export type DocumentCropEditorView = HybridView<
   DocumentCropEditorProps,
   DocumentCropEditorMethods,
-  { android: 'kotlin' }
+  { ios: 'swift'; android: 'kotlin' }
 >

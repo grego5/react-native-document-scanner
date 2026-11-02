@@ -47,7 +47,9 @@ namespace margelo::nitro::documentscanner {
     explicit ScannerFailure(ScannerErrorCode code): code(code) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const ScannerFailure& lhs, const ScannerFailure& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

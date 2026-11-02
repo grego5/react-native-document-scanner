@@ -7,6 +7,8 @@
   "types": "src/index.ts",
   "source": "src/index.ts",
   "files": [
+    "ios",
+    "*.podspec",
     "android/src",
     "android/build.gradle",
     "android/CMakeLists.txt",
@@ -24,7 +26,7 @@
   ],
   "scripts": {
     "check": "node tools/check.cjs",
-    "nitrogen": "nitrogen",
+    "nitrogen": "node tools/nitrogen.cjs",
     "typecheck": "node tools/check.cjs --library",
     "typecheck:example": "node tools/check.cjs --example",
     "test:contracts": "node --test src/scanner-contracts.test.cjs",

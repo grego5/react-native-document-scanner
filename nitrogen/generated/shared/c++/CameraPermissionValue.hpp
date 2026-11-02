@@ -47,7 +47,9 @@ namespace margelo::nitro::documentscanner {
     explicit CameraPermissionValue(CameraPermissionStatus status): status(status) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const CameraPermissionValue& lhs, const CameraPermissionValue& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

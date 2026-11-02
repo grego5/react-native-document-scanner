@@ -45,5 +45,5 @@ export interface ImageViewerViewMethods extends HybridViewMethods {
 export type ImageViewerView = HybridView<
   ImageViewerViewProps,
   ImageViewerViewMethods,
-  { android: 'kotlin' }
+  { ios: 'swift'; android: 'kotlin' }
 >

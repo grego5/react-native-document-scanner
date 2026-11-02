@@ -46,7 +46,9 @@ namespace margelo::nitro::documentscanner {
     explicit TakePhotoOptions(std::optional<bool> skipQualityGate): skipQualityGate(skipQualityGate) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const TakePhotoOptions& lhs, const TakePhotoOptions& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

@@ -1,5 +1,6 @@
 /** Stable identifiers for programmatic handling. Display copy belongs to the host app. */
 export type ScannerErrorCode =
+  | 'feature/unsupported'
   | 'camera/unavailable'
   | 'camera/permission-denied'
   | 'camera/not-ready'

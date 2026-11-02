@@ -32,33 +32,33 @@ abstract class HybridImagePagerViewSpec: HybridView() {
   @set:DoNotStrip
   @set:Keep
   abstract var session: HybridScanSessionSpec
-
+  
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var pageIds: Array<String>?
-
+  
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var direction: ImagePagerDirection?
-
+  
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var selectedPageId: String
-
+  
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
   abstract var swipeEnabled: Boolean?
-
+  
   abstract var onPageChange: ((pageId: String) -> Unit)?
-
+  
   private var onPageChange_cxx: Func_void_std__string?
     @Keep
     @DoNotStrip
@@ -70,9 +70,9 @@ abstract class HybridImagePagerViewSpec: HybridView() {
     set(value) {
       onPageChange = value?.let { it }
     }
-
+  
   abstract var onLoad: ((pageId: String) -> Unit)?
-
+  
   private var onLoad_cxx: Func_void_std__string?
     @Keep
     @DoNotStrip
@@ -84,9 +84,9 @@ abstract class HybridImagePagerViewSpec: HybridView() {
     set(value) {
       onLoad = value?.let { it }
     }
-
+  
   abstract var onError: ((failure: ScannerFailure) -> Unit)?
-
+  
   private var onError_cxx: Func_void_ScannerFailure?
     @Keep
     @DoNotStrip
@@ -100,7 +100,7 @@ abstract class HybridImagePagerViewSpec: HybridView() {
     }
 
   // Methods
-
+  
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

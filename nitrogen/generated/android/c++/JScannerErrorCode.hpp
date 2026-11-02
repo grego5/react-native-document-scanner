@@ -42,6 +42,9 @@ namespace margelo::nitro::documentscanner {
     static jni::alias_ref<JScannerErrorCode> fromCpp(ScannerErrorCode value) {
       static const auto clazz = javaClassStatic();
       switch (value) {
+        case ScannerErrorCode::FEATURE_UNSUPPORTED:
+          static const auto fieldFEATURE_UNSUPPORTED = clazz->getStaticField<JScannerErrorCode>("FEATURE_UNSUPPORTED");
+          return clazz->getStaticFieldValue(fieldFEATURE_UNSUPPORTED);
         case ScannerErrorCode::CAMERA_UNAVAILABLE:
           static const auto fieldCAMERA_UNAVAILABLE = clazz->getStaticField<JScannerErrorCode>("CAMERA_UNAVAILABLE");
           return clazz->getStaticFieldValue(fieldCAMERA_UNAVAILABLE);

@@ -234,5 +234,5 @@ export interface DocumentScannerCameraMethods extends HybridViewMethods {
 export type DocumentScannerCameraView = HybridView<
   DocumentScannerCameraProps,
   DocumentScannerCameraMethods,
-  { android: 'kotlin' }
+  { ios: 'swift'; android: 'kotlin' }
 >

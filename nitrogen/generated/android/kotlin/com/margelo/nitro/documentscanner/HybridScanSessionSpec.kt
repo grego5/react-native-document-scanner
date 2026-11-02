@@ -27,51 +27,51 @@ import com.margelo.nitro.core.HybridObject
 )
 abstract class HybridScanSessionSpec: HybridObject() {
   // Properties
-
+  
 
   // Methods
   @DoNotStrip
   @Keep
   abstract fun createPdfResult(pageIds: Array<String>?, options: SessionPdfOptions): Promise<Variant_String_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun exportImagesResult(pageIds: Array<String>?, outputDirectory: String): Promise<Variant_Array_String__ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun saveCaptureSampleResult(pageId: String): Promise<Variant_String_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun setDocumentCropResult(pageId: String, quad: DocumentQuad): Promise<Variant_Boolean_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun setFilterResult(pageId: String, filter: DocumentFilter): Promise<Variant_Boolean_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun setShadowRemovalResult(pageId: String, enabled: Boolean): Promise<Variant_Boolean_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun setPageOrderResult(pageIds: Array<String>): Promise<Variant_Boolean_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun removePageResult(pageId: String): Promise<Variant_Boolean_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun closeResult(): Promise<Variant_Boolean_ScannerFailure>
-
+  
   @DoNotStrip
   @Keep
   abstract fun getSession(): ScanSessionSnapshot
-
+  
   abstract fun observeResult(onChange: (change: ScanSessionChange) -> Unit): Variant_ScanSessionObservation_ScannerFailure
-
+  
   @DoNotStrip
   @Keep
   private fun observeResult_cxx(onChange: Func_void_ScanSessionChange): Variant_ScanSessionObservation_ScannerFailure {

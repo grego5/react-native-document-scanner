@@ -1,11 +1,15 @@
 {
   "$schema": "https://nitro.margelo.com/nitro.schema.json",
-  "cxxNamespace": ["documentscanner"],
+  "cxxNamespace": [
+    "documentscanner"
+  ],
   "ios": {
     "iosModuleName": "ReactNativeDocumentScanner"
   },
   "android": {
-    "androidNamespace": ["documentscanner"],
+    "androidNamespace": [
+      "documentscanner"
+    ],
     "androidCxxLibName": "ReactNativeDocumentScanner"
   },
   "autolinking": {
@@ -13,11 +17,19 @@
       "android": {
         "language": "kotlin",
         "implementationClassName": "HybridDocumentScannerCameraView"
+      },
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridDocumentScannerCameraView"
       }
     },
     "ScanSession": {
       "android": {
         "language": "kotlin",
+        "implementationClassName": "HybridScanSession"
+      },
+      "ios": {
+        "language": "swift",
         "implementationClassName": "HybridScanSession"
       }
     },
@@ -25,11 +37,19 @@
       "android": {
         "language": "kotlin",
         "implementationClassName": "HybridDocumentScannerProcessor"
+      },
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridDocumentScannerProcessor"
       }
     },
     "DocumentCropEditorView": {
       "android": {
         "language": "kotlin",
+        "implementationClassName": "HybridDocumentCropEditorView"
+      },
+      "ios": {
+        "language": "swift",
         "implementationClassName": "HybridDocumentCropEditorView"
       }
     },
@@ -37,11 +57,19 @@
       "android": {
         "language": "kotlin",
         "implementationClassName": "HybridPageThumbnailView"
+      },
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridPageThumbnailView"
       }
     },
     "ImageViewerView": {
       "android": {
         "language": "kotlin",
+        "implementationClassName": "HybridImageViewerView"
+      },
+      "ios": {
+        "language": "swift",
         "implementationClassName": "HybridImageViewerView"
       }
     },
@@ -49,14 +77,26 @@
       "android": {
         "language": "kotlin",
         "implementationClassName": "HybridImagePagerView"
+      },
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridImagePagerView"
       }
     },
     "CameraPermission": {
       "android": {
         "language": "kotlin",
         "implementationClassName": "HybridCameraPermission"
+      },
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridCameraPermission"
       }
     }
   },
-  "ignorePaths": ["**/node_modules", "lib", "archive"]
+  "ignorePaths": [
+    "**/node_modules",
+    "lib",
+    "archive"
+  ]
 }

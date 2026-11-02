@@ -104,7 +104,7 @@ export interface SampleFolder {
 
 /** Native result transport; the public DocumentScanner facade unwraps values and rejects typed failures. */
 export interface DocumentScannerProcessor
-  extends HybridObject<{ android: 'kotlin' }> {
+  extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   /** Creates an explicitly owned session; close it when its pages are no longer needed. */
   createSessionResult(): ScanSession | ScannerFailure
   /**

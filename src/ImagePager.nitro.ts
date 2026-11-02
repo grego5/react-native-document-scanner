@@ -38,5 +38,5 @@ export interface ImagePagerViewMethods extends HybridViewMethods {}
 export type ImagePagerView = HybridView<
   ImagePagerViewProps,
   ImagePagerViewMethods,
-  { android: 'kotlin' }
+  { ios: 'swift'; android: 'kotlin' }
 >

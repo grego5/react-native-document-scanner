@@ -54,7 +54,7 @@ export interface ScanSessionObservation {
 }
 
 /** Raw result transport. Public operations translate ScannerFailure to ScannerError. */
-export interface ScanSession extends HybridObject<{ android: 'kotlin' }> {
+export interface ScanSession extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   createPdfResult(pageIds: string[] | undefined, options: SessionPdfOptions): Promise<string | ScannerFailure>
   exportImagesResult(pageIds: string[] | undefined, outputDirectory: string): Promise<string[] | ScannerFailure>
   saveCaptureSampleResult(pageId: string): Promise<string | ScannerFailure>

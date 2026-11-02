@@ -47,7 +47,9 @@ namespace margelo::nitro::documentscanner {
     explicit DocumentPoint(double x, double y): x(x), y(y) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const DocumentPoint& lhs, const DocumentPoint& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

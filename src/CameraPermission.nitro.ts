@@ -13,7 +13,7 @@ export interface CameraPermissionValue {
 }
 
 /** The app's Android CAMERA permission, usable without a mounted Camera view. */
-export interface CameraPermission extends HybridObject<{ android: 'kotlin' }> {
+export interface CameraPermission extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   getStatus(): CameraPermissionStatus
   /**
    * Prompts for access unless it is granted or blocked, and resolves with the status after the prompt. A call while

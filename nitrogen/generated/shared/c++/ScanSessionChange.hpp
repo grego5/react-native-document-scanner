@@ -55,7 +55,9 @@ namespace margelo::nitro::documentscanner {
     explicit ScanSessionChange(double sourceVersion, bool closed, std::unordered_map<std::string, ScanPageMetadata> updatedPages, std::vector<std::string> removedPageIds, std::optional<std::vector<std::string>> pageIds): sourceVersion(sourceVersion), closed(closed), updatedPages(updatedPages), removedPageIds(removedPageIds), pageIds(pageIds) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const ScanSessionChange& lhs, const ScanSessionChange& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

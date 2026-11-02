@@ -69,7 +69,7 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Properties
-
+      
 
     public:
       // Methods

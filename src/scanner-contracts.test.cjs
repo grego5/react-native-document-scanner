@@ -28,6 +28,13 @@ test('a typed native failure becomes a rejected ScannerError with a stable code'
       error.message === 'capture/focus-timeout')
 })
 
+test('unfinished platform operations preserve the unsupported failure code', async () => {
+  await assert.rejects(errors.scannerOperation(async () => ({ code: 'feature/unsupported' }), 'capture/failed'),
+    (error) => error instanceof errors.ScannerError && error.code === 'feature/unsupported')
+  assert.throws(() => errors.unwrapScannerResult({ code: 'feature/unsupported' }),
+    (error) => error instanceof errors.ScannerError && error.code === 'feature/unsupported')
+})
+
 test('unexpected asynchronous and synchronous bridge failures retain their cause', async () => {
   const original = new Error('Platform diagnostic should not become display copy')
   const check = (error) => error instanceof errors.ScannerError && error.code === 'analysis/failed' && error.cause === original

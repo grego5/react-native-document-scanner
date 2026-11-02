@@ -2,6 +2,7 @@ import { ScannerError, type ScannerErrorCode } from 'react-native-document-scann
 
 /** Example app copy. Library error codes stay stable when an app translates or changes these messages. */
 const SCANNER_MESSAGES: Record<ScannerErrorCode, string> = {
+  'feature/unsupported': 'This feature is not available on this platform yet.',
   'camera/unavailable': 'The camera is closed. Open it and try again.',
   'camera/permission-denied': 'Allow camera access to take a photo.',
   'camera/not-ready': 'Wait for the camera preview, then try again.',

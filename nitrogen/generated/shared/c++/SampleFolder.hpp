@@ -49,7 +49,9 @@ namespace margelo::nitro::documentscanner {
     explicit SampleFolder(std::optional<std::string> uri, std::optional<std::string> name, bool collecting): uri(uri), name(name), collecting(collecting) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const SampleFolder& lhs, const SampleFolder& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner
