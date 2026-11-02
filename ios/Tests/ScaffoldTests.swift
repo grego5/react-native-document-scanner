@@ -8,7 +8,7 @@ final class ScaffoldTests: XCTestCase {
   func testUnfinishedOperationsReturnTypedFailures() throws {
     let result = try HybridDocumentScannerProcessor().createSessionResult()
     XCTAssertEqual(result.asType(ScannerFailure.self)?.code, .featureUnsupported)
-    XCTAssertThrowsError(try HybridCameraPermission().getStatus())
+    XCTAssertNoThrow(try HybridCameraPermission().getStatus())
     XCTAssertThrowsError(try HybridScanSession().getSession())
   }
 

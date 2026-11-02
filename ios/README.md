@@ -2,9 +2,9 @@
 
 Requires iOS 18+, Nitro/Nitrogen 0.37.1, Swift 6 and C++20. All eight current
 registrations are generated from TypeScript. Five views mount as empty UIKit
-views; operation result unions return `feature/unsupported`. Synchronous methods
-without a failure union throw. No camera, permission request, storage, inference
-or export behavior is implemented by this scaffold.
+views. CameraPermission works independently of views; other operation result
+unions return `feature/unsupported`, and unfinished synchronous methods throw.
+Camera capture, storage, inference and export remain scaffolds.
 
 Add the pinned official OpenCV podspec inside the app target in the Podfile,
 using the installed library path (adjust for the app's node_modules layout):
@@ -26,6 +26,22 @@ The package is not release-ready. Task 17 verified package installation, Intel s
 builds, actual registry construction, UIKit mounting and bundled model integrity.
 Functional iOS behavior remains for the following tasks.
 Machine-specific hosts, build scripts and test runners stay outside this repo.
+
+## Camera permission
+
+The host app must supply a nonempty `NSCameraUsageDescription` in its Info.plist.
+`CameraPermission` reads AVFoundation authorization without creating a camera.
+iOS maps authorized to `granted`, notDetermined to `not-determined`, and
+restricted/denied to `blocked` (only Settings can change it).
+
+Requests share one process-wide prompt and require an active foreground app.
+A missing usage description returns `permission/unavailable`; unavailable
+foreground presentation returns `permission/request-failed`. Neither failure
+attempts a system prompt. Already determined states return immediately without
+requiring foreground presentation. Status subscribers refresh on app activation
+and release their listener with the returned unsubscribe function. Callbacks and
+permission state are owned by main; AVFoundation completion returns to main.
+Native camera attachment/resume will consume this owner in the camera task.
 
 ## Binding generation
 

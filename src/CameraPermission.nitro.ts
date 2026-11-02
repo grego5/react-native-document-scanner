@@ -12,13 +12,14 @@ export interface CameraPermissionValue {
   status: CameraPermissionStatus
 }
 
-/** The app's Android CAMERA permission, usable without a mounted Camera view. */
+/** The app's camera permission, usable without a mounted Camera view. */
 export interface CameraPermission extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   getStatus(): CameraPermissionStatus
   /**
    * Prompts for access unless it is granted or blocked, and resolves with the status after the prompt. A call while
    * the prompt is open resolves with that prompt's result. Native failures are typed payloads; the public wrapper
-   * rejects with ScannerError, including when no foreground Activity can show the prompt.
+   * rejects with ScannerError, including when no foreground application can show the prompt.
+   * iOS denial/restriction is blocked; the app must provide NSCameraUsageDescription.
    */
   requestResult(): Promise<CameraPermissionValue | ScannerFailure>
   /**

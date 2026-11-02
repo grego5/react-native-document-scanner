@@ -1,18 +1,28 @@
 import Foundation
 import NitroModules
 
-/// iOS package scaffold. Functional implementation belongs to later iOS tasks.
 class HybridCameraPermission: HybridCameraPermissionSpec {
+  private let permissions: CameraPermissions
+
+  init(permissions: CameraPermissions = .shared) {
+    self.permissions = permissions
+    super.init()
+  }
 
   func getStatus() throws -> CameraPermissionStatus {
-    throw ScannerUnsupported.error
+    CameraPermissions.onMain { permissions.status() }
   }
 
   func requestResult() throws -> Promise<Variant_CameraPermissionValue_ScannerFailure> {
-    return .resolved(withResult: .second(ScannerUnsupported.failure))
+    let promise = Promise<Variant_CameraPermissionValue_ScannerFailure>()
+    let permissions = self.permissions
+    DispatchQueue.main.async {
+      permissions.request { promise.resolve(withResult: $0) }
+    }
+    return promise
   }
 
   func addStatusListener(listener: @escaping (_ status: CameraPermissionStatus) -> Void) throws -> () -> Void {
-    throw ScannerUnsupported.error
+    CameraPermissions.onMain { permissions.addListener(listener) }
   }
 }
