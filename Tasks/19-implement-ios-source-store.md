@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Completed — initial native validation passed; local post-review corrections not rerun on iOS
+Status: Completed — native validation including post-review corrections passed
 Complexity: High
 Dependencies: [04](04-verify-ios-feasibility.md), [17](17-add-ios-package-and-nitro-bindings.md)
 
@@ -177,3 +177,12 @@ Per the request for local corrections, no Mac build or XCTest rerun was performe
 The earlier 30-test result above applies to the pre-review snapshot; the two new
 regressions and revised Swift source have not yet been compiled/executed. Local
 npm run check and authored whitespace checks passed after these corrections.
+
+
+### Follow-up validation in Task 20 — 2026-11-02
+
+The final Task 20 simulator package build compiled the reviewed SourceStore
+snapshot. All 14 source-store tests passed, including bounded retirement history
+and asynchronous memory-warning delivery, as part of the 38-test suite. This
+supersedes the earlier local-only validation limitation for those corrections.
+Evidence: ignored `.local/task20-ios-build.log` and `task20-ios-xctest.log`.

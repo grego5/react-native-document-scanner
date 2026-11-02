@@ -108,3 +108,28 @@ Production `DocumentRenderer` keeps region-based upright JPEG decoding and trans
 
 The active task index tracks shared-engine/iOS migration. The earlier native-session plan is preserved separately at `Tasks/native-sessions/TASKS.md`.
 
+
+## iOS source and inference owners
+
+`SourceStore.shared` owns immutable originals, a bounded full-source/thumbnail cache,
+and counted pixel/file leases. `CornerInference.shared` owns model selection and
+one serialized CPU interpreter/workspace, independently of views and sessions.
+Callers freeze `Selection` at photo admission and retain a native inference lease.
+A successful validated/warmed replacement advances its immutable generation;
+failed or stale replacement preserves the selected model. Historical photo work
+may switch the runtime without reactivating that selection for live guidance.
+Live consumers must check their selection generation before publishing guidance.
+
+Photo workers acquire source pixels before entering inference; the inference queue
+never calls back into source storage. Shared crop geometry selects the seeded
+region and maps the one fresh prediction into normalized full upright coordinates.
+iOS reads the full leased region directly; Android retains its half-resolution
+platform decode. Both use the same shared tensor resize/normalization/decoder.
+JPEG reload can change pixels; parity is measured within the declared photo budgets.
+
+Live packed RGBA/BGRA buffers are retained and locked only inside synchronous
+inference, with crop/orientation applied by the shared preprocessor. All exits
+unlock on the same worker. Lease close rejects new calls immediately and queues
+release behind in-flight work; the last owner releases runtime/workspace on that
+worker. Frozen selections retain model bytes for later photo work. These services
+are internal prerequisites; later tasks wire public sessions and camera guidance.
