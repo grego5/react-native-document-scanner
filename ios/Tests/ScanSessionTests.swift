@@ -202,7 +202,9 @@ final class ScanSessionTests: XCTestCase {
     let registration = try state.observe { changes.append($0) }
     XCTAssertEqual(registration.snapshot.pageIds, [])
     _ = try admit(state, "a", selection: selection)
-    let admitted = try XCTUnwrap(page(state, "a"))
+    // Analysis may finish before the next snapshot; inspect the frozen admission event.
+    waitUntil("admission delivery") { !changes.isEmpty }
+    let admitted = try XCTUnwrap(changes.first?.updatedPages["a"])
     XCTAssertTrue(admitted.analyzing)
     XCTAssertFalse(admitted.ready)
 
@@ -501,6 +503,10 @@ final class ScanSessionTests: XCTestCase {
     XCTAssertTrue(errors.isEmpty)
     XCTAssertNil(sources.last ?? nil)
     sources.compactMap { $0 }.forEach { $0.close() }
+    // A restart (a view attaching again) that finds its seen page gone is removal too.
+    binding.start()
+    XCTAssertTrue(errors.isEmpty)
+    XCTAssertNil(sources.last ?? nil)
 
     // Removal between registration and the first read is removal too.
     _ = try admit(state, "b")

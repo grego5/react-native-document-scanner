@@ -465,6 +465,48 @@ class ScanSessionStateTest {
     registration.unsubscribe()
   }
 
+  @Test fun bindingClearsSeenPagesSilentlyAndRejectsOnlyUnseenOnes() {
+    // Pages without a frame or render yet resolve to no thumbnail source, so the binding's classification is
+    // exercised without constructing file URIs, which are unavailable on the JVM.
+    listOf("a", "b", "c").forEach { state.admit(it, source(), null, null, null) }
+    main.drain()
+    val cleared = mutableListOf<String>()
+    val errors = mutableListOf<ScannerErrorCode>()
+    fun binding(id: String) = SessionPageBinding(state, id, thumbnailOnly = true,
+      changed = { check(it == null); cleared.add(id) }, failed = { errors.add(it.code) })
+
+    // An update still queued when the page is removed.
+    val a = binding("a")
+    a.start()
+    state.setFilter("a", DocumentFilter.GRAYSCALE)
+    state.removePage("a")
+    main.drain()
+    assertEquals(listOf("a"), cleared)
+    // A restart (a view attaching again) that finds its seen page gone.
+    a.start()
+    assertEquals(listOf("a", "a"), cleared)
+    // Removal between registration and the first read.
+    binding("b").start(afterRegistration = { state.removePage("b") })
+    assertEquals(listOf("a", "a", "b"), cleared)
+    assertTrue(errors.isEmpty())
+    // A page the binding never saw.
+    binding("missing").start()
+    assertEquals(listOf(ScannerErrorCode.INPUT_INVALID), errors)
+
+    // Detach, close the session, attach again.
+    val c = binding("c")
+    c.start()
+    c.close()
+    state.close()
+    drain(); main.drain()
+    c.start()
+    assertEquals(listOf(ScannerErrorCode.INPUT_INVALID), errors)
+    assertEquals("c", cleared.last())
+    // A closed session is still invalid input for a binding that never saw its page.
+    binding("c").start()
+    assertEquals(listOf(ScannerErrorCode.INPUT_INVALID, ScannerErrorCode.INPUT_INVALID), errors)
+  }
+
   @Test fun sourceVersionsTrackMetadataTransitionsAndSnapshotsKeepTheirOldValues() {
     assertEquals(0.0, state.snapshot().sourceVersion, 0.0)
     admit()

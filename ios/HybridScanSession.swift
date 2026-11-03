@@ -19,6 +19,9 @@ class HybridScanSession: HybridScanSessionSpec {
     else { self.init(unavailable: ()) }
   }
 
+  /// A view's prop default before JS sets its session; opens nothing.
+  static func placeholder() -> HybridScanSession { HybridScanSession(unavailable: ()) }
+
   private init(unavailable: Void) {
     state = nil
     exports = nil

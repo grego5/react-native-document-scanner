@@ -21,6 +21,9 @@ final class SessionPageSource: @unchecked Sendable {
 
   var workOwner: ScannerWorkQueue.Owner { leases[0].resource.owner.workOwner }
 
+  /// The pinned thumbnail sidecar of a displayed render, if any.
+  var thumbnailURL: URL? { leases.count > 1 ? leases[1].url : nil }
+
   func retain() -> SessionPageSource {
     lock.lock(); defer { lock.unlock() }
     precondition(readers > 0, "Source already released.")
@@ -38,10 +41,16 @@ final class SessionPageSource: @unchecked Sendable {
   }
 }
 
-/// Main-confined observation of one session page for native views. Page removal or
-/// session close clears the source without an error, including when a queued update
-/// arrives after the page is gone; only an initially invalid page id reports input/invalid. No JS metadata publication participates in image replacement.
+/// Main-confined observation of one session page for native views. The binding alone
+/// decides what an absent page means, the same way on registration, refresh, event
+/// delivery and restart: a page it has seen (in a registration snapshot or a read) is
+/// removed or closed, which clears the source silently; a page it never saw is invalid
+/// input. No JS metadata publication participates in image replacement.
 final class SessionPageBinding {
+  /// What this binding knows about its page. `gone` is not terminal: a restart that
+  /// finds the ID again (a later page reusing it) makes it available again.
+  private enum Target { case unresolved, available, gone }
+
   private let state: ScanSessionState
   private let id: String
   private let original: Bool
@@ -51,8 +60,7 @@ final class SessionPageBinding {
   private var unsubscribe: (() -> Void)?
   private var generation = 0
   private var key: String?
-  /// Set once the page resolved; later disappearance is removal, not invalid input.
-  private var established = false
+  private var target = Target.unresolved
 
   init(state: ScanSessionState, id: String, original: Bool = false, thumbnailOnly: Bool = false,
        changed: @escaping (SessionPageSource?) -> Void, failed: @escaping (ScannerCodeError) -> Void) {
@@ -65,52 +73,47 @@ final class SessionPageBinding {
     guard unsubscribe == nil else { return }
     generation += 1
     let current = generation
+    let registration: ScanSessionEvents.Registration
     do {
-      let registration = try state.observe { [weak self] change in
+      registration = try state.observe { [weak self] change in
         guard let self, generation == current else { return }
         if change.closed || change.removedPageIds.contains(id) {
-          removed()
+          missing()
         } else if change.updatedPages[id] != nil {
           refresh()
         }
       }
-      unsubscribe = registration.unsubscribe
-      // Validity is decided atomically with registration, so a removal racing the
-      // first read is removal, not invalid input.
-      established = registration.snapshot.pageIds.contains(id)
-      afterRegistration()
-      refresh()
-    } catch { invalid() }
+    } catch { return missing() } // Only a closed session refuses observation.
+    unsubscribe = registration.unsubscribe
+    // Seen atomically with registration, so a removal racing the first read is removal.
+    if registration.snapshot.pageIds.contains(id) { target = .available }
+    afterRegistration()
+    refresh()
   }
 
   var valid: Bool { state.hasPage(id) }
 
   private func refresh() {
-    guard state.hasPage(id) else { return established ? removed() : invalid() }
-    do {
-      let source = thumbnailOnly ? try state.thumbnailSource(id) : try state.imageSource(id, original: original)
-      established = true
-      if source?.key == key {
-        source?.close()
-      } else {
-        key = source?.key
-        changed(source) // The receiver owns the source, including on a detached view.
-      }
-    } catch {
-      // Removal may race the read itself.
-      if established && !state.hasPage(id) { removed() } else { invalid() }
+    let source: SessionPageSource?
+    // A read fails only when the page or its session is gone, including mid-read.
+    do { source = thumbnailOnly ? try state.thumbnailSource(id) : try state.imageSource(id, original: original) }
+    catch { return missing() }
+    target = .available
+    if source?.key == key {
+      source?.close()
+    } else {
+      key = source?.key
+      changed(source) // The receiver owns the source, including on a detached view.
     }
   }
 
-  private func removed() {
+  /// The one classification of an absent page.
+  private func missing() {
+    let seen = target != .unresolved
+    if seen { target = .gone }
     close()
     changed(nil)
-  }
-
-  private func invalid() {
-    close()
-    changed(nil)
-    failed(.inputInvalid)
+    if !seen { failed(.inputInvalid) }
   }
 
   /// Releases the observer; already delivered sources stay with their receivers.
