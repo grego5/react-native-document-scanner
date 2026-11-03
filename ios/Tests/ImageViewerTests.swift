@@ -4,7 +4,7 @@ import ImageIO
 import UniformTypeIdentifiers
 @testable import ReactNativeDocumentScanner
 
-private func picture(width: Int, height: Int) -> CGImage {
+func picture(width: Int, height: Int) -> CGImage {
   let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                           space: CGColorSpace(name: CGColorSpace.sRGB)!,
                           bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
@@ -15,7 +15,7 @@ private func picture(width: Int, height: Int) -> CGImage {
   return context.makeImage()!
 }
 
-private func write(_ image: CGImage, to url: URL, type: UTType, orientation: Int = 1) throws {
+func write(_ image: CGImage, to url: URL, type: UTType, orientation: Int = 1) throws {
   guard let destination = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil) else {
     throw ScannerCodeError(code: .storageWriteFailed)
   }
@@ -24,8 +24,9 @@ private func write(_ image: CGImage, to url: URL, type: UTType, orientation: Int
 }
 
 /// Renders real JPEG/PNG pages (300 x 200) with JPEG thumbnail sidecars (150 x 100), so
-/// viewer reads decode production-shaped files. The first `failures` renders fail.
-private final class PictureActions: ScanSessionActions, @unchecked Sendable {
+/// viewer and pager reads decode production-shaped files. The first `failures` renders
+/// fail. Shared by the image view tests.
+final class PictureActions: ScanSessionActions, @unchecked Sendable {
   let resources: SessionResources
   private let lock = NSLock()
   private var failures: Int

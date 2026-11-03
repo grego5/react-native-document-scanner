@@ -1,6 +1,6 @@
 # iOS scanner parity execution plan
 
-Status: Tasks 01-13 completed (Task 04 physical-device checks deferred); Task 14 Android complete / iOS pending; Task 15 skipped; Task 16 completed; Tasks 17-22 completed; Tasks 23-33 planned
+Status: Tasks 01-13 completed (Task 04 physical-device checks deferred); Task 14 Android complete / iOS pending; Task 15 skipped; Task 16 completed; Tasks 17-23 completed; Tasks 24-33 planned
 
 Implement iOS 18+ scanning on a shared C++20 algorithm/policy engine, migrating Android first. This index contains only the current iOS/shared-engine goal; every implementation task is linked below.
 
@@ -90,3 +90,5 @@ Task 20 completed (2026-11-02): internal shared iOS CPU inference now owns immut
 Task 21 Phase A validated (2026-11-03): native render/PDF services passed seven focused tests and two unfiltered Intel simulator runs, each 45 tests with zero failures and one optional private-inference-fixture skip. The second run reused the cache successfully. Three ObjC++ dependency-link cases are included beyond the earlier 42-test selection. Runner repairs remain outside the repo.
 
 Task 21 Phase B validated (2026-11-03): native sessions, resources, exports, read contract and deferred sampling passed 15 new session tests within a 60-test clean simulator run (zero failures, one optional private-fixture skip) and a cached rerun; npm run check passed 41 JS contracts. Task 21 is completed; camera capture and physical-device validation remain with later tasks.
+
+Task 23 completed (2026-11-03): the iOS pager recycles Task 22 viewer cells in a UICollectionView, keeps selection by page ID, arbitrates zoom versus swipes natively and preloads one neighbour per side. 8 focused pager tests passed with the viewer (12) and scaffold (5) suites on the Intel simulator; npm run check passed 41 JS contracts. Physical-device swipe feel remains unverified.
