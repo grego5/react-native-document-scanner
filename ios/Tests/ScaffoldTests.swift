@@ -2,14 +2,23 @@ import XCTest
 import UIKit
 import CryptoKit
 import TensorFlowLiteC
+import NitroModules
 @testable import ReactNativeDocumentScanner
 
 final class ScaffoldTests: XCTestCase {
-  func testUnfinishedOperationsReturnTypedFailures() throws {
+  func testSessionFactoryAndUnfinishedOperationsReturnTypedResults() throws {
     let result = try HybridDocumentScannerProcessor().createSessionResult()
-    XCTAssertEqual(result.asType(ScannerFailure.self)?.code, .featureUnsupported)
+    let session = try XCTUnwrap(result.asType((any HybridScanSessionSpec).self) as? HybridScanSession)
+    XCTAssertFalse(try session.getSession().closed)
+    let sample = expectation(description: "sample")
+    _ = try session.saveCaptureSampleResult(pageId: "a").then {
+      if $0.asType(ScannerFailure.self)?.code == .featureUnsupported { sample.fulfill() }
+    }
+    wait(for: [sample], timeout: 10)
+    let closed = expectation(description: "closed")
+    _ = try session.closeResult().then { if case .first(true) = $0 { closed.fulfill() } }
+    wait(for: [closed], timeout: 10)
     XCTAssertNoThrow(try HybridCameraPermission().getStatus())
-    XCTAssertThrowsError(try HybridScanSession().getSession())
   }
 
   func testBundledModelMatchesCanonicalBytes() throws {

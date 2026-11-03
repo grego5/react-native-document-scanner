@@ -40,6 +40,8 @@ final class SourceStore: @unchecked Sendable {
     let owned: Bool
     var pins = 0
     var retired = false
+    // Retirement observers, notified on queue after the final pin's removal attempt.
+    var waiters: [(Error?) -> Void] = []
     init(url: URL, header: SourceImageHeader, owned: Bool) {
       self.url = url; self.header = header; self.owned = owned
     }
@@ -189,10 +191,7 @@ final class SourceStore: @unchecked Sendable {
         return SourcePixelLease(url: key, header: entry.header, pixels: pixels) { [self] in
           queue.async { [self] in
             entry.pins -= 1
-            if entry.retired {
-              do { try removeIfReady(entry) }
-              catch { NSLog("DocumentScanner source retirement failed: %@", String(describing: error)) }
-            }
+            if entry.retired { removeReporting(entry) }
           }
         }
       }
@@ -231,6 +230,81 @@ final class SourceStore: @unchecked Sendable {
         if thumbnail?.0 == entry.url { thumbnail = nil }
       }
       for entry in request { try removeIfReady(entry) }
+    }
+  }
+
+  /// Whether this store published `url` and has not finished retiring it.
+  func owns(_ url: URL) -> Bool {
+    queue.sync {
+      guard (try? requireOpen()) != nil, let key = try? canonical(url), key == url.standardizedFileURL,
+            let entry = entries[key] else { return false }
+      return entry.owned && !entry.retired
+    }
+  }
+
+  /// Retires one owned source like remove, then reports its physical removal once
+  /// the final pin drains; a failed removal stays registered so a later call retries.
+  /// `completion` runs on this store's queue and must not call back into the store.
+  func retire(_ url: URL, completion: @escaping (Error?) -> Void) {
+    let entry: Entry?
+    do {
+      entry = try queue.sync { () throws -> Entry? in
+        try requireOpen()
+        let key = try canonical(url)
+        guard key == url.standardizedFileURL else { throw SourceStoreError.invalidInput }
+        guard let entry = entries[key], entry.owned else {
+          guard retiredURLs.contains(key), try !regularFileExists(key) else { throw SourceStoreError.invalidInput }
+          return nil
+        }
+        entry.retired = true
+        if resident?.0 == key { resident = nil }
+        if thumbnail?.0 == key { thumbnail = nil }
+        entry.waiters.append(completion)
+        removeReporting(entry)
+        return entry
+      }
+    } catch { return completion(error) }
+    if entry == nil { completion(nil) }
+  }
+
+  private func removeReporting(_ entry: Entry) {
+    guard entry.pins == 0 else { return }
+    let result: Error?
+    do { try removeIfReady(entry); result = nil }
+    catch {
+      NSLog("DocumentScanner source retirement failed: %@", String(describing: error))
+      result = error
+    }
+    let waiters = entry.waiters
+    entry.waiters = []
+    waiters.forEach { $0(result) }
+  }
+
+  /// Startup recovery. Sessions do not outlive their process, so a generated original
+  /// (`<UUID>.jpg` or its `.partial` staging) without an entry here was stranded by an
+  /// earlier process. Runs on queue, serialized with publish; registered, foreign-named,
+  /// symlinked and non-regular items stay. `completion` runs on queue.
+  func recoverAbandoned(completion: @escaping (Error?) -> Void) {
+    queue.async { [self] in
+      guard (try? requireOpen()) != nil else { return completion(nil) }
+      let keys: [URLResourceKey] = [.isSymbolicLinkKey, .isRegularFileKey]
+      let children: [URL]
+      do { children = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys) }
+      catch let error as CocoaError where error.code == .fileReadNoSuchFile { return completion(nil) }
+      catch { return completion(error) }
+      let active = Set(entries.keys.map(\.path))
+      var failure: Error?
+      for child in children {
+        let stem = child.deletingPathExtension().lastPathComponent
+        guard ["jpg", "partial"].contains(child.pathExtension), UUID(uuidString: stem)?.uuidString == stem,
+              let values = try? child.resourceValues(forKeys: Set(keys)),
+              values.isSymbolicLink != true, values.isRegularFile == true else { continue }
+        let file = directory.appendingPathComponent(child.lastPathComponent)
+        guard !active.contains(file.path) else { continue }
+        do { try FileManager.default.removeItem(at: file) }
+        catch { failure = failure ?? error }
+      }
+      completion(failure)
     }
   }
 

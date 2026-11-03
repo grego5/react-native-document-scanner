@@ -11,6 +11,25 @@ struct ScannerCodeError: Error, Equatable {
     let native = error as NSError
     return ScannerCodeError(code: native.domain == ScannerRenderErrorDomain && native.code == 1 ? .inputInvalid : failure)
   }
+
+  /// The public code of a native failure; untyped errors become the operation's fallback.
+  static func code(_ error: Error, fallback: ScannerErrorCode) -> ScannerErrorCode {
+    switch error {
+    case let error as ScannerCodeError: return error.code
+    case let error as SourceStoreError: return error.code
+    case let error as CornerInferenceError:
+      switch error {
+      case .modelUnavailable, .modelLoadFailed: return .modelLoadFailed
+      case .disposed: return .processorDisposed
+      case .inferenceFailed, .staleSelection: return fallback
+      }
+    default: return fallback
+    }
+  }
+
+  static func failure(_ error: Error, fallback: ScannerErrorCode) -> ScannerFailure {
+    ScannerFailure(code: code(error, fallback: fallback))
+  }
 }
 
 /// Private staged render artifacts. The session owner decides publication and lifetime.

@@ -1,6 +1,7 @@
+import { Platform } from 'react-native';
 import { NitroModules } from 'react-native-nitro-modules';
 import type { DocumentScannerProcessor } from './DocumentScannerProcessor.nitro';
-import { scannerOperation, scannerValue, unwrapScannerResult } from './ScannerError';
+import { ScannerError, scannerOperation, scannerValue, unwrapScannerResult } from './ScannerError';
 import { createScanSession } from './ScanSession';
 export type { SessionPdfOptions } from './ScanSession.nitro';
 export type { ScanSession, ScanSessionSnapshot, ScanPageMetadata } from './ScanSession';
@@ -71,7 +72,18 @@ export const DocumentScanner = {
   clearSampleFolder: () =>
     scannerValue(() => nativeProcessor.clearSampleFolder(), 'processor/unavailable'),
   setSampleFolder: (uri: string) =>
-    scannerValue(() => nativeProcessor.setSampleFolder(uri), 'input/invalid'),
+    scannerValue(() => {
+      requireSampleCollection();
+      nativeProcessor.setSampleFolder(uri);
+    }, 'input/invalid'),
   setSampleCollection: (on: boolean) =>
-    scannerValue(() => nativeProcessor.setSampleCollection(on), 'processor/unavailable'),
+    scannerValue(() => {
+      if (on) requireSampleCollection();
+      nativeProcessor.setSampleCollection(on);
+    }, 'processor/unavailable'),
 };
+
+/** iOS defers sample collection; void native setters cannot carry its typed failure. */
+function requireSampleCollection() {
+  if (Platform.OS === 'ios') throw new ScannerError('feature/unsupported');
+}

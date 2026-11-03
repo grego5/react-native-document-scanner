@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: In progress — Phase A validated; Phase B pending
+Status: Completed — Phase A and Phase B validated on the Intel iOS simulator; camera capture and physical-device validation remain separate
 Complexity: High
 Dependencies: [08](08-share-document-filters.md), [09](09-share-gray-png.md), [10](10-share-pdf-writer.md), [19](19-implement-ios-source-store.md), [20](20-implement-ios-inference.md)
 
@@ -154,3 +154,72 @@ creation, orchestration, resource/read contracts, export publication and physica
 close remain unsupported. Whole-source iOS rendering versus Android's region/sample
 decode and red-channel gray PDF re-encoding remain the reported platform behavior.
 No product commit was made as part of runner repair.
+
+
+## Phase B validation report — 2026-11-03
+
+Native sessions are implemented over the Phase A services and enabled through
+`createSessionResult`.
+
+- **Queue and barriers:** `ScannerWorkQueue` is a shared serial FIFO with keyed
+  replacement of waiting work only, owner generations, exactly-once settlement or
+  discard, and per-owner drain barriers. `NativeCompletion` provides the one-shot
+  barriers.
+- **Resources and registry:** `SessionResources` and `ScanSessionRegistry` own the
+  session directory, the producer/lease/retirement records, the source claims,
+  scoped cleanup, startup orphan sweeping of generated `session-<uuid>` directories
+  and stranded store originals (`SourceStore.recoverAbandoned` spares this
+  process's entries and anything not named like a generated original), and refusal of export targets inside session or source storage (including
+  symbolic-link and case aliases).
+- **Source retirement:** `SourceStore` gained `owns` and `retire(_:completion:)`,
+  which report physical removal after the final pin. A failed removal stays
+  registered for retry and reaches the close result as `cache/delete-failed`.
+- **Session state:** `ScanSessionState`, `ScanPage` and `ScanSessionEvents` implement
+  the frozen admission settings/model/seed, analysis before render, explicit crops
+  winning over later candidates, no-op and retry edits, a revision-aware
+  compatible-render cache, keeping the previous displayed render until replacement,
+  order and removal, atomic observation, ordered main-queue deltas and terminal
+  delivery.
+- **Source admission:** `admitSource` is the internal handoff for future captures
+  and native fixtures. A failed or obsolete admission retires the source it was
+  given, and never touches a foreign or already claimed file.
+- **Exports:** `SessionExports` and `SessionExportSnapshot` freeze ordered IDs
+  (duplicates included), the requested revisions, automatic analysis and pins at
+  admission. They render missing revisions from the pinned original, even after
+  removal, stage outputs beside their destination and publish only under an open
+  session claim.
+- **Page-read contract** for the viewer, pager and crop tasks:
+  `SessionPageSource` provides independently pinned, reference-counted reads of the
+  displayed render, the frame, the original or the thumbnail. `SessionPageBinding`
+  provides main-confined observation that clears on removal or close (including a
+  queued update that arrives after removal, or a removal racing the first read) and
+  reports input/invalid only for a page ID absent from its registration snapshot.
+- **Hybrid boundary:** `HybridScanSession` implements every method;
+  `saveCaptureSampleResult` returns feature/unsupported.
+- **Deferred sampling:**
+  - Native: `getSampleFolder` reports not collecting; clear and disable are
+    idempotent; pick, enable and set-folder are unsupported.
+  - JS facade: on iOS, `setSampleFolder` and `setSampleCollection(true)` throw
+    ScannerError `feature/unsupported`. Android dispatch is unchanged, and the
+    contract tests stub `Platform`.
+
+Checks:
+
+- `npm run check`: 41 JS contracts passed, including the new iOS sampling contract.
+- vmac `docscanner`, clean derived data, run `b1dfe631-46a0-4f33-a024-9b1a9375ee50`:
+  60 tests, 0 failures, 1 skipped. By suite: sessions 15, render 7, source storage 14,
+  permissions 10, scaffolds 5, inference 6 (the optional private-fixture parity test
+  skipped), ObjC++ link 3.
+- Cached rerun `80651554-4e76-4e69-9b13-53d76504cba8` (sessions, scaffolds, source
+  storage): 34 tests, 0 failures.
+- Review follow-up (stranded originals, binding removal races), run
+  `958fc845-ab73-4d9a-b8fb-a452f2db0024`: 62 tests, 0 failures, 1 skipped; sessions 17.
+- No C++ sources changed, so the shared C++ suites were not rerun.
+
+Limitations:
+
+- Nothing on iOS selects a production model before the camera tasks. An admission
+  without a selection therefore records `model/load-failed`, renders full frame, and
+  requires an explicit crop before export.
+- Synthetic pages exercise the native session; human-triggered camera capture and
+  physical-device behavior remain outstanding.

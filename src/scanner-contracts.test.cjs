@@ -54,6 +54,7 @@ test('utility facade keeps typed sample controls separate from explicit session 
     clearSampleFolder: () => { folder = { collecting: false } },
   }
   const { DocumentScanner } = load('src/index.ts', {
+    'react-native': { Platform: { OS: 'android' } },
     'react-native-nitro-modules': { NitroModules: { createHybridObject: () => native } },
     './ScannerError': errors, './ScanSession': sessionAdapter,
     './DocumentScannerCamera': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
@@ -68,6 +69,33 @@ test('utility facade keeps typed sample controls separate from explicit session 
   assert.deepEqual(Object.keys(DocumentScanner).sort(), [
     'clearSampleFolder', 'createSession', 'getSampleFolder', 'pickSampleFolder', 'setSampleCollection', 'setSampleFolder',
   ].sort())
+})
+
+test('iOS defers sample collection with stable typed failures and idempotent disable', async () => {
+  const calls = []
+  const native = {
+    pickSampleFolderResult: async () => ({ code: 'feature/unsupported' }),
+    getSampleFolder: () => ({ collecting: false }),
+    setSampleFolder: (uri) => { calls.push(['folder', uri]) },
+    setSampleCollection: (on) => { calls.push(['collect', on]) },
+    clearSampleFolder: () => { calls.push(['clear']) },
+  }
+  const { DocumentScanner } = load('src/index.ts', {
+    'react-native': { Platform: { OS: 'ios' } },
+    'react-native-nitro-modules': { NitroModules: { createHybridObject: () => native } },
+    './ScannerError': errors, './ScanSession': sessionAdapter,
+    './DocumentScannerCamera': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
+  })
+  const unsupported = (error) => error instanceof errors.ScannerError && error.code === 'feature/unsupported'
+  assert.throws(() => DocumentScanner.setSampleFolder('file:///samples'), unsupported)
+  assert.throws(() => DocumentScanner.setSampleCollection(true), unsupported)
+  await assert.rejects(DocumentScanner.pickSampleFolder(), unsupported)
+  DocumentScanner.setSampleCollection(false)
+  DocumentScanner.setSampleCollection(false)
+  DocumentScanner.clearSampleFolder()
+  DocumentScanner.clearSampleFolder()
+  assert.deepEqual(DocumentScanner.getSampleFolder(), { collecting: false })
+  assert.deepEqual(calls, [['collect', false], ['collect', false], ['clear'], ['clear']])
 })
 
 function pdfFixture() {
@@ -772,6 +800,7 @@ test('the public session factory wraps admission, registration failure and stabl
   const fixture = sessionFixture(sourceSnapshot(0, { a: sessionPage('a') }))
   let result = fixture.native
   const { DocumentScanner } = load('src/index.ts', {
+    'react-native': { Platform: { OS: 'android' } },
     'react-native-nitro-modules': { NitroModules: { createHybridObject: () => ({ createSessionResult: () => result }) } },
     './ScannerError': errors,
     './ScanSession': { createScanSession: (native) => sessionAdapter.createScanSession(native, fixture.frames) },
