@@ -1,0 +1,156 @@
+name: iOS simulator validation
+
+# Dispatched by vmac (docscanner profile) on a temporary snapshot branch. Mirrors the
+# Mac package script: an isolated host app links the package with its ScaffoldTests
+# test spec. The pinned official OpenCV framework has no arm64 simulator slice, so
+# this runs on an Intel runner.
+on:
+  workflow_dispatch:
+    inputs:
+      tests:
+        description: Optional test classes or class/method selectors, one per line
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-simulator-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    env:
+      CI: '1'
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      IOS_TEST_SELECTORS: ${{ inputs.tests }}
+      IOS_SCHEME: ReactNativeDocumentScanner-Unit-ScaffoldTests
+      HOST_DIR: ${{ runner.temp }}/scanner-host
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Select Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_*.app | sort -V | tail -n 1)"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+          test "$(uname -m)" = x86_64
+
+      - name: Install React Native and Nitro
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate host project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOST_DIR"
+          cd "$HOST_DIR"
+          ln -s "$GITHUB_WORKSPACE/node_modules" node_modules
+          rn="$(node -p "require('$GITHUB_WORKSPACE/node_modules/react-native/package.json').version")"
+          nitro="$(node -p "require('$GITHUB_WORKSPACE/node_modules/react-native-nitro-modules/package.json').version")"
+          printf '{"name":"scanner-package-validation","version":"1.0.0","dependencies":{"react-native":"%s","react-native-nitro-modules":"%s"}}\n' "$rn" "$nitro" > package.json
+          ruby -rxcodeproj -e 'p=Xcodeproj::Project.new("ScannerPackageValidation.xcodeproj"); p.new_target(:application,"ScannerPackageValidation",:ios,"18.0"); p.save'
+          cat > Podfile <<'RUBY'
+          require_relative 'node_modules/react-native/scripts/react_native_pods'
+          platform :ios, '18.0'
+          ENV['RCT_USE_RN_DEP'] = '1'
+          ENV['RCT_USE_PREBUILT_RNCORE'] = '1'
+          prepare_react_native_project!
+          target 'ScannerPackageValidation' do
+            scanner = ENV.fetch('GITHUB_WORKSPACE')
+            pod 'DocumentScannerOpenCV', :podspec => File.join(scanner, 'ios/DocumentScannerOpenCV.podspec')
+            pod 'NitroModules', :path => 'node_modules/react-native-nitro-modules'
+            pod 'ReactNativeDocumentScanner', :path => scanner, :testspecs => ['ScaffoldTests']
+            use_react_native!(:path => 'node_modules/react-native', :app_path => File.dirname(__FILE__), :hermes_enabled => true)
+            post_install do |installer|
+              react_native_post_install(installer, 'node_modules/react-native', :mac_catalyst_enabled => false)
+            end
+          end
+          RUBY
+
+      - name: Install CocoaPods
+        working-directory: ${{ runner.temp }}/scanner-host
+        run: pod install
+
+      - name: Resolve simulator and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator="$(xcrun simctl list devices available -j | jq -r '
+            [.devices[] | .[] | select(.isAvailable == true and (.name | startswith("iPhone")))] |
+            sort_by(.name) | .[0].udid // empty')"
+          test -n "$simulator"
+          echo "IOS_DESTINATION=platform=iOS Simulator,id=$simulator,arch=x86_64" >> "$GITHUB_ENV"
+          test_args=""
+          while IFS= read -r selector || [ -n "$selector" ]; do
+            [ -n "$selector" ] || continue
+            if [[ ! "$selector" =~ ^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)?$ ]]; then
+              echo "Invalid test selector: $selector" >&2
+              exit 1
+            fi
+            test_args="$test_args -only-testing:$IOS_SCHEME/$selector"
+          done <<< "$IOS_TEST_SELECTORS"
+          echo "IOS_TEST_ARGS=$test_args" >> "$GITHUB_ENV"
+
+      - name: Build for testing
+        working-directory: ${{ runner.temp }}/scanner-host
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace ScannerPackageValidation.xcworkspace \
+            -scheme "$IOS_SCHEME" \
+            -configuration Debug \
+            -destination "$IOS_DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
+            CODE_SIGNING_ALLOWED=NO \
+            build-for-testing 2>&1 | tee "$RUNNER_TEMP/ios-build.log"
+
+      - name: Run tests
+        working-directory: ${{ runner.temp }}/scanner-host
+        run: |
+          set -o pipefail
+          test_args=()
+          if [ -n "$IOS_TEST_ARGS" ]; then
+            read -r -a test_args <<< "$IOS_TEST_ARGS"
+          fi
+          xcodebuild \
+            -workspace ScannerPackageValidation.xcworkspace \
+            -scheme "$IOS_SCHEME" \
+            -configuration Debug \
+            -destination "$IOS_DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/ios-tests.xcresult" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 300 \
+            CODE_SIGNING_ALLOWED=NO \
+            test-without-building "${test_args[@]}" 2>&1 | tee "$RUNNER_TEMP/ios-tests.log"
+
+      - name: Verify executed test count
+        run: |
+          set -euo pipefail
+          executed="$(sed -nE 's/.*Executed ([0-9]+) tests?,.*/\1/p' "$RUNNER_TEMP/ios-tests.log" | sort -n | tail -n 1)"
+          test -n "$executed"
+          test "$executed" -gt 0
+
+      - name: Upload Xcode diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-validation-diagnostics
+          path: |
+            ${{ runner.temp }}/ios-*.xcresult
+            ${{ runner.temp }}/ios-*.log
+          if-no-files-found: ignore
