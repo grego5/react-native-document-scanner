@@ -31,7 +31,7 @@ Each resource has one owner; one component's teardown cannot destroy an interpre
 1. Integrate session interruption/runtime-error recovery, foreground/permission return, view attachment, and mode=off around a single session eligibility state.
 2. Reject requests that cannot finish after interruption; finish an already-submitted shot when the platform allows, settle once, and prevent callbacks from resurrecting stopped owners.
 3. Ensure model buffers, CVPixelBuffers, KVO tokens, notifications, timers, queued results, source leases, and temporary files release on every teardown path.
-4. Add bounded-resource stress scenarios across camera→pager→crop→background→resume and processor disposal; fix failures in the owning component rather than duplicating lifecycle state.
+4. Add bounded-resource stress scenarios across camera→pager→crop→background→resume and scan-session close/replacement; fix failures in the owning component rather than duplicating lifecycle state.
 
 ## Ownership and boundary rules
 

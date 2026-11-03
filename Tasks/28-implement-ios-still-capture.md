@@ -4,11 +4,11 @@
 
 Status: Planned
 Complexity: High
-Dependencies: [04](04-verify-ios-feasibility.md), [19](19-implement-ios-source-store.md), [25](25-implement-ios-camera-session.md), [26](26-implement-ios-live-guidance.md), [27](27-implement-ios-camera-controls.md)
+Dependencies: [04](04-verify-ios-feasibility.md), [19](19-implement-ios-source-store.md), [21](21-implement-ios-processor.md), [25](25-implement-ios-camera-session.md), [26](26-implement-ios-live-guidance.md), [27](27-implement-ios-camera-controls.md)
 
 ## Objective
 
-Return a durable captured source and matching shutter thumbnail from one bounded photo request.
+Admit one captured page to the bound native scan session and resolve takePhotoResult with that page ID after durable source admission. Source files, retained pixels, and the matching shutter frame stay native.
 
 ## Non-goals
 
@@ -18,14 +18,15 @@ Do not implement later task outcomes, redesign unrelated Android behavior, chang
 
 This is a lookup map. Locate symbols and read only the ranges needed for the next implementation decision. Prefer a configured matching LSP project; use focused rg when indexing is unavailable.
 
-- src/DocumentScannerCamera.nitro.ts — CapturedPhoto, takePhotoResult
+- src/DocumentScannerCamera.nitro.ts — session, renderOptions, TakePhotoOptions, takePhotoResult
+- src/ScanSession.nitro.ts and Task 21's internal source-admission/producer handoff
 - android/src/main/java/com/margelo/nitro/documentscanner/HybridDocumentScannerCameraView.kt — saveShot and writeLatestFrameCapture
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/LatestFrameCapture.kt
 - ios/ source store from Task 19
 
 ## Current behavior and invariants
 
-One accepted takePhoto starts one physical shot. Source publication precedes resolution, crop coordinates match the visible region, and no successful result references an incomplete file.
+One accepted takePhoto starts one physical shot. Admission freezes the bound session, camera render defaults, model selection, and capture-gate options. Durable source/page publication precedes page-ID resolution; readiness remains observable through session metadata. Crop coordinates match the visible region and no successful result references an incomplete file. Session close/replacement or detach invalidates publication immediately; physical capture/writers retain their busy slot and producer pins until settlement.
 
 ## Implementation steps
 
@@ -33,8 +34,8 @@ One accepted takePhoto starts one physical shot. Source publication precedes res
 2. Use native JPEG capture as the provisional low-friction default. Honor explicit jpegQuality with native AVVideoQualityKey; otherwise follow the existing capture-mode defaults (quality 1.0, latency 0.95). Use latency when ZSL is unsupported. Per user direction (2026-10-31), defer the TIFF/BGRA alternative and format-cost measurements until a working sample runs on a physical device.
 3. Apply the centered square ROI before source persistence and expensive downstream processing. Persist with provisional JPEG backing, preserving requested JPEG quality after any required crop.
 4. Return correct encoded dimensions/EXIF metadata; normalize orientation after pixel crop and remove or regenerate stale embedded thumbnails.
-5. Publish the durable file, register a native pixel lease for immediate consumers, save the shutter analysis thumbnail, and map liveCandidate to final source coordinates.
-6. Defer format/framing changes during an active shot. Clean temporary/published-but-unreturned files on failure/disposal.
+5. Publish the durable file through Task 19, map liveCandidate to final source coordinates, and transfer source/producer ownership plus the retained shutter frame through Task 21's tested admission boundary. Insert the page and schedule analysis through Task 20 followed by session rendering, then return its ID; never return a source URI or introduce a second camera-owned page store.
+6. Defer format/framing changes during an active shot. Reject each stale/failed capture once, suppress later previews/stages, and retire temporary/published-but-unadmitted sources after physical writers drain. An old session's close must not cancel a replacement session's capture.
 
 ## Ownership and boundary rules
 
@@ -54,7 +55,7 @@ Verification prerequisites: establish the exact compiler/OpenCV setup before sha
 
 ## Completion criteria
 
-takePhoto produces correct JPEG sources under the provisional default within the preconfigured capture cap and preserves framing/pixel lifetimes.
+takePhoto admits a page through the existing native session and returns its ID, with correct JPEG backing under the provisional default, the preconfigured capture cap, and preserved framing/producer/pixel lifetimes.
 
 Required checks must pass before Status changes to Completed. A prerequisite may be prepared with unavailable validation explicitly recorded, but downstream release readiness must remain incomplete until required evidence exists. Record changed files, executed checks, actual results, and material limitations.
 

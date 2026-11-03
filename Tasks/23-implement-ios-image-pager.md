@@ -25,14 +25,14 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 ## Current behavior and invariants
 
-Zoom blocks paging; leaving a page resets its zoom; programmatic index changes jump without animation; failed neighbors retry when shown.
+Selection and callbacks use page IDs; indices remain native internals. Omitted pageIds follows session order; an explicit complete order updates the session. Reordering retains the selected ID unless selectedPageId changes. Zoom blocks paging; leaving a page resets its zoom; programmatic selection changes jump without animation; failed neighbors retry when shown.
 
 ## Implementation steps
 
 1. Implement a recycling UICollectionView pager using Task 22's viewer/loader behavior.
-2. Clamp programmatic index and reconcile changed URI arrays while retaining old images during replacements.
+2. Reconcile session/page-ID order and selectedPageId through Task 21's page bindings; retain same-page pixels during render replacements. Session replacement clears old bindings; unknown configured IDs report input/invalid, while observed removal/close clears pixels without choosing a replacement selection for the host.
 3. Give native gesture arbitration one owner: zoomed viewer pans; fitted pager swipes when swipeEnabled is true.
-4. Publish settled user index and shown-page load/errors through existing callback semantics; recycle/offscreen cells release full images.
+4. Publish settled user page IDs and shown-page load/errors through existing callback semantics; recycle/offscreen cells release full images.
 
 ## Ownership and boundary rules
 

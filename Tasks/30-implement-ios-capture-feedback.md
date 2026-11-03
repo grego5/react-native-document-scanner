@@ -20,19 +20,20 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 - android/src/main/java/com/margelo/nitro/documentscanner/CaptureFeedbackTimeline.kt
 - android/src/main/java/com/margelo/nitro/documentscanner/CaptureFeedbackView.kt
-- src/DocumentScannerCamera.nitro.ts — CaptureStage, captureFeedback, retainCapturePreview
+- src/DocumentScannerCamera.nitro.ts — CaptureStage, captureFeedback, CameraCaptureState
 - android/src/test/java/com/margelo/nitro/documentscanner/CaptureFeedbackTimelineTest.kt
-- example/hooks/useScanSession.ts
+- example/hooks/useScanReview.ts
+- Task 21's session-owned retained frame and native page-read contract
 
 ## Current behavior and invariants
 
-waiting pulses, shooting progresses, captured means movement is safe, a later save failure can report failed, and retained preview persists until released or disposal.
+waiting pulses, shooting progresses, captured means movement is safe, and a later save failure can report failed. A successful shot hands one bounded retained frame to the scan session; native image bindings seed from it while decoding, without a React readiness handoff.
 
 ## Implementation steps
 
 1. Implement a Swift feedback timeline preserving CaptureFeedbackTimeline's observable behavior, with UIKit drawing and platform haptics; keep colors and outline snapshots native.
 2. Publish captured after the AVFoundation exposure-complete event, never merely willCapture; preserve later failure reporting.
-3. Freeze the shutter frame/outline, retain on successful capture when requested, and clear failure/disposal state.
+3. Freeze the shutter frame/outline and hand it to the admitted session page on success. A decoded thumbnail releases the session reference; page removal/close clears it, while displayed views retain their own image references. Failure/detach invalidates obsolete camera feedback. Do not add retain/release-preview props or JS handoff state.
 4. Preserve state callback initial resend and stage-event non-resend semantics through stable Nitro callbacks.
 
 ## Ownership and boundary rules

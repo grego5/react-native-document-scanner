@@ -20,7 +20,7 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 - example/app.config.ts
 - example/app/index.tsx
-- example/hooks/useScanSession.ts
+- example/hooks/useScanReview.ts
 - example/lib/scanSession.ts
 - example/components/OptionsPanel.tsx
 - example/components/ExportSheet.tsx
@@ -28,12 +28,12 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 ## Current behavior and invariants
 
-Camera remains mounted/inactive under review; saved pages and draft share one pager; original sources remain available for re-edit; stale renders are deleted.
+One explicitly owned native scan session supplies ordered page metadata through the existing JS adapter. React owns selection/navigation/crop-screen state and the operation UX lock; native code owns pixels, processing, and file retirement. Camera remains mounted/inactive under review; originals remain available for re-edit.
 
 ## Implementation steps
 
 1. Add iOS bundle identity, deployment target, camera usage description, photo-library add permission, and iOS development/test commands using the repository's Expo version.
-2. Keep the existing session reducer and janitor; accept TIFF originals as opaque local URIs while exporting rendered JPEG/PNG/PDF only.
+2. Keep the existing scan-session owner, reducer, metadata subscription, crop submit/cancel workflow, and host export retention. Use session/page IDs throughout React; TIFF/JPEG/PNG sources remain native-private. Export rendered JPEG/PNG/PDF to host-owned locations outside native session/source resources; do not add a JS image janitor or alternate iOS session flow.
 3. Hide deferred sample controls on iOS; keep squareFrame and jpegQuality controls functional.
 4. Verify native share-sheet/iPad presentation and photo-library saving through existing dependencies; do not introduce a second media/share stack.
 5. Update relevant public source-format/platform documentation and maintainer architecture guidance when the implementation becomes true.

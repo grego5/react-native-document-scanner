@@ -4,7 +4,7 @@
 
 Status: Planned
 Complexity: High
-Dependencies: [17](17-add-ios-package-and-nitro-bindings.md), [18](18-implement-ios-camera-permission.md), [19](19-implement-ios-source-store.md)
+Dependencies: [17](17-add-ios-package-and-nitro-bindings.md), [18](18-implement-ios-camera-permission.md), [19](19-implement-ios-source-store.md), [21](21-implement-ios-processor.md)
 
 ## Objective
 
@@ -29,7 +29,7 @@ mode=off stops camera and sensors while keeping the view mounted; non-off modes 
 
 ## Implementation steps
 
-1. Implement ios/HybridDocumentScannerCameraView.swift backed by one session owner/serial queue and main-thread preview layer.
+1. Implement ios/HybridDocumentScannerCameraView.swift with one AVFoundation camera owner/serial queue and main-thread preview layer. Borrow the bound Task 21 scan session; camera detach or AVFoundation stop never closes the headless scan-session owner. Observe session replacement/close to invalidate stale camera publication.
 2. Choose the rear physical wide-angle camera. Enumerate supported formats and photo dimensions; prefer largest valid 4:3 still size, then largest valid other aspect, under both 4096-long-edge and 12,582,912-total-pixel bounds.
 3. Configure output and per-shot maxPhotoDimensions using a supported dimension before starting the session; exclude 24/48 MP modes. If no bounded configuration works, remain suspended and reject capture as camera/unavailable.
 4. Add preview and bounded video-data output with analysisWidth default 640; discard late frames and permit no unbounded frame backlog.

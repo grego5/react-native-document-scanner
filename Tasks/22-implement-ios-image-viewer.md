@@ -8,7 +8,7 @@ Dependencies: [19](19-implement-ios-source-store.md), [21](21-implement-ios-proc
 
 ## Objective
 
-Show sources and renders with native zoom gestures and bounded decoding.
+Show native session pages with native zoom gestures and bounded decoding. Task 21's complete session/resource contract is a prerequisite; a render/PDF-only Phase A is insufficient.
 
 ## Non-goals
 
@@ -20,6 +20,7 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 - src/ImageViewer.nitro.ts
 - src/ImageViewer.tsx
+- src/ScanSession.nitro.ts and Task 21's native page-binding/read contract
 - android/src/main/java/com/margelo/nitro/documentscanner/ImageViewerView.kt
 - android/src/main/java/com/margelo/nitro/documentscanner/ImageLoader.kt
 - android/src/main/java/com/margelo/nitro/documentscanner/PageThumbnails.kt
@@ -27,13 +28,13 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 ## Current behavior and invariants
 
-Thumbnail first; full image only past 1.1× zoom; zoom limit 5×; double tap to 2.5× or fit; previous image remains until replacement is installed.
+Bind session/page IDs and observe native page state directly. Prefer displayed render/thumbnail, then retained capture frame, then original as the current contract permits. Thumbnail first; full image only past 1.1× zoom; zoom limit 5×; double tap to 2.5× or fit; previous same-page image remains until replacement is installed. Page removal/session close clears pixels without an error event; explicit invalid bindings report input/invalid.
 
 ## Implementation steps
 
 1. Implement UIView/UIScrollView-based ImageViewer with contain fit, clamped pan, native pinch/double tap, isZoomed, and resetZoom.
-2. Reuse source/thumbnail services; decode full images at most 4096 pixels and release full buffers on detach/background or zoom reset.
-3. Use URI/load generations so obsolete work never replaces a newer image; onLoad fires only after installing the current URI's thumbnail.
+2. Reuse Task 21's independently pinned session reads and shared thumbnails over Task 19 sources; decode full images at most 4096 pixels and release full buffers on detach/background or zoom reset. Implement session/page-bound thumbnail tiles with bounded reads; tiles never decode originals/full images.
+3. Use session/page/revision/load generations so obsolete work never replaces a newer image; onLoad fires only after installing the current page's thumbnail. Release subscriptions/bindings on detach, retain independent physical-read pins until completion, and retry reads on reattach.
 4. Keep callbacks through Nitro and UI state on main; do not introduce JS gesture dependencies.
 
 ## Ownership and boundary rules
@@ -43,7 +44,7 @@ Keep platform handles out of portable C++ interfaces; borrow pixels only through
 ## Tests and expected results
 
 - Assert zoom/pan bounds, zoom callbacks, replacement continuity, stale load discard, retry on visibility, and full-image release.
-- Verify TIFF originals and JPEG/PNG renders load through the same view.
+- Verify TIFF/JPEG/PNG originals and JPEG/PNG renders load through session bindings; cover page removal, session replacement/close, thumbnail-only tiles, detached reads, and physical-pin release.
 
 ## Validation commands
 

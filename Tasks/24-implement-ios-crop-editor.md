@@ -4,7 +4,7 @@
 
 Status: Planned
 Complexity: High
-Dependencies: [05](05-share-image-geometry.md), [08](08-share-document-filters.md), [19](19-implement-ios-source-store.md)
+Dependencies: [05](05-share-image-geometry.md), [08](08-share-document-filters.md), [19](19-implement-ios-source-store.md), [21](21-implement-ios-processor.md)
 
 ## Objective
 
@@ -20,20 +20,21 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 - src/DocumentCropEditor.nitro.ts
 - src/DocumentCropEditor.tsx
+- src/ScanSession.nitro.ts and Task 21's native page-binding/mutation contract
 - android/src/main/java/com/margelo/nitro/documentscanner/CropEditorView.kt
 - android/src/main/java/com/margelo/nitro/documentscanner/CropQuadEditing.kt
 - android/src/androidTest/java/com/margelo/nitro/documentscanner/CropEditorViewTest.kt
 
 ## Current behavior and invariants
 
-The editor owns local edits until a different quad prop arrives; only changed drag completion publishes; invalid quads are rejected, not silently repaired.
+Bind a native session/page ID and initialize the local draft from its saved quad when the bound page changes. Drags and none/auto presets change only that draft; getQuad reads it and submit validates/applies it through the session. Cancel/unmount sends no page mutation. Emit initial and changed none/auto/custom classification, with full frame taking precedence over an equal auto candidate. Invalid submitted quads are rejected, not silently repaired.
 
 ## Implementation steps
 
 1. Implement native handle/edge dragging through shared crop geometry, constant-screen-size handles, magnifier, pinch/pan up to 5×, and double-tap fit.
-2. Load TIFF/JPEG originals through Task 19, with normalized upright coordinates independent of display transform.
+2. Read TIFF/JPEG/PNG originals through Task 21's leased session-page binding over Task 19; keep normalized upright coordinates independent of display transform. Removal/close invalidates the binding and draft operations.
 3. Compute full-photo filter previews off main at the existing 2400-pixel cap; retain current image and discard outdated filter/photo results.
-4. Keep onLoad dimensions and error behavior consistent; release images and invalidate work on detach/disposal.
+4. Keep onLoad dimensions and error behavior consistent; release images/observers and invalidate work on detach/disposal. Implement current submitResult/getQuadResult/setPresetResult transport without adding quad props or JS draft ownership.
 
 ## Ownership and boundary rules
 
