@@ -29,7 +29,6 @@ jobs:
       LC_ALL: en_US.UTF-8
       IOS_TEST_SELECTORS: ${{ inputs.tests }}
       IOS_SCHEME: ReactNativeDocumentScanner-Unit-ScaffoldTests
-      HOST_DIR: ${{ runner.temp }}/scanner-host
 
     steps:
       - name: Check out source
@@ -55,6 +54,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export HOST_DIR="$RUNNER_TEMP/scanner-host"
+          echo "HOST_DIR=$HOST_DIR" >> "$GITHUB_ENV"
           mkdir -p "$HOST_DIR"
           cd "$HOST_DIR"
           ln -s "$GITHUB_WORKSPACE/node_modules" node_modules
