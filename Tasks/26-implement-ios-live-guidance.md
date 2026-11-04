@@ -32,7 +32,7 @@ Live pixels stay native; guidance never captures; valid inference publishes imme
 1. Process owned/retained CVPixelBuffer frames on a serial analysis context using shared transforms, preprocessing, flow, and guide policy.
 2. Carry frame sequence/timestamp, geometry, model/session generation, and truthful available metadata into immutable native snapshots.
 3. Keep only bounded latest-frame and shutter-thumbnail state; do not retain every analysis buffer.
-4. Preload/warm the shared interpreter during session start; implement guide enable/disable without rebinding, adaptive decisions, overlay easing/color, and current-state callbacks.
+4. Preload/warm the shared interpreter during session start; implement guide enable/disable without rebinding, adaptive pacing, overlay easing/color, and current-state callbacks. Guide acceptance and flow evidence come from shared C++; adaptive pacing is a Swift port of Android's `AdaptiveDetectionPolicy` and must pass `tests/fixtures/parity/adaptive.tsv`.
 5. Suppress stale model/binding completions and preserve guide IDs across resets.
 
 ## Ownership and boundary rules

@@ -61,29 +61,4 @@ private:
   int64_t acceptedSensorNs_ = 0, acceptanceId_ = 0, deadlineNs_ = 0;
   std::optional<int64_t> lastTimestamp_;
 };
-class Adaptive {
-public:
-  void reset() {
-    revalidate_ = false;
-    reference_.reset();
-    status_ = "acquiring";
-  }
-  void confirmed() { revalidate_ = false; }
-  int64_t interval(bool trusted, bool tracked, bool degraded, const std::optional<std::string> &doubt);
-  const std::string &status() const { return status_; }
-  const std::string &lastReset() const { return lastReset_; }
-  void reference(const std::optional<Quad> &quad) {
-    reference_.reset();
-    if (quad)
-      reference_.emplace(*quad);
-  }
-  bool hasReference() const { return reference_.has_value(); }
-  std::optional<std::string> doubt(const std::optional<Quad> &current, int width, int height) const;
-  static bool changed(const Quad &, const Quad &, int width, int height);
-
-private:
-  std::optional<Quad> reference_;
-  bool revalidate_ = false;
-  std::string status_ = "acquiring", lastReset_ = "none";
-};
 } // namespace document_scanner::guide

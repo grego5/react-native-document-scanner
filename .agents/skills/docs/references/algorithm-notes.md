@@ -47,12 +47,13 @@ Read only the section relevant to an algorithm change. [Architecture](architectu
 
 ## Adaptive detection
 
-- Once a trusted model result locks the outline, flow carries it and inference pauses. The aim is to stay paused through normal handling, so movement alone never wakes inference: an earlier speed limit, then a net-displacement limit, both woke it on ordinary hand tremor.
+- Once a trusted model result locks the outline, flow carries it and inference pauses. The aim is to stay paused through normal handling, so speed never wakes inference: an earlier speed limit, then a tighter net-displacement limit, both woke it on ordinary hand tremor.
 - Tracking fits a homography, because a page is flat and tilt is then modelled exactly. Tilt bends far tracks away from any similarity, so a loose similarity consensus seeds the homography, which is held to the strict tolerance.
 - Inference wakes when:
   - tracking is lost. The estimator always replaces its reference frame, so one failed frame breaks the chain.
-  - a page region loses its features. Features are reselected every frame, so a covered region soon reads clean again; flow cannot show recovery, so any loss requests a model confirmation. Tracking time is kept, so a confirmation returns straight to the pause. Loss lasting 250 ms resets the policy.
-  - the outline's shape changes beyond position, rotation and scale, because tracking error grows with tilt.
+  - a page region loses its features. Features are reselected every frame, so a covered region soon reads clean again; flow cannot show recovery, so any loss requests a model confirmation. The guide stays trusted, so inference revalidates every 60 ms and one confirmation returns straight to the pause. Region loss never resets the policy by itself; only guide expiry does, when its configured hold deadline (400 ms by default) runs out.
+  - any corner of the tracked outline strays more than 5% of the upright frame width from the confirmed outline (`scene changed`). Translation counts as well as tilt, because tracking error grows with distance from the confirmed frame.
 - Focus does not wake it: focus decides whether a model result can be trusted, not whether flow holds.
 - There is no periodic recheck while paused, so a change that preserves the tracked texture goes unnoticed until a wake condition.
 - The thresholds are starting settings.
+- The pacing policy is a small per-platform state machine fed by shared guide and flow evidence; `tests/fixtures/parity/adaptive.tsv` holds the sequences every platform must reproduce.

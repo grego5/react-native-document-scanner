@@ -155,7 +155,7 @@ internal class LiveDocumentDetector(
   private var appliedMinCornerScore = 0.95
   /** Generation of a low-score scene awaiting measured movement; null permits inference. */
   private var scorePausedGeneration: Long? = null
-  private val adaptivePolicy = AdaptiveDetectionPolicy(stabilizer)
+  private val adaptivePolicy = AdaptiveDetectionPolicy()
   private var adaptiveWasEnabled = false
   private var trackedRegionSensorNs = 0L
   private val transformFactory = ImageProxyTransformFactory().apply {
@@ -339,11 +339,10 @@ internal class LiveDocumentDetector(
     val reliable = matchingGeometry && flowRegion != null && estimate?.status == FlowMotionStatus.MEASURED &&
       estimate.transform != null && flowRegion!!.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) } != null
     val turned = image.imageInfo.rotationDegrees % 180 != 0
-    val doubt = if (!adaptive || !reliable) null else adaptivePolicy.doubt(flowRegion,
+    val gap = if (adaptive) adaptivePolicy.next(tracking, reliable, (estimate?.lostRegions ?: 0) > 0, flowRegion,
       if (turned) currentCrop.height() else currentCrop.width(), if (turned) currentCrop.width() else currentCrop.height())
-    val gap = if (!inferenceThrottling) 0L else if (adaptive) adaptivePolicy.interval(startedAt, tracking && adaptivePolicy.hasReference, reliable,
-      (estimate?.lostRegions ?: 0) > 0, doubt)
-      else if (tracking) LiveDetectionState.TRACKING_GAP_NS else 0L
+      else if (inferenceThrottling && tracking) LiveDetectionState.TRACKING_GAP_NS else 0L
+    val doubt = if (adaptive) adaptivePolicy.doubt else null
     val moving = inferenceThrottling && maxInferenceSpeedFraction > 0 && estimate?.status == FlowMotionStatus.MEASURED &&
       (estimate.lostRegions > 0 || estimate.speedPxPerSecond?.let { it / image.width > maxInferenceSpeedFraction } == true)
     val unstable = moving

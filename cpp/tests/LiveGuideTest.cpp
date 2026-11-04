@@ -62,31 +62,5 @@ int main() {
   check(keepScorePause(true, 3.2, 320));
   check(!keepScorePause(true, 3.21, 320));
   check(!keepScorePause(false, std::nullopt, 320));
-  Adaptive a;
-  check(!a.hasReference());
-  a.reference(page);
-  check(a.hasReference());
-  check(!a.doubt(rect(.21, .2, .81, .8), 240, 320));
-  check(a.doubt(rect(.3, .2, .9, .8), 240, 320) == "scene changed");
-  a.reset();
-  check(!a.hasReference());
-  check(a.interval(true, true, false, {}) == std::numeric_limits<int64_t>::max());
-  check(a.interval(true, true, false, {}) == std::numeric_limits<int64_t>::max());
-  check(a.interval(false, false, false, {}) == 0);
-  check(a.interval(true, false, false, {}) == 60000000);
-  check(a.interval(true, true, false, {}) == 60000000 && a.status() == "revalidating");
-  a.confirmed();
-  check(a.interval(true, true, false, {}) == std::numeric_limits<int64_t>::max());
-  check(a.interval(true, true, true, {}) == 60000000 && a.lastReset() == "tracking degraded");
-  a.confirmed();
-  check(a.interval(true, true, false, "scene changed") == 60000000);
-  check(!Adaptive::changed(page, rect(.21, .2, .81, .8), 240, 320));
-  check(Adaptive::changed(page, rect(.3, .2, .9, .8), 240, 320));
-  const Quad tilted{Point{.3, .2}, Point{.7, .2}, Point{.8, .8}, Point{.2, .8}};
-  check(Adaptive::changed(page, tilted, 240, 320));
-  // Focus is deliberately absent from guide and adaptive inputs; scans cannot reset confirmation.
-  a.confirmed();
-  for (int focusState = 0; focusState < 6; ++focusState)
-    check(a.interval(true, true, false, {}) == std::numeric_limits<int64_t>::max());
-  std::cout << "Live guide/adaptive/replay contracts passed\n";
+  std::cout << "Live guide/replay contracts passed\n";
 }

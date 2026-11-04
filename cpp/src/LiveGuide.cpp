@@ -71,29 +71,4 @@ Output Stabilizer::update(const Input &f) {
   }
   return output(backward ? Decision::timestampBackward : d, tracking, expired);
 }
-int64_t Adaptive::interval(bool trusted, bool tracked, bool degraded, const std::optional<std::string> &doubt) {
-  if (!trusted || !tracked || degraded || doubt) {
-    revalidate_ = trusted;
-    status_ = doubt ? *doubt : !trusted ? "unconfirmed" : !tracked ? "tracking lost" : "tracking degraded";
-    lastReset_ = status_;
-    return trusted ? 60000000 : 0;
-  }
-  if (revalidate_) {
-    status_ = "revalidating";
-    return 60000000;
-  }
-  status_ = "paused";
-  return std::numeric_limits<int64_t>::max();
-}
-std::optional<std::string> Adaptive::doubt(const std::optional<Quad> &current, int width, int height) const {
-  return reference_ && current && changed(*reference_, *current, width, height)
-             ? std::optional<std::string>{"scene changed"}
-             : std::nullopt;
-}
-bool Adaptive::changed(const Quad &a, const Quad &b, int w, int h) {
-  for (size_t i = 0; i < 4; ++i)
-    if (std::hypot((a[i].x - b[i].x) * w, (a[i].y - b[i].y) * h) > w * .05)
-      return true;
-  return false;
-}
 } // namespace document_scanner::guide

@@ -36,34 +36,12 @@ local_ref<JArrayDouble> NativeLiveGuide::updateNative(alias_ref<JArrayDouble> q,
   a->setRegion(0, size, v);
   return a;
 }
-jlong NativeLiveGuide::intervalNative(jboolean trusted, jboolean tracked, jboolean degraded, alias_ref<JString> doubt) {
-  return adaptive_.interval(trusted, tracked, degraded, doubt ? std::optional{doubt->toStdString()} : std::nullopt);
-}
-jboolean NativeLiveGuide::changedNative(alias_ref<jclass>, alias_ref<JArrayDouble> a, alias_ref<JArrayDouble> b, jint w,
-                                        jint h) {
-  return guide::Adaptive::changed(quad(a), quad(b), w, h);
-}
-void NativeLiveGuide::referenceNative(alias_ref<JArrayDouble> q) {
-  adaptive_.reference(q ? std::optional{quad(q)} : std::nullopt);
-}
-local_ref<JString> NativeLiveGuide::doubtNative(alias_ref<JArrayDouble> q, jint w, jint h) {
-  auto result = adaptive_.doubt(q ? std::optional{quad(q)} : std::nullopt, w, h);
-  return result ? make_jstring(*result) : nullptr;
-}
 void NativeLiveGuide::registerNatives() {
-  registerHybrid({makeNativeMethod("referenceNative", NativeLiveGuide::referenceNative),
-                  makeNativeMethod("hasReferenceNative", NativeLiveGuide::hasReferenceNative),
-                  makeNativeMethod("doubtNative", NativeLiveGuide::doubtNative),
-                  makeNativeMethod("scoreRejectedNative", scoreRejectedNative),
+  registerHybrid({makeNativeMethod("scoreRejectedNative", scoreRejectedNative),
                   makeNativeMethod("keepScorePauseNative", keepScorePauseNative),
                   makeNativeMethod("initHybrid", initHybrid),
                   makeNativeMethod("configureNative", NativeLiveGuide::configureNative),
                   makeNativeMethod("resetNative", NativeLiveGuide::resetNative),
-                  makeNativeMethod("updateNative", NativeLiveGuide::updateNative),
-                  makeNativeMethod("adaptiveResetNative", NativeLiveGuide::adaptiveResetNative),
-                  makeNativeMethod("confirmedNative", NativeLiveGuide::confirmedNative),
-                  makeNativeMethod("intervalNative", NativeLiveGuide::intervalNative),
-                  makeNativeMethod("statusNative", NativeLiveGuide::statusNative),
-                  makeNativeMethod("changedNative", changedNative)});
+                  makeNativeMethod("updateNative", NativeLiveGuide::updateNative)});
 }
 } // namespace margelo::nitro::documentscanner
