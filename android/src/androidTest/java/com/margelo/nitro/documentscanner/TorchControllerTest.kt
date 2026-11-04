@@ -1,6 +1,5 @@
 package com.margelo.nitro.documentscanner
 
-import androidx.camera.core.Camera
 import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraInfo
 import androidx.test.platform.app.InstrumentationRegistry
@@ -132,9 +131,7 @@ class TorchControllerTest {
         else -> error(method.name)
       }
     } as CameraControl
-    private val camera = Proxy.newProxyInstance(Camera::class.java.classLoader,arrayOf(Camera::class.java)) { _, method, _ ->
-      when (method.name) { "getCameraInfo" -> info; "getCameraControl" -> control; else -> error(method.name) }
-    } as Camera
+    private val camera = BoundCamera(control, info)
     fun apply(mode: TorchMode) = controller.apply(camera,mode,capture) { autoReads++; policy.lit }
     override fun close() { controller.reset(); policy.reset() }
   }

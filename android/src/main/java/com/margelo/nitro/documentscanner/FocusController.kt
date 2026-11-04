@@ -1,13 +1,16 @@
 package com.margelo.nitro.documentscanner
 
 import android.os.SystemClock
-import androidx.camera.core.Camera
+import androidx.camera.core.CameraControl
+import androidx.camera.core.CameraInfo
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.MeteringPoint
-import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executor
 
-/** Who holds the lens: a tap's or a quality capture's scan, each in single-shot autofocus. */
+/** The bound camera's controls; a new binding gives a new instance. */
+internal class BoundCamera(val control: CameraControl, val info: CameraInfo)
+
+/** Who holds the lens: a tap's or a quality capture's scan, each locking focus. */
 internal enum class FocusOwner { TAP, CAPTURE }
 
 /**
@@ -23,7 +26,7 @@ internal data class FocusSnapshot(
   val changedNs: Long,
   val changedRealtimeNs: Long,
 ) {
-  /** A tap's or a capture's scan still holds the lens, scanning or locked; CameraX's own focus regions apply. */
+  /** A tap's or a capture's scan still holds the lens, scanning or locked; its own focus regions apply. */
   fun scanHolds(nowMs: Long): Boolean = owner != null && nowMs < heldUntilMs
 
   /** A tap's or a capture's scan has not settled yet. */
@@ -31,16 +34,17 @@ internal data class FocusSnapshot(
 }
 
 /** Main-thread CameraX adapter. [FocusPolicy] owns scan and tap state and generations; this class owns only hardware
- * requests, callback attempts, wakeups and immutable published snapshots. Between scans continuous autofocus runs
- * untouched.
+ * requests, callback attempts, wakeups and immutable published snapshots. A scan's owner is published before its request
+ * is sent, so nothing reads the old focus while the lens moves. CameraX runs a locking scan in single-shot autofocus and
+ * restores continuous autofocus when it is cancelled; between scans the host aims continuous autofocus again.
  */
 internal class FocusController(private val host: Host) : AutoCloseable {
   interface Host {
-    val camera: Camera?
+    val camera: BoundCamera?
     val mainExecutor: Executor
     fun shotInFlight(): Boolean
-    /** Applies the Camera2 options for the current snapshot; the future completes once the camera has them. */
-    fun applyCaptureOptions(): ListenableFuture<Void>?
+    /** Aims continuous autofocus while no scan holds the lens. */
+    fun resumeContinuousFocus()
     fun postDelayed(delayMs: Long, block: () -> Unit)
     fun log(message: String)
     fun focusChanged(snapshot: FocusSnapshot)
@@ -54,16 +58,19 @@ internal class FocusController(private val host: Host) : AutoCloseable {
   var snapshot = FocusSnapshot(0, null, null, 0, 0, 0)
     private set
 
-  fun tap(camera: Camera, point: MeteringPoint) {
+  /** A tap's scan, focusing at [focusPoint] and metering exposure at [exposurePoint]; it holds the lens for
+   * [FocusPolicy.TAP_HOLD_NS]. A shot in flight refuses it. */
+  fun tap(camera: BoundCamera, focusPoint: MeteringPoint, exposurePoint: MeteringPoint) {
     if (closed || host.shotInFlight()) return
-    start(camera, FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
-      .disableAutoCancel().build(), FocusOwner.TAP)
+    val next = start(camera, FocusOwner.TAP)
+    trigger(next, FocusMeteringAction.Builder(focusPoint, FocusMeteringAction.FLAG_AF)
+      .addPoint(exposurePoint, FocusMeteringAction.FLAG_AE).disableAutoCancel().build())
   }
   /** A quality capture's own scan at [point], held until [afterCapture]. */
-  fun capture(camera: Camera, point: MeteringPoint) {
+  fun capture(camera: BoundCamera, point: MeteringPoint) {
     if (closed || host.shotInFlight()) return
-    start(camera, FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF).disableAutoCancel().build(),
-      FocusOwner.CAPTURE)
+    val next = start(camera, FocusOwner.CAPTURE)
+    trigger(next, FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF).disableAutoCancel().build())
   }
   fun afterCapture() {
     if (closed) return
@@ -77,28 +84,19 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     policy.unbind()
     publish()
   }
-  private fun start(camera: Camera, action: FocusMeteringAction, owner: FocusOwner) {
-    val startedNs = host.uptimeNs()
-    val next = Scan(camera, policy.start(owner, startedNs))
+  private fun start(camera: BoundCamera, owner: FocusOwner): Scan {
+    val next = Scan(camera, policy.start(owner, host.uptimeNs()))
     host.log("${owner.name.lowercase()} focus scan started")
     scan = next
-    publish() // Options must see the new owner before touching the lens.
-    val lifted = host.applyCaptureOptions()
+    publish()
     scheduleDeadlines()
-    // The trigger waits for the options that switch to single-shot autofocus: a trigger that arrives during a passive
-    // scan of continuous autofocus can be ignored for good.
-    if (lifted == null) trigger(next, action)
-    else lifted.addListener({
-      host.log("focus options applied after=${(host.uptimeNs() - startedNs) / 1_000_000}ms pending=${pending(next)}")
-      if (pending(next)) trigger(next, action)
-    }, host.mainExecutor)
+    return next
   }
   private fun pending(target: Scan): Boolean = !closed && scan === target && host.camera === target.camera &&
     policy.scanToken == target.token && policy.pending
   private fun trigger(target: Scan, action: FocusMeteringAction) {
-    val attempt = ++target.triggers
-    host.log("focus trigger sent attempt=$attempt")
-    val future = try { target.camera.cameraControl.startFocusAndMetering(action) } catch (error: Exception) {
+    host.log("focus trigger sent")
+    val future = try { target.camera.control.startFocusAndMetering(action) } catch (error: Exception) {
       host.log("focus trigger threw ${error.javaClass.simpleName}")
       if (pending(target)) settle(target, false)
       return
@@ -108,7 +106,7 @@ internal class FocusController(private val host: Host) : AutoCloseable {
         host.log("focus trigger failed ${error.javaClass.simpleName}: ${error.message}")
         false
       }
-      if (pending(target) && target.triggers == attempt) settle(target, success)
+      if (pending(target)) settle(target, success)
     }, host.mainExecutor)
   }
   private fun settle(target: Scan, success: Boolean) {
@@ -120,11 +118,18 @@ internal class FocusController(private val host: Host) : AutoCloseable {
   private fun released() {
     val ended = scan
     scan = null
-    publish() // Options must see ownership end before restoring continuous AF.
-    if (ended != null && ended.camera === host.camera) {
-      try { ended.camera.cameraControl.cancelFocusAndMetering() } catch (_: Exception) { }
+    publish()
+    val camera = host.camera
+    if (ended == null || ended.camera !== camera) {
+      host.resumeContinuousFocus()
+      return
     }
-    host.applyCaptureOptions()
+    // Cancelling ends the lock and restores continuous autofocus, but also clears its regions.
+    val cancelled = try { camera.control.cancelFocusAndMetering() } catch (_: Exception) { null }
+    if (cancelled == null) host.resumeContinuousFocus()
+    else cancelled.addListener({
+      if (!closed && scan == null && host.camera === camera) host.resumeContinuousFocus()
+    }, host.mainExecutor)
   }
   private fun publish() {
     val heldUntilNs = policy.heldUntilNs
@@ -157,5 +162,5 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     if (closed) return
     closed = true; ++wakeRevision; scan = null
   }
-  private class Scan(val camera: Camera, val token: Long) { var triggers = 0 }
+  private class Scan(val camera: BoundCamera, val token: Long)
 }

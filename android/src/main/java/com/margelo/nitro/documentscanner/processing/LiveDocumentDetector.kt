@@ -4,7 +4,6 @@ import com.margelo.nitro.documentscanner.NativeQuadGeometry
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.PixelFormat
-import android.hardware.camera2.CaptureResult
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock

@@ -1,6 +1,5 @@
 package com.margelo.nitro.documentscanner
 
-import androidx.camera.core.Camera
 import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executor
 
@@ -12,13 +11,13 @@ internal class TorchController(private val executor: Executor, private val settl
   private var request: Request? = null
   val pending: Boolean get() = request?.future?.isDone == false
   fun reset() { request = null; applied = null }
-  fun apply(camera: Camera?, mode: TorchMode, capturePending: Boolean, autoLit: () -> Boolean) {
-    if (camera == null || !camera.cameraInfo.hasFlashUnit() || capturePending) return
+  fun apply(camera: BoundCamera?, mode: TorchMode, capturePending: Boolean, autoLit: () -> Boolean) {
+    if (camera == null || !camera.info.hasFlashUnit() || capturePending) return
     val lit = when (mode) { TorchMode.ON -> true; TorchMode.AUTO -> autoLit(); TorchMode.OFF -> false }
     if (lit == (request?.lit ?: applied)) return
     log("torch lit=$lit mode=$mode")
     // CameraX supersedes an earlier change. Reset/new request invalidates the old callback by identity.
-    val next = Request(lit, camera.cameraControl.enableTorch(lit))
+    val next = Request(lit, camera.control.enableTorch(lit))
     request = next
     next.future.addListener({
       if (request !== next) return@addListener

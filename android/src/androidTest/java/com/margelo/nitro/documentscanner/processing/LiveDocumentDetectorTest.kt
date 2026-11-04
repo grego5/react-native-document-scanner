@@ -1075,9 +1075,9 @@ class LiveDocumentDetectorTest {
         }
         position(offset)
       }
-      override fun getRowStride() = stride
-      override fun getPixelStride() = this@Frame.pixelStride
-      override fun getBuffer(): ByteBuffer {
+      override val rowStride get() = stride
+      override val pixelStride get() = this@Frame.pixelStride
+      override val buffer: ByteBuffer get() {
         decoded.incrementAndGet()
         beforeDecode()
         if (fail) throw IllegalStateException("Intentional plane failure")
@@ -1112,6 +1112,8 @@ class LiveDocumentDetectorTest {
         "getCropRect" -> Rect(crop)
         "getImageInfo" -> info
         "getPlanes" -> arrayOf(plane)
+        // A proxy does not run interface defaults, and CameraX's converter reads planes through this one.
+        "getImagePlanes" -> listOf(plane)
         "getFormat" -> PixelFormat.RGBA_8888
         "close" -> { closed.incrementAndGet(); null }
         "toBitmap" -> {

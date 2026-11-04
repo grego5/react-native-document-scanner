@@ -89,7 +89,7 @@ android {
   }
 }
 
-def cameraXVersion = '1.5.3'
+def cameraXVersion = '1.7.0-rc01'
 def openCvVersion = '4.12.0'
 
 dependencies {

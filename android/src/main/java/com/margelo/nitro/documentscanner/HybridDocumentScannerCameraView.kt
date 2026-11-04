@@ -4,37 +4,30 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.Rect
 import android.graphics.Typeface
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
-import android.hardware.camera2.params.MeteringRectangle
 import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import android.util.Rational
 import android.util.Size
-import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.annotation.OptIn
-import androidx.camera.camera2.interop.Camera2CameraControl
-import androidx.camera.camera2.interop.Camera2CameraInfo
-import androidx.camera.camera2.interop.Camera2Interop
-import androidx.camera.camera2.interop.CaptureRequestOptions
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
-import androidx.camera.core.Camera
+import androidx.camera.camera2.interop.applyCamera2InteropAsync
+import androidx.camera.camera2.interop.camera2Interop
+import androidx.camera.camera2.interop.cameraCharacteristics
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.MeteringPoint
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraState
@@ -43,11 +36,12 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
-import androidx.camera.core.UseCaseGroup
-import androidx.camera.core.ViewPort
+import androidx.camera.core.SessionConfig
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.camera.view.transform.CoordinateTransform
 import androidx.core.content.ContextCompat
@@ -58,7 +52,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.Observer
 import com.facebook.proguard.annotations.DoNotStrip
-import com.google.common.util.concurrent.ListenableFuture
 import com.margelo.nitro.core.Promise
 import com.margelo.nitro.documentscanner.CameraPermissionStatus
 import com.margelo.nitro.documentscanner.HybridDocumentScannerCameraViewSpec
@@ -159,6 +152,13 @@ open class HybridDocumentScannerCameraView(
   private val previewView = PreviewView(themedContext).apply {
     scaleType = PreviewView.ScaleType.FIT_CENTER
     implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+    // A tap claims focus before its scan is sent, so no capture decision sees the old focus; CameraX's own tap
+    // reports its start only after sending it. A tap is a single short touch, as CameraX counts one.
+    setOnTouchListener { _, event ->
+      if (event.pointerCount == 1 && event.actionMasked == MotionEvent.ACTION_UP &&
+        event.eventTime - event.downTime < ViewConfiguration.getLongPressTimeout()) onPreviewTap(event.x, event.y)
+      false
+    }
   }
   /** Keep the displayed crop unchanged while a capture defers a use-case rebind. */
   private var previewSquareFrame = false
@@ -285,8 +285,6 @@ open class HybridDocumentScannerCameraView(
   private var rebindPending = false
   /** Main thread: removes the permission listener while the view is attached. */
   private var removePermissionListener: (() -> Unit)? = null
-  private var cameraProvider: ProcessCameraProvider? = null
-  private var previewUseCase: Preview? = null
   private var imageCapture: ImageCapture? = null
   private var imageAnalysis: ImageAnalysis? = null
   private var observedCameraState: LiveData<CameraState>? = null
@@ -299,10 +297,10 @@ open class HybridDocumentScannerCameraView(
   private var displayListenerRegistered = false
   /** Main thread: focus lifecycle on the bound camera; capture and analysis read its snapshot. */
   private val focus = FocusController(object : FocusController.Host {
-    override val camera: Camera? get() = boundCamera
+    override val camera: BoundCamera? get() = boundCamera
     override val mainExecutor get() = ContextCompat.getMainExecutor(themedContext)
     override fun shotInFlight() = hasShotInFlight()
-    override fun applyCaptureOptions() = this@HybridDocumentScannerCameraView.applyCaptureOptions()
+    override fun resumeContinuousFocus() = aimContinuousFocus()
     override fun postDelayed(delayMs: Long, block: () -> Unit) { mainHandler.postDelayed(block, delayMs) }
     override fun log(message: String) = logLifecycle(message)
     override fun focusChanged(snapshot: FocusSnapshot) {
@@ -316,15 +314,10 @@ open class HybridDocumentScannerCameraView(
   override val view: View
     get() = container
 
-  private val tapDetector = GestureDetector(themedContext, object : GestureDetector.SimpleOnGestureListener() {
-    override fun onDown(event: MotionEvent) = true
-    override fun onSingleTapUp(event: MotionEvent): Boolean {
-      onPreviewTap(event.x, event.y)
-      return true
-    }
-  })
   private val streamObserver = Observer<PreviewView.StreamState> { updateCameraState() }
-  private var boundCamera: Camera? = null
+  /** Main thread: binds the use cases to [previewView]; one per binding. */
+  private var cameraController: LifecycleCameraController? = null
+  private var boundCamera: BoundCamera? = null
   // Last state passed to each callback; main thread. Null re-sends the current state to a newly set callback.
   private var emittedCameraState: ScannerCameraState? = null
   private var emittedAutofocus: AutofocusState? = null
@@ -352,8 +345,6 @@ open class HybridDocumentScannerCameraView(
   private val captureAdmission = CaptureAdmission<GatedCapture>(this)
   /** Main thread: the bound camera moves its lens to focus; a fixed-focus camera never reports a focus state. */
   private var hasAutofocus = false
-  /** Main thread: the bound camera offers single-shot autofocus, which a tap's or capture's scan runs in. */
-  private var singleShotAutofocus = false
   /** Main thread: the newest analyzed frame's page, where a quality capture's scan focuses; null without one. */
   private var focusCandidate: LiveFocusCandidate? = null
   /**
@@ -493,9 +484,6 @@ open class HybridDocumentScannerCameraView(
     captureFeedbackView.color = next.captureColor
     if (!next.captureFeedback) captureFeedbackView.clear()
     if (old.exposureCompensation != next.exposureCompensation) applyExposureCompensation()
-    if (old.minFrameRate != next.minFrameRate) {
-      applyCaptureOptions()
-    }
     if (old.torch != next.torch) {
       synchronized(metadataLock) {
         torchPolicy.reset()
@@ -513,10 +501,11 @@ open class HybridDocumentScannerCameraView(
     if (old.squareFrame != next.squareFrame && !hasPendingCapture()) layoutStats()
     // A rebind applies the guide when it binds; a deferred one leaves the bound camera, which applies it below.
     var rebinding = false
+    // The frame rate belongs to the bound session, so it rebinds too.
     if (old.analysisWidth != next.analysisWidth || old.captureMode != next.captureMode ||
-      old.jpegQuality != next.jpegQuality || old.squareFrame != next.squareFrame) {
+      old.jpegQuality != next.jpegQuality || old.squareFrame != next.squareFrame || old.minFrameRate != next.minFrameRate) {
       logLifecycle("use cases changed analysisWidth=${next.analysisWidth} captureMode=${next.captureMode} " +
-        "jpegQuality=${next.jpegQuality} squareFrame=${next.squareFrame}")
+        "jpegQuality=${next.jpegQuality} squareFrame=${next.squareFrame} minFrameRate=${next.minFrameRate}")
       if (hasPendingCapture()) {
         logLifecycle("use-case rebind deferred until capture settles")
         rebindPending = true
@@ -630,7 +619,6 @@ open class HybridDocumentScannerCameraView(
     logLifecycle("view created permission=${readPermissionStatus()}")
     previewView.installHierarchyFitter()
     previewView.previewStreamState.observeForever(streamObserver)
-    container.setOnTouchListener { _, event -> tapDetector.onTouchEvent(event) }
     container.addView(
       previewView,
       FrameLayout.LayoutParams(
@@ -1125,7 +1113,7 @@ open class HybridDocumentScannerCameraView(
       logLifecycle("camera start skipped: permission=$permissionStatus")
       return
     }
-    if (cameraProvider != null && previewUseCase != null && imageCapture != null) {
+    if (cameraController != null && imageCapture != null) {
       logLifecycle("camera start skipped: already bound")
       return
     }
@@ -1145,8 +1133,10 @@ open class HybridDocumentScannerCameraView(
     cameraStartRequestInFlight = true
     updateCameraState()
     logLifecycle("camera provider requested generation=$generation size=${container.width}x${container.height} rotation=$targetRotation")
+    val controller: LifecycleCameraController
     val future = try {
-      ProcessCameraProvider.getInstance(themedContext)
+      controller = LifecycleCameraController(themedContext)
+      controller.initializationFuture
     } catch (_: Throwable) {
       cameraStartRequestInFlight = false
       updateCameraState()
@@ -1170,12 +1160,12 @@ open class HybridDocumentScannerCameraView(
         return@addListener
       }
       try {
-        val provider = future.get()
+        future.get()
         layoutStats()
+        // The controller attaches the preview to previewView.
         val preview = Preview.Builder()
           .setTargetRotation(targetRotation)
           .build()
-          .also { it.setSurfaceProvider(previewView.surfaceProvider) }
         val capture = ImageCapture.Builder()
           .setCaptureMode(
             when (props.captureMode) {
@@ -1209,48 +1199,63 @@ open class HybridDocumentScannerCameraView(
           .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
           .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
           .setTargetRotation(targetRotation)
-          .also { observeFrameState(it, generation) }
           .build()
         check(previewView.width > 0 && previewView.height > 0) { "The camera viewport is not measured yet." }
-        // FIT keeps the whole frame in every use case. A square viewport crops all three to the frame's centered
-        // square, so the saved JPEG and the analysis frames match what the preview shows.
-        val viewport = (if (props.squareFrame) ViewPort.Builder(Rational(1, 1), targetRotation).setScaleType(ViewPort.FILL_CENTER)
-          else ViewPort.Builder(Rational(previewView.width, previewView.height), targetRotation).setScaleType(ViewPort.FIT))
-          .setLayoutDirection(previewView.layoutDirection).build()
-        val group = UseCaseGroup.Builder().setViewPort(viewport)
-          .addUseCase(preview).addUseCase(capture).addUseCase(analysis).build()
+        val selector = CameraSelector.DEFAULT_BACK_CAMERA
+        val useCases = listOf(preview, capture, analysis)
+        val range = ProcessCameraProvider.getInstance(themedContext).get().getCameraInfo(selector)
+          .getSupportedFrameRateRanges(SessionConfig(useCases)).toList()
+          .let { CameraExposurePolicy.targetFpsRange(it, props.minFrameRate, { range -> range.lower }, { range -> range.upper }) }
+        logLifecycle("session fpsRange=$range")
+        // The controller replaces the session's viewport with previewView's. FIT keeps the whole frame in every use
+        // case; on a square preview FILL_CENTER crops all three to the frame's centered square, so the saved JPEG and
+        // the analysis frames match what the preview shows.
+        previewView.scaleType = if (props.squareFrame) PreviewView.ScaleType.FILL_CENTER else PreviewView.ScaleType.FIT_CENTER
         liveDetector.begin(props.guide)
         analysis.setAnalyzer(liveDetector.executor, liveDetector.boundAnalyzer())
         val camera = try {
-          provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, group)
+          // Display rotation sets the use cases' target rotation, and a rotation rebinds; the controller must not
+          // follow the device sensor instead.
+          controller.isAutoRotationEnabled = false
+          controller.isPinchToZoomEnabled = false
+          // Taps go to [onPreviewTap].
+          controller.isTapToFocusEnabled = false
+          controller.setSessionConfig(
+            if (range != null) SessionConfig(useCases, frameRateRange = range) else SessionConfig(useCases), selector)
+          previewView.controller = controller
+          controller.bindToLifecycle(lifecycleOwner)
+          val control = controller.cameraControl
+          val info = controller.cameraInfo
+          check(control != null && info != null) { "The camera controller did not bind." }
+          BoundCamera(control, info)
         } catch (error: Throwable) {
+          previewView.controller = null
           analysis.clearAnalyzer()
           liveDetector.stop()
           throw error
         }
-        cameraProvider = provider
+        cameraController = controller
         boundCamera = camera
+        observeFrameState(camera, generation)
         // OFF and EDOF do not scan; minimum focus distance may be missing, so it cannot decide.
-        val cameraInfo = Camera2CameraInfo.from(camera.cameraInfo)
-        val afModes = cameraInfo.getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
+        val characteristics = camera.info.cameraCharacteristics
+        val afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
         hasAutofocus = hasAdjustableAutofocus(afModes)
-        singleShotAutofocus = afModes?.contains(CameraMetadata.CONTROL_AF_MODE_AUTO) == true
         logLifecycle("autofocus adjustable=$hasAutofocus modes=${afModes?.joinToString()} " +
-          "pipelineMaxDepth=${cameraInfo.getCameraCharacteristic(CameraCharacteristics.REQUEST_PIPELINE_MAX_DEPTH)}")
-        liveDetector.cameraOptics = backCameraOptics(camera.cameraInfo)
+          "pipelineMaxDepth=${characteristics.get(CameraCharacteristics.REQUEST_PIPELINE_MAX_DEPTH)}")
+        liveDetector.cameraOptics = backCameraOptics(camera.info)
         // The ImageCapture above was built from these props in this same call; a later change waits for a rebind.
         bound = BoundCapture(props.captureMode, props.jpegQuality,
-          zsl = props.captureMode == CaptureMode.ZSL && camera.cameraInfo.isZslSupported)
-        if (props.captureMode == CaptureMode.ZSL) logLifecycle("zero shutter lag supported=${camera.cameraInfo.isZslSupported}")
+          zsl = props.captureMode == CaptureMode.ZSL && camera.info.isZslSupported)
+        if (props.captureMode == CaptureMode.ZSL) logLifecycle("zero shutter lag supported=${camera.info.isZslSupported}")
         applyExposureCompensation()
-        applyCaptureOptions()
+        aimContinuousFocus()
         applyTorch()
         updateGyroscope()
-        previewUseCase = preview
         imageCapture = capture
         imageAnalysis = analysis
         if (debugLoggingEnabled) {
-          val stateLiveData = camera.cameraInfo.cameraState
+          val stateLiveData = camera.info.cameraState
           val observer = Observer<CameraState> { state ->
             logLifecycle("CameraX state=$state")
           }
@@ -1275,7 +1280,7 @@ open class HybridDocumentScannerCameraView(
     rebindPending = false
     providerRequestGeneration += 1L
     cameraStartRequestInFlight = false
-    val provider = cameraProvider
+    val controller = cameraController
     imageAnalysis?.clearAnalyzer()
     liveDetector.stop()
     liveDetector.cameraOptics = null
@@ -1289,10 +1294,11 @@ open class HybridDocumentScannerCameraView(
       exposureIsoMs = null
     }
     torchControl.reset()
+    // The camera keeps its interop options across bindings; drop this binding's capture callback with it.
+    boundCamera?.let { stopFrameState(it) }
     boundCamera = null
     bound = null
     hasAutofocus = false
-    singleShotAutofocus = false
     focusCandidate = null
     pageArrivedSensorNs = null
     focus.unbind()
@@ -1302,23 +1308,22 @@ open class HybridDocumentScannerCameraView(
     latestModelScore = null
     updateDocumentState(DocumentState.OFF)
     emitAutofocus()
-    val useCases = listOfNotNull(previewUseCase, imageCapture, imageAnalysis).toTypedArray()
-    logLifecycle("camera stop reason=$reason bound=${provider != null && useCases.isNotEmpty()} generation=$providerRequestGeneration")
+    logLifecycle("camera stop reason=$reason bound=${controller != null} generation=$providerRequestGeneration")
     val observer = cameraStateObserver
     val stateLiveData = observedCameraState
     if (observer != null && stateLiveData != null) stateLiveData.removeObserver(observer)
     cameraStateObserver = null
     observedCameraState = null
-    if (provider != null && useCases.isNotEmpty()) {
+    if (controller != null) {
       try {
-        provider.unbind(*useCases)
+        // Detaching unbinds only this controller's session, unlike unbind(), which unbinds every use case.
+        previewView.controller = null
       } catch (_: Throwable) {
         logLifecycle("camera unbind failed reason=$reason")
         // A provider can already be shutting down as its owning Activity stops.
       }
     }
-    cameraProvider = null
-    previewUseCase = null
+    cameraController = null
     imageCapture = null
     imageAnalysis = null
     // PreviewView may never have left IDLE, so its observer would not report the stop.
@@ -1379,12 +1384,13 @@ open class HybridDocumentScannerCameraView(
     }
   }
 
-  /** Unless tapToFocus is false, focuses and meters at the tapped point. */
+  /** Main thread: a tap at ([x], [y]) in [previewView] focuses there, metering the way CameraX's own tap does. A shot
+   * in flight refuses it, since that photo's focus must not change. */
   private fun onPreviewTap(x: Float, y: Float) {
-    if (!props.tapToFocus || x < previewView.left || x >= previewView.right ||
-      y < previewView.top || y >= previewView.bottom) return
-    val camera = boundCamera ?: return
-    focus.tap(camera, previewView.meteringPointFactory.createPoint(x - previewView.left, y - previewView.top))
+    val camera = boundCamera
+    if (!props.tapToFocus || camera == null) return
+    val factory = previewView.meteringPointFactory
+    focus.tap(camera, factory.createPoint(x, y, TAP_FOCUS_AREA), factory.createPoint(x, y, TAP_METERING_AREA))
   }
 
   /** Main thread: sets the bound camera's torch from the mode and the auto decision. A change waits while a photo is in
@@ -1400,51 +1406,31 @@ open class HybridDocumentScannerCameraView(
   /** Main thread: sets the bound camera's AE compensation index from exposureCompensation; a newer call cancels it. */
   private fun applyExposureCompensation() {
     val camera = boundCamera ?: return
-    val state = camera.cameraInfo.exposureState
+    val state = camera.info.exposureState
     if (!state.isExposureCompensationSupported) return
     val range = state.exposureCompensationRange
     val index = CameraExposurePolicy.compensationIndex(
       props.exposureCompensation, state.exposureCompensationStep.toDouble(), range.lower, range.upper,
     )
     logLifecycle("exposure compensation index=$index")
-    camera.cameraControl.setExposureCompensationIndex(index)
+    camera.control.setExposureCompensationIndex(index)
   }
 
   /**
-   * Main thread: sets the AE target frame-rate range from minFrameRate, or clears it to the camera's default at 0, and
-   * points continuous autofocus at the central [CENTRE_FOCUS_AREA] of the frame, where a document is held, so it does
-   * not settle on the background. These options override CameraX's own focus regions, so the centre area is left out
-   * while a tap's or capture's scan holds. That scan runs in single-shot autofocus: a trigger that arrives during a passive
-   * scan of continuous autofocus is ignored on some devices (a Galaxy S21 Ultra held it until the scan ended, or never
-   * acted on it while the scan kept hunting).
+   * Main thread: while no tap's or capture's scan holds the lens, points continuous autofocus at the central
+   * [CENTRE_FOCUS_AREA] of the frame, where a document is held, so it does not settle on the background. The action
+   * locks nothing, so continuous autofocus keeps running; a scan's own action replaces its region, and the scan's
+   * release restores it.
    */
-  @OptIn(ExperimentalCamera2Interop::class)
-  private fun applyCaptureOptions(): ListenableFuture<Void>? {
-    val camera = boundCamera ?: return null
-    val info = Camera2CameraInfo.from(camera.cameraInfo)
-    val available = info.getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES).orEmpty().toList()
-    val range = CameraExposurePolicy.targetFpsRange(available, props.minFrameRate, { it.lower }, { it.upper })
-    val scanHolds = focus.snapshot.scanHolds(SystemClock.uptimeMillis())
-    val sensor = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
-    val regions = info.getCameraCharacteristic(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) ?: 0
-    val centre = if (scanHolds || sensor == null || regions < 1) null else {
-      val halfWidth = (sensor.width() * CENTRE_FOCUS_AREA / 2).toInt()
-      val halfHeight = (sensor.height() * CENTRE_FOCUS_AREA / 2).toInt()
-      MeteringRectangle(
-        Rect(sensor.centerX() - halfWidth, sensor.centerY() - halfHeight, sensor.centerX() + halfWidth, sensor.centerY() + halfHeight),
-        MeteringRectangle.METERING_WEIGHT_MAX,
-      )
+  private fun aimContinuousFocus() {
+    val camera = boundCamera ?: return
+    if (!hasAutofocus || focus.snapshot.owner != null) return
+    val point = SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f, CENTRE_FOCUS_AREA)
+    val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF).setLockingMode(0).disableAutoCancel().build()
+    logLifecycle("continuous focus aimed at the centre")
+    try { camera.control.startFocusAndMetering(action) } catch (error: Exception) {
+      logLifecycle("continuous focus region failed ${error.javaClass.simpleName}")
     }
-    val owner = focus.snapshot.owner
-    logLifecycle("capture options fpsRange=$range centreFocus=${centre != null} owner=$owner")
-    val options = CaptureRequestOptions.Builder()
-    if (range != null) options.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, range)
-    if (centre != null) options.setCaptureRequestOption(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(centre))
-    if (singleShotAutofocus && owner != null) {
-      options.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
-    }
-    // Replaces every option set through Camera2CameraControl, so all of them are set here.
-    return Camera2CameraControl.from(camera.cameraControl).setCaptureRequestOptions(options.build())
   }
 
   private fun updateCaptureState() {
@@ -1464,7 +1450,7 @@ open class HybridDocumentScannerCameraView(
     if (disposed) return
     updateCaptureState()
     val state = when {
-      cameraProvider == null -> if (cameraStartRequestInFlight) ScannerCameraState.STARTING else ScannerCameraState.SUSPENDED
+      cameraController == null -> if (cameraStartRequestInFlight) ScannerCameraState.STARTING else ScannerCameraState.SUSPENDED
       previewView.previewStreamState.value != PreviewView.StreamState.STREAMING -> ScannerCameraState.STARTING
       hasPendingCapture() -> ScannerCameraState.CAPTURING
       else -> ScannerCameraState.READY
@@ -1486,7 +1472,7 @@ open class HybridDocumentScannerCameraView(
 
   /** The document state right after binding or toggling the guide, before any detector result. */
   private fun boundDocumentState(): DocumentState = when {
-    cameraProvider == null || !props.guide -> DocumentState.OFF
+    cameraController == null || !props.guide -> DocumentState.OFF
     liveDetector.hasFailed() -> DocumentState.UNAVAILABLE
     else -> DocumentState.SEARCHING
   }
@@ -1509,19 +1495,26 @@ open class HybridDocumentScannerCameraView(
     if (liveDetector.cameraOptics != null && needed) gyroscope.start() else gyroscope.stop()
   }
 
-  @OptIn(ExperimentalCamera2Interop::class)
-  private fun observeFrameState(builder: ImageAnalysis.Builder, generation: Long) {
+  /**
+   * Receives the bound session's repeating capture results on the camera thread. The controller rebuilds the session
+   * config without its interop options, so the callback is set on the camera control, which keeps it across the
+   * controller's own rebinds.
+   */
+  private fun observeFrameState(camera: BoundCamera, generation: Long) {
     metadataGeneration = generation
-    Camera2Interop.Extender(builder).setSessionCaptureCallback(frameStateCallback(generation))
+    camera.control.applyCamera2InteropAsync { repeatingCaptureCallback = frameStateCallback(generation) }
+  }
+
+  private fun stopFrameState(camera: BoundCamera) {
+    try { camera.control.applyCamera2InteropAsync { repeatingCaptureCallback = null } } catch (_: Exception) { }
   }
 
   /**
    * Logs which frame each photo saved: a still request's SENSOR_TIMESTAMP, which a zero-shutter-lag reprocess shares
    * with its buffered input, against the shot's request. CameraX chooses that frame; this only reports it.
    */
-  @OptIn(ExperimentalCamera2Interop::class)
   private fun observeStillFrames(builder: ImageCapture.Builder, generation: Long) {
-    Camera2Interop.Extender(builder).setSessionCaptureCallback(object : CameraCaptureSession.CaptureCallback() {
+    builder.camera2Interop { stillCaptureCallback = object : CameraCaptureSession.CaptureCallback() {
       override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
         val intent = request.get(CaptureRequest.CONTROL_CAPTURE_INTENT)
         if (intent != CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE &&
@@ -1537,13 +1530,12 @@ open class HybridDocumentScannerCameraView(
             "exposedVsShutter=${shutterNs?.let { (sensorNs - it) / 1_000_000 } ?: "-"}ms")
         }
       }
-    })
+    } }
   }
 
   /** Back-camera optics when its timestamps share the gyroscope clock; otherwise motion compensation stays off. */
-  @OptIn(ExperimentalCamera2Interop::class)
   private fun backCameraOptics(info: CameraInfo): LiveCameraOptics? {
-    val characteristics = Camera2CameraInfo.extractCameraCharacteristics(info)
+    val characteristics = info.cameraCharacteristics
     val optics = if (CameraOpticsReader.sharesGyroClock(characteristics)) CameraOpticsReader.read(characteristics) else null
     logLifecycle("camera optics=$optics")
     return optics
@@ -1717,6 +1709,9 @@ open class HybridDocumentScannerCameraView(
     const val PAGE_LOST_NS = 1_000_000_000L
     /** Side of the central continuous-autofocus area, as a fraction of the sensor's width and height. */
     const val CENTRE_FOCUS_AREA = 0.3f
+    /** Sides of a tap's focus and exposure areas, as fractions of the preview: CameraX's own tap-to-focus sizes. */
+    const val TAP_FOCUS_AREA = 1f / 6f
+    const val TAP_METERING_AREA = TAP_FOCUS_AREA * 1.5f
     /** Status, rate, timing, camera latency and blur. */
     const val STATS_LINES = 8
 

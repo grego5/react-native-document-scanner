@@ -149,6 +149,7 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   qualityGateConfig?: QualityGateConfig
   /**
    * Tapping the preview focuses and meters there for 5 s, after which continuous autofocus resumes; defaults to true.
+   * Taps are ignored while a photo is in flight.
    */
   tapToFocus?: boolean
   /**
@@ -158,8 +159,9 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   exposureCompensation?: number
   /**
    * Lowest frame rate auto-exposure may fall to in dim light, which caps each exposure near 1/minFrameRate s: shorter
-   * exposures blur less but are noisier. Picks the advertised range with the lowest minimum at or above it (the
-   * highest minimum when none reaches it), its maximum nearest 30. Defaults to 0, the camera's own range.
+   * exposures blur less but are noisier. Picks the range the camera supports for its bound use cases with the lowest
+   * minimum at or above it (the highest minimum when none reaches it), its maximum nearest 30. Defaults to 0, the
+   * camera's own range. Changing it rebinds the camera, after any photo in flight settles.
    */
   minFrameRate?: number
   /** Torch mode; defaults to `off`. It applies without rebinding the camera, after any photo in flight settles. */
