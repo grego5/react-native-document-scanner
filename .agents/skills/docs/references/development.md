@@ -25,7 +25,7 @@ Use Android Studio's JDK and the installed SDK; set `JAVA_HOME` for the command 
 - Render timings, private model parity and scene recordings (`RenderTimingTest`, `DocCornerNetRuntimeTest.privatePhotosMeetNativeParityBudgetAndRecordWarmTimings`, `LiveQuadTraceRecordingTest`) are skipped unless the run passes `-e measure true`, so a plain run checks behaviour only.
 - Tests cover dynamic behaviour, lifecycle and concurrency, non-trivial algorithms, security boundaries and the example's session rules. Do not add a test that only pins a single wiring fix, a passthrough or a basic guarantee the code states plainly.
 - Unattended runs exclude `LiveCameraRuntimeTest`: it needs the phone awake and unlocked, and a human to tap every shutter in `CameraValidationActivity`.
-- Focus policy tests now run through JNI: select `com.margelo.nitro.documentscanner.processing.DocumentFocusPolicyTest` and `com.margelo.nitro.documentscanner.FocusControllerTest` with `test:device`. The latter uses a fake CameraX control, clock and futures; it never opens a camera or takes a photo. Shared `focus_contracts` also covers the migrated pure-policy assertions.
+- Focus policy tests: `FocusPolicyTest` and `CaptureGateTest` are JVM unit tests. `com.margelo.nitro.documentscanner.FocusControllerTest` runs with `test:device`; it uses a fake CameraX control, clock and futures, and never opens a camera or takes a photo.
 - Confirm targets with `adb devices`. Report build and device results separately; a build is not a device result.
 
 ## Hand checks
@@ -63,7 +63,7 @@ Compare one switch at a time in the example's Options panel, with the scene, lig
 
 - Shutter focus: with the quality gate on, press while focus is scanning; no photo fires until focus is reported, and the 2 s timeout rejects rather than shoots.
 - Guide validation: a stationary page near competing table edges, then real changes in tilt, rotation, framing and distance, occlusion and focus loss. Replay alone cannot show which visible boundary was the paper.
-- Document focus: an initially defocused page, approach and retreat, pans, target loss, taps during an automatic scan, capture during a pending scan, background and resume.
+- Document focus: an initially defocused page, approach and retreat, pans, target loss and reacquisition, taps on the background before a page arrives, a `quality` capture's scan, `zsl` capture as a page arrives and while autofocus scans, background and resume.
 - Adaptive detection: hold a text page with normal hand tremor, then pan slowly; inference should stay at zero while the guide follows. Move nearer or farther (focus rescans without inference), tilt slightly (the outline reshapes and stays on the edges) and strongly (`shape changed`), cover part of the page (`revalidating`), then remove it. The guide must not survive prolonged target loss. Battery and CPU savings need live measurement.
 - Torch: `auto` in a dim room lights within about a second and stays lit through captures; in an ordinary room it stays off. The stats line shows the exposure × ISO product next to the torch state, for tuning the dark threshold.
 - The stats line's `checks X ms/frame` sums flow, stabilizer and tracked-retention time over every delivered frame. It excludes inference and is not a process-wide CPU measure.

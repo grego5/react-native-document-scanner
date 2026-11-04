@@ -14,7 +14,6 @@
 -keep class com.margelo.nitro.documentscanner.processing.NativeFlowHistory { *; }
 
 -keep class com.margelo.nitro.documentscanner.processing.NativeLiveGuide { *; }
--keep class com.margelo.nitro.documentscanner.processing.NativeFocus { *; }
 
 # Looked up by class name during JNI_OnLoad, including when only diagnostics use a bridge.
 -keep class com.margelo.nitro.documentscanner.processing.FieldKernels { *; }

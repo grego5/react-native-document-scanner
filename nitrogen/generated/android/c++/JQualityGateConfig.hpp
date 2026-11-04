@@ -33,13 +33,10 @@ namespace margelo::nitro::documentscanner {
       static const auto clazz = javaClassStatic();
       static const auto fieldCaptureBlurPercent = clazz->getField<jni::JDouble>("captureBlurPercent");
       jni::local_ref<jni::JDouble> captureBlurPercent = this->getFieldValue(fieldCaptureBlurPercent);
-      static const auto fieldFocusTimeout = clazz->getField<jni::JDouble>("focusTimeout");
-      jni::local_ref<jni::JDouble> focusTimeout = this->getFieldValue(fieldFocusTimeout);
       static const auto fieldRequireFocus = clazz->getField<jni::JBoolean>("requireFocus");
       jni::local_ref<jni::JBoolean> requireFocus = this->getFieldValue(fieldRequireFocus);
       return QualityGateConfig(
         captureBlurPercent != nullptr ? std::make_optional(captureBlurPercent->value()) : std::nullopt,
-        focusTimeout != nullptr ? std::make_optional(focusTimeout->value()) : std::nullopt,
         requireFocus != nullptr ? std::make_optional(static_cast<bool>(requireFocus->value())) : std::nullopt
       );
     }
@@ -50,13 +47,12 @@ namespace margelo::nitro::documentscanner {
      */
     [[maybe_unused]]
     static jni::local_ref<JQualityGateConfig::javaobject> fromCpp(const QualityGateConfig& value) {
-      using JSignature = JQualityGateConfig(jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JBoolean>);
+      using JSignature = JQualityGateConfig(jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JBoolean>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
         value.captureBlurPercent.has_value() ? jni::JDouble::valueOf(value.captureBlurPercent.value()) : nullptr,
-        value.focusTimeout.has_value() ? jni::JDouble::valueOf(value.focusTimeout.value()) : nullptr,
         value.requireFocus.has_value() ? jni::JBoolean::valueOf(value.requireFocus.value()) : nullptr
       );
     }

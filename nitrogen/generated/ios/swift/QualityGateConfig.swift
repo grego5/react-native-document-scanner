@@ -18,15 +18,9 @@ public extension QualityGateConfig {
   /**
    * Create a new instance of `QualityGateConfig`.
    */
-  init(captureBlurPercent: Double?, focusTimeout: Double?, requireFocus: Bool?) {
+  init(captureBlurPercent: Double?, requireFocus: Bool?) {
     self.init({ () -> bridge.std__optional_double_ in
       if let __unwrappedValue = captureBlurPercent {
-        return bridge.create_std__optional_double_(__unwrappedValue)
-      } else {
-        return .init()
-      }
-    }(), { () -> bridge.std__optional_double_ in
-      if let __unwrappedValue = focusTimeout {
         return bridge.create_std__optional_double_(__unwrappedValue)
       } else {
         return .init()
@@ -45,18 +39,6 @@ public extension QualityGateConfig {
     return { () -> Double? in
       if bridge.has_value_std__optional_double_(self.__captureBlurPercent) {
         let __unwrapped = bridge.get_std__optional_double_(self.__captureBlurPercent)
-        return __unwrapped
-      } else {
-        return nil
-      }
-    }()
-  }
-  
-  @inline(__always)
-  var focusTimeout: Double? {
-    return { () -> Double? in
-      if bridge.has_value_std__optional_double_(self.__focusTimeout) {
-        let __unwrapped = bridge.get_std__optional_double_(self.__focusTimeout)
         return __unwrapped
       } else {
         return nil

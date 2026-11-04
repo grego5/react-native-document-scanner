@@ -40,12 +40,11 @@ namespace margelo::nitro::documentscanner {
   struct QualityGateConfig final {
   public:
     std::optional<double> captureBlurPercent     SWIFT_PRIVATE;
-    std::optional<double> focusTimeout     SWIFT_PRIVATE;
     std::optional<bool> requireFocus     SWIFT_PRIVATE;
 
   public:
     QualityGateConfig() = default;
-    explicit QualityGateConfig(std::optional<double> captureBlurPercent, std::optional<double> focusTimeout, std::optional<bool> requireFocus): captureBlurPercent(captureBlurPercent), focusTimeout(focusTimeout), requireFocus(requireFocus) {}
+    explicit QualityGateConfig(std::optional<double> captureBlurPercent, std::optional<bool> requireFocus): captureBlurPercent(captureBlurPercent), requireFocus(requireFocus) {}
 
   public:
     #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
@@ -64,14 +63,12 @@ namespace margelo::nitro {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::documentscanner::QualityGateConfig(
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "captureBlurPercent"))),
-        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "focusTimeout"))),
         JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "requireFocus")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::documentscanner::QualityGateConfig& arg) {
       jsi::Object obj(runtime);
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "captureBlurPercent"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.captureBlurPercent));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "focusTimeout"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.focusTimeout));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "requireFocus"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.requireFocus));
       return obj;
     }
@@ -84,7 +81,6 @@ namespace margelo::nitro {
         return false;
       }
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "captureBlurPercent")))) return false;
-      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "focusTimeout")))) return false;
       if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "requireFocus")))) return false;
       return true;
     }

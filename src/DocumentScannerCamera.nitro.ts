@@ -43,15 +43,11 @@ export type TorchMode = 'off' | 'on' | 'auto'
 /**
  * The camera's behaviour profile.
  *
- * `scanner` tunes the camera for documents. While `guide` is on, the lens parks at a fixed distance, about 30 cm at
- * first and then wherever the last focus lock was, so the live guide finds a page without waiting for autofocus. A
- * valid detected page gets one autofocus scan that locks on it; detection runs independently of lens movement. Losing
- * the page, a tap's five seconds, or a failed scan park the lens again instead of resuming continuous
- * autofocus. A photo waits for that document lock rather than focusing itself. Cameras without manual focus control,
- * and photos that do not wait for focus (`qualityGate` off or a `focusTimeout` of 0), keep `camera` focusing, since a
- * photo on a parked lens must wait for a lock.
+ * `scanner` tunes the camera for documents: continuous autofocus aimed at the centre of the frame, where the guide
+ * holds a page, and captures that accept only a focus reached after the page came into view. Detection runs
+ * independently of lens movement.
  *
- * `camera` is a general-purpose camera: continuous autofocus, with document-driven scans while `guide` is on.
+ * `camera` is a general-purpose camera: continuous autofocus.
  *
  * `off` releases preview, capture and analysis use cases and sensors while keeping the view mounted. An existing
  * capture finishes before release; new capture requests reject with camera/unavailable.
@@ -83,7 +79,7 @@ export type CameraCaptureState = 'unavailable' | 'ready' | 'waiting' | 'shooting
  */
 export interface QualityGateConfig {
   /**
-   * After focus, `takePhoto` waits up to 1.5 s for stable framing whose frames each have blur at or below this over
+   * After focus, `takePhoto` waits up to 1 s for stable framing whose frames each have blur at or below this over
    * their own exposure (see `qualityGate`), and rejects if the camera keeps moving. Every region of the page must stay tracked, so
    * a moving or smeared part of the page holds the shot; the gyroscope fallback checks that frame's exposure. Defaults to 0.2;
    * 0 turns off both the blur and the stability check. With `captureMode` `zsl` the saved frame is a buffered one
@@ -91,14 +87,10 @@ export interface QualityGateConfig {
    */
   captureBlurPercent?: number
   /**
-   * Milliseconds `takePhoto` waits for autofocus to settle, and in `scanner` mode for a confirmed page with it; 0
-   * checks immediately. Defaults to 2000.
-   * On timeout the shot rejects unless `requireFocus` is explicitly false.
-   */
-  focusTimeout?: number
-  /**
-   * `takePhoto` rejects when autofocus has not settled once `focusTimeout` passes, instead of shooting; with a timeout of
-   * 0 it rejects unless focus has settled at the press. Defaults to true. False permits shooting after timeout.
+   * `takePhoto` waits for autofocus to finish and shoots only in focus. It waits up to 4 s, and longer while autofocus
+   * is still moving, so a shot never fires or fails halfway through focusing; autofocus that settled without focus by
+   * then rejects the shot. In `scanner` mode the shot also waits up to 4 s for a confirmed page, then rejects. Defaults
+   * to true. False does not wait for focus, and shoots after those 4 s without a page.
    */
   requireFocus?: boolean
 }
@@ -119,8 +111,6 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   /** Behaviour profile, or `off` to release the camera; defaults to `scanner`. */
   mode?: CameraMode
   /**
-   * Document-driven autofocus is always enabled with guidance; a provisional page can select its focus region.
-   * A successful scan holds focus until distance/target changes or focus failure; taps retain priority.
    * Live DocCornerNet guidance: the guide and its inference; defaults to true. False stops both without rebinding the
    * camera; preview, `takePhoto` and the quality gate continue.
    * Finite, convex, in-frame candidates are accepted immediately, then optical flow carries the outline while inference is paused.
@@ -139,16 +129,18 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   minCornerScore?: number
   /**
    * Capture focus and motion gating; defaults to true. Detection and tracking run independently of focus state.
-   * `takePhoto` starts no focus scan of its own. In
-   * `scanner` mode with `guide` on, document detection owns focus: the call waits for a confirmed page and the lock of
-   * its document scan, or of a tap, while detection keeps acquiring, refocusing and parking. Otherwise it waits for a
-   * tap scan to lock or continuous autofocus to report focused. Either waits up to `qualityGateConfig.focusTimeout`,
-   * then rejects unless `requireFocus` is explicitly false. Supported autofocus ZSL captures then wait for focused,
+   * `captureMode` `quality` starts a focus scan at the page once one is found; `zsl` and `latency` use continuous
+   * autofocus, so they keep their shutter lag. In `scanner` mode with `guide` on, the call waits for a page, then for a
+   * tap's or its own scan to lock, or for continuous autofocus to report focused, as `qualityGateConfig.requireFocus`
+   * describes. Continuous autofocus may still report a focus it reached before the page came into view, on the
+   * background or a hand; that focus does not count. If autofocus is not already refocusing, `zsl` and `latency` then
+   * start one focus scan at the page too. A tap's lock still counts while it holds, wherever the page appeared: the
+   * user chose that focus. Supported autofocus ZSL captures then wait for focused,
    * converged exposure and converged white balance, the states CameraX requires of a buffered frame. With capture
    * motion checking on, framing must also be stable: four consecutive analyzed frames, each moving under 5% of the
    * frame width per second with its own smear within `captureBlurPercent`, while the page holds its position, scale and
    * shape. A focus change restarts that run. Each frame is judged from its own metadata and motion, in order. The shot
-   * fires as soon as everything aligns, with no settling delay; that wait times out after 1500 ms following focus.
+   * fires as soon as everything aligns, with no settling delay; that wait times out 1 s after focus.
    * CameraX still selects the buffered frame, so the photo is the closest available frame, not necessarily one judged.
    * Motion limits come from `qualityGateConfig`. False turns off all of it, whatever the config.
    */
@@ -156,8 +148,7 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   /** Focus and motion settings for `qualityGate`. */
   qualityGateConfig?: QualityGateConfig
   /**
-   * Tapping the preview focuses and meters there for 5 s, after which continuous autofocus resumes, or with
-   * in `scanner` mode the lens stays parked where the tap focused; defaults to true.
+   * Tapping the preview focuses and meters there for 5 s, after which continuous autofocus resumes; defaults to true.
    */
   tapToFocus?: boolean
   /**
@@ -218,7 +209,8 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
 /** Overrides for one capture; camera settings and later shots are unchanged. */
 export interface TakePhotoOptions {
   /** Skip document, focus, lighting and motion waits for this shot. Defaults to false.
-   * Camera readiness and permission checks still apply.
+   * Camera readiness and permission checks still apply. A tap's scan still in progress is waited for until it settles,
+   * unless `requireFocus` is false; the shot then uses continuous autofocus as it stands, or the tap's lock.
    */
   skipQualityGate?: boolean
 }

@@ -28,8 +28,47 @@ class CaptureGateTest {
   @Test
   fun perShotOverrideBypassesEveryWaitWithoutChangingTheNextShotsGate() {
     val blocked = ready.copy(documentFound = false, focused = false, zslReady = false, torchReady = false, steady = false)
-    assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipQualityGate = true).next(blocked))
+    // Without a focus scan to wait for, nothing blocks the overridden shot.
+    assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipQualityGate = true).next(blocked.copy(focusCheckEnabled = false)))
     assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 2_000), CaptureGate(1_500).next(blocked))
+  }
+
+  @Test
+  fun perShotOverrideWaitsOnlyForItsFocusScanToSettle() {
+    val gate = CaptureGate(1_500, skipQualityGate = true)
+    val scanning = ready.copy(documentFound = false, focused = false, zslReady = false, steady = false,
+      focusingUntilMs = Long.MAX_VALUE)
+    // A pending scan wakes the gate by settling, not by a timer.
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, Long.MAX_VALUE), gate.next(scanning))
+    assertEquals(CaptureDecision.Shoot, gate.next(scanning.copy(nowMs = 2_000, focused = true, focusingUntilMs = null)))
+    assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipQualityGate = true).next(scanning.copy(focusingUntilMs = null)))
+  }
+
+  @Test
+  fun autofocusStillMovingOutlastsTheFocusDeadlineUntilItsEvidenceGoesStale() {
+    val gate = CaptureGate(1_500)
+    val moving = ready.copy(focused = false, focusingUntilMs = 2_300)
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_000), gate.next(moving))
+    // Past the deadline, the wait wakes when the newest scanning frame turns stale.
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_300), gate.next(moving.copy(nowMs = 2_000)))
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 6_400), gate.next(moving.copy(nowMs = 6_000, focusingUntilMs = 6_400)))
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.FOCUS),
+      gate.next(moving.copy(nowMs = 6_400)))
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.FOCUS),
+      CaptureGate(1_500).apply { next(moving) }.next(moving.copy(nowMs = 2_000, focusingUntilMs = null)))
+  }
+
+  @Test
+  fun autofocusStillMovingOutlastsTheSteadyDeadlineButAPageNeverDoes() {
+    val gate = CaptureGate(1_500)
+    assertEquals(CaptureDecision.Wait(WaitReason.STEADY, 1_500), gate.next(ready.copy(steady = false)))
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 1_800),
+      gate.next(ready.copy(nowMs = 1_500, focused = false, focusingUntilMs = 1_800)))
+    assertEquals(CaptureDecision.Shoot, gate.next(ready.copy(nowMs = 1_700)))
+    val searching = CaptureGate(1_500)
+    searching.next(ready.copy(documentFound = false, focusingUntilMs = Long.MAX_VALUE))
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.DOCUMENT),
+      searching.next(ready.copy(nowMs = 2_000, documentFound = false, focusingUntilMs = Long.MAX_VALUE)))
   }
 
   @Test

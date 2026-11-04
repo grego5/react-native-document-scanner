@@ -158,7 +158,9 @@ internal sealed interface CaptureDecision {
  * a confirmed page. [focused] and [documentFound] come from the focus controller and the newest frame record.
  * [zslCheckEnabled] requires eligible AF/AE/AWB states in [zslReady] unless focus is skipped.
  * [torchReady] requires no pending torch change, including when focus is skipped.
- * [motionCheckEnabled] enables [steady], the stability check's result for consecutive frames.
+ * [motionCheckEnabled] enables [steady], the stability check's result for consecutive frames. [focusingUntilMs]: until when
+ * autofocus counts as still moving, a scan pending or a recent frame searching; it extends a focus wait past its
+ * deadline, and is null while autofocus is still. A pending scan's is [Long.MAX_VALUE]: its settling is a focus event.
  */
 internal data class CaptureState(
   val nowMs: Long,
@@ -173,14 +175,17 @@ internal data class CaptureState(
   val torchReady: Boolean,
   val motionCheckEnabled: Boolean,
   val steady: Boolean,
+  val focusingUntilMs: Long? = null,
 )
 
 /**
  * The single owner of a capture's readiness and deadlines. Focus, with its page in `scanner` mode, comes first and
  * waits up to the focus timeout from its first evaluation; once it holds, everything must align within [steadyTimeoutMs].
- * Losing focus or the page after that waits within the same deadline. A capture that does not require focus shoots
- * without it at either deadline, still needing light and steadiness. The first evaluation where everything holds shoots;
- * there is no settling delay. Main thread.
+ * Losing focus or the page after that waits within the same deadline. Autofocus still moving extends a focus wait past
+ * either deadline, so a shot never fails or fires halfway through focusing. A capture that does not require focus
+ * shoots without its page at either deadline, still needing light and steadiness. A skipped gate waits only for a focus
+ * scan it started, which settles on its own. The first evaluation where everything holds shoots; there is no settling
+ * delay. Main thread.
  */
 internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQualityGate: Boolean = false) {
   private var focusDeadlineMs = 0L
@@ -190,9 +195,15 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQu
     private set
 
   fun next(captureState: CaptureState): CaptureDecision {
-    // Per-shot override: lifecycle and permission checks remain in the camera before gate evaluation.
-    if (skipQualityGate) return CaptureDecision.Shoot
     val now = captureState.nowMs
+    // Autofocus still moving is waited out, until it stops or its evidence goes stale; only a settled miss fails.
+    fun focusingUntil(reason: WaitReason?) = captureState.focusingUntilMs?.takeIf { reason == WaitReason.FOCUS && it > now }
+    // Per-shot override: lifecycle and permission checks remain in the camera before gate evaluation. Only a focus scan
+    // in progress is waited for, and nothing rejects.
+    if (skipQualityGate) {
+      val until = focusingUntil(WaitReason.FOCUS).takeIf { captureState.focusCheckEnabled && !captureState.focused }
+      return if (until != null) CaptureDecision.Wait(WaitReason.FOCUS, until) else CaptureDecision.Shoot
+    }
     fun blocker(): WaitReason? {
       val needsFocus = captureState.focusCheckEnabled && !focusSkipped
       return when {
@@ -208,6 +219,7 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQu
       if (reason == WaitReason.DOCUMENT || reason == WaitReason.FOCUS) {
         if (focusDeadlineMs == 0L) focusDeadlineMs = now + captureState.focusTimeoutMs
         if (now < focusDeadlineMs) return CaptureDecision.Wait(reason, focusDeadlineMs)
+        focusingUntil(reason)?.let { return CaptureDecision.Wait(reason, it) }
         if (captureState.requireFocus) return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, reason)
         focusSkipped = true
       }
@@ -215,6 +227,7 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQu
     }
     var reason = blocker() ?: return CaptureDecision.Shoot
     if (now < steadyDeadlineMs) return CaptureDecision.Wait(reason, steadyDeadlineMs)
+    focusingUntil(reason)?.let { return CaptureDecision.Wait(reason, it) }
     if ((reason == WaitReason.DOCUMENT || reason == WaitReason.FOCUS) && !captureState.requireFocus) {
       focusSkipped = true
       reason = blocker() ?: return CaptureDecision.Shoot

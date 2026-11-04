@@ -23,9 +23,6 @@ data class QualityGateConfig(
   val captureBlurPercent: Double?,
   @DoNotStrip
   @Keep
-  val focusTimeout: Double?,
-  @DoNotStrip
-  @Keep
   val requireFocus: Boolean?
 ) {
   /* primary constructor */
@@ -34,14 +31,12 @@ data class QualityGateConfig(
     if (this === other) return true
     if (other !is QualityGateConfig) return false
     return Objects.deepEquals(this.captureBlurPercent, other.captureBlurPercent)
-      && Objects.deepEquals(this.focusTimeout, other.focusTimeout)
       && Objects.deepEquals(this.requireFocus, other.requireFocus)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
       captureBlurPercent,
-      focusTimeout,
       requireFocus
     ).contentDeepHashCode()
   }
@@ -54,8 +49,8 @@ data class QualityGateConfig(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(captureBlurPercent: Double?, focusTimeout: Double?, requireFocus: Boolean?): QualityGateConfig {
-      return QualityGateConfig(captureBlurPercent, focusTimeout, requireFocus)
+    private fun fromCpp(captureBlurPercent: Double?, requireFocus: Boolean?): QualityGateConfig {
+      return QualityGateConfig(captureBlurPercent, requireFocus)
     }
   }
 }

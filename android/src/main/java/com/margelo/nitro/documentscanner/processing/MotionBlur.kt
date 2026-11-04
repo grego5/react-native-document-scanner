@@ -10,8 +10,10 @@ internal data class CameraFrameState(
   val afState: Int? = null,
   val opticalStabilization: Boolean? = null,
   val focusDiopters: Float? = null,
-  /** Autofocus was off: a parked lens, whose focus is fixed rather than unknown once [outOfFocus] says it stopped. */
+  /** Autofocus was off: the lens is fixed rather than unknown once [outOfFocus] says it stopped. */
   val manualFocus: Boolean = false,
+  /** As of this frame, the sensor time of the frame on which autofocus last reached focus or a lock, or null. */
+  val focusReachedSensorNs: Long? = null,
   /** Raw CONTROL_AE_STATE and CONTROL_AWB_STATE, which zero-shutter-lag buffering requires converged. */
   val aeState: Int? = null,
   val awbState: Int? = null,

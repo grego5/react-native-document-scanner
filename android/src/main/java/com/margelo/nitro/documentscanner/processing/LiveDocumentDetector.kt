@@ -21,10 +21,12 @@ import java.util.concurrent.atomic.AtomicReference
 
 internal enum class LiveGuideStatus { SEARCHING, DETECTED, TRACKING, HELD, UNAVAILABLE }
 
-/** Main-thread focus hint without image ownership; the quad is upright and normalized to [source]. */
+/** Main-thread focus hint without image ownership; the quad is upright and normalized to [source]. [confirmed]: the
+ * outline is TRACKING, past the score threshold and shape check, rather than provisional. [sensorNs]: the analyzed
+ * frame's sensor timestamp. */
 internal data class LiveFocusCandidate(
-  val quad: DocumentQuad?, val source: OutputTransform, val width: Int, val height: Int,
-  val trusted: Boolean, val focusFailed: Boolean,
+  val quad: DocumentQuad?, val source: OutputTransform, val width: Int, val height: Int, val confirmed: Boolean,
+  val sensorNs: Long,
 )
 
 /** [quad] and the [source] transform and dimensions captured at its acceptance are set for DETECTED, TRACKING and HELD; DETECTED is visible but not confirmed for focus or capture;
@@ -163,6 +165,9 @@ internal class LiveDocumentDetector(
   }
   private var windowStartedNs = 0L
   private var received = 0
+  /** Debug timing: the previous frame record's arrival and the window's longest gap between records. */
+  private var lastRecordNs = 0L
+  private var maxRecordGapNs = 0L
   private var inferred = 0
   private var dropped = 0
   private var totalLatencyMs = 0.0
@@ -259,6 +264,10 @@ internal class LiveDocumentDetector(
   ) {
     synchronized(bindingLock) {
       if (boundGeneration != binding || frameGeneration != flowGeneration || !flowActive) return
+      if (debugLogging) {
+        if (lastRecordNs != 0L) maxRecordGapNs = maxOf(maxRecordGapNs, arrivalNs - lastRecordNs)
+        lastRecordNs = arrivalNs
+      }
       frameHistory.append { sequence ->
         FrameRecord(sequence, sensorTimestampNs, sensorTimestampNs.takeIf { realtime }, arrivalNs, frame, flow,
           motion, gyroSpeed,
@@ -388,9 +397,8 @@ internal class LiveDocumentDetector(
               inferencePaused = adaptive && adaptivePolicy.paused && !unstable))
             publish(LiveDetectionResult(LiveGuideStatus.TRACKING, held.accepted, source, width, height,
               held.acceptanceId, held.holdDeadlineNs, lastToken, startedAt))
-            // The tracked outline keeps the document focus lock current: its scale and focus state decide refocus.
-            postFocusCandidate(lastToken, startedAt,
-              LiveFocusCandidate(held.accepted, source, width, height, true, frame?.outOfFocus == true))
+            // The tracked outline keeps the page, and so continuous autofocus, while inference is paused.
+            postFocusCandidate(lastToken, startedAt, LiveFocusCandidate(held.accepted, source, width, height, true, sensorTimestampNs))
           } else {
             // An expired or invalid tracked guide must wake inference instead of remaining paused forever.
             adaptivePolicy.reset()
@@ -455,8 +463,9 @@ internal class LiveDocumentDetector(
           guideEligible = !scoreRejected, flowRetained = flowRetained,
         ))
       }
-      postFocusCandidate(token, startedAt, LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.quad, sourceTransform, width, height,
-        output.status == LiveQuadStatus.TRACKING, frame?.outOfFocus == true))
+      postFocusCandidate(token, startedAt,
+        LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.quad, sourceTransform, width, height,
+          output.status == LiveQuadStatus.TRACKING, sensorTimestampNs))
       tracking = output.status != LiveQuadStatus.SEARCHING
       if (!flowRetained) adaptivePolicy.reference(output.accepted.takeIf { output.status == LiveQuadStatus.TRACKING })
       if (adaptive && !flowRetained && adaptivePolicy.hasReference) adaptivePolicy.confirmed()
@@ -687,7 +696,9 @@ internal class LiveDocumentDetector(
     if (seconds < (if (listener != null) 1.0 else 5.0)) return
     val frames = inferred.coerceAtLeast(1)
     if (debugLogging) {
-      Log.d("RNDocumentScannerLive", "rate=${inferred / seconds}Hz received=$received inferred=$inferred skipped=$dropped meanAnalysisMs=${totalLatencyMs / frames}")
+      Log.d("RNDocumentScannerLive", "rate=${inferred / seconds}Hz received=$received inferred=$inferred skipped=$dropped meanAnalysisMs=${totalLatencyMs / frames} " +
+        "maxRecordGapMs=${maxRecordGapNs / 1_000_000}")
+      maxRecordGapNs = 0L
     }
     if (listener != null) {
       val stats = LiveDetectionStats(

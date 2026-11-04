@@ -1,31 +1,20 @@
 package com.margelo.nitro.documentscanner
 
-import android.graphics.Matrix
-import android.util.Size
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraControl
 import androidx.camera.core.FocusMeteringResult
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
-import androidx.camera.view.transform.OutputTransform
 import androidx.test.platform.app.InstrumentationRegistry
-import com.facebook.soloader.SoLoader
-import com.margelo.nitro.JNIOnLoad
-import com.margelo.nitro.documentscanner.processing.LiveFocusCandidate
 import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.lang.reflect.Proxy
 import java.util.concurrent.Executor
 import org.junit.Assert.*
-import org.junit.Before
 import org.junit.Test
 
 /** Fake CameraX futures/clock; no camera opens or shutter calls. All policy/hardware adaptation runs on main. */
 class FocusControllerTest {
-  @Before fun initializeNative() {
-    SoLoader.init(InstrumentationRegistry.getInstrumentation().targetContext, false)
-    JNIOnLoad.initializeNativeNitro()
-  }
   private fun main(block: () -> Unit) {
     var failure: Throwable? = null
     InstrumentationRegistry.getInstrumentation().runOnMainSync { try { block() } catch (error: Throwable) { failure = error } }
@@ -40,7 +29,7 @@ class FocusControllerTest {
       val locked = h.focus.snapshot.generation
       h.shot = true; h.advance(5000)
       assertEquals(FocusOwner.TAP,h.focus.snapshot.owner)
-      h.shot = false; h.focus.afterCapture(true)
+      h.shot = false; h.focus.afterCapture()
       assertNull(h.focus.snapshot.owner)
       assertTrue(h.focus.snapshot.generation > locked)
       assertNull(h.options.last().owner)
@@ -65,100 +54,42 @@ class FocusControllerTest {
       assertEquals(beforeClose,h.events.size)
     }
   }
-  @Test fun retriggerKeepsPolicyGenerationAndOnlyLatestAttemptCanSettle() = main {
+  @Test fun aScanTriggersOnlyOnceItsOptionsApplyAndNeverRepeats() = main {
     Harness().use { h ->
-      h.candidate(); val first = h.futures.last(); val generation = h.focus.snapshot.generation
-      h.advance(700)
-      assertEquals(2,h.futures.size)
-      assertEquals(generation,h.focus.snapshot.generation)
-      first.set(FocusMeteringResult.create(true))
-      assertNull(h.focus.snapshot.locked)
+      val applied = ControlledFuture<Void?>()
+      h.pendingOptions = applied
+      h.capture()
+      assertEquals(0,h.futures.size)
+      applied.set(null)
+      assertEquals(1,h.futures.size)
+      h.advance(1900)
+      assertEquals(1,h.futures.size)
       h.futures.last().set(FocusMeteringResult.create(true))
       assertTrue(h.focus.snapshot.locked == true)
-      h.advance(2500)
-      assertEquals(FocusOwner.DOCUMENT,h.focus.snapshot.owner)
     }
   }
-  @Test fun documentTimeoutSettlesButShotDefersReleaseUntilAfterCapture() = main {
+  @Test fun captureScanTimeoutSettlesAndHoldsTheLensUntilAfterCapture() = main {
     Harness().use { h ->
-      h.candidate(); h.shot = true; h.advance(2000)
+      h.capture()
+      assertEquals(FocusOwner.CAPTURE,h.focus.snapshot.owner)
+      h.advance(2000)
       assertEquals(false,h.focus.snapshot.locked)
-      assertEquals(FocusOwner.DOCUMENT,h.focus.snapshot.owner)
-      assertEquals(1,h.futures.size)
-      h.shot = false; h.focus.afterCapture(true)
+      h.advance(5000)
+      assertEquals(FocusOwner.CAPTURE,h.focus.snapshot.owner)
+      h.focus.afterCapture()
       assertNull(h.focus.snapshot.owner)
-    }
-  }
-  @Test fun targetLossDeadlineReleasesWithoutInventingNewGeometry() = main {
-    Harness().use { h ->
-      h.candidate(); h.futures.last().set(FocusMeteringResult.create(true))
-      h.advance(200); h.candidate()
-      h.advance(500); h.candidate(null)
-      h.advance(1199); assertEquals(FocusOwner.DOCUMENT,h.focus.snapshot.owner)
-      h.advance(1200); assertNull(h.focus.snapshot.owner)
-      assertEquals(1,h.futures.size)
-      h.advance(1300); h.candidate()
-      assertEquals(2,h.futures.size)
-    }
-  }
-  @Test fun lateSuccessReleasesAnAlreadyMissingTargetUnlessAShotHoldsIt() = main {
-    for (shot in listOf(false, true)) Harness().use { h ->
-      h.candidate()
-      h.advance(100); h.candidate(null)
-      h.advance(1500)
-      h.shot = shot
-      h.futures.last().set(FocusMeteringResult.create(true))
-      if (shot) {
-        assertEquals(FocusOwner.DOCUMENT, h.focus.snapshot.owner)
-        h.shot = false
-        h.focus.afterCapture(true)
-      }
-      assertNull(h.focus.snapshot.owner)
-      assertEquals(1, h.cancels)
-      h.advance(3000)
-      assertNull(h.focus.snapshot.owner)
-    }
-  }
-  @Test fun confirmedScaleChangeAndFailureRetryStillNeedFreshCandidates() = main {
-    Harness().use { h ->
-      h.candidate(); h.futures.last().set(FocusMeteringResult.create(true))
-      h.advance(100); h.candidate()
-      h.advance(200); h.candidate(h.largePage)
-      assertEquals(1,h.futures.size)
-      h.advance(300); h.candidate(h.largePage)
-      assertEquals(2,h.futures.size)
-      h.futures.last().set(FocusMeteringResult.create(false))
-      assertNull(h.focus.snapshot.owner)
-      h.advance(1299); h.candidate()
-      assertEquals(2,h.futures.size)
-      h.advance(1300)
-      assertEquals(2,h.futures.size) // Wakeup alone does not reuse the last candidate.
-      h.candidate(); assertEquals(3,h.futures.size)
+      assertNull(h.options.last().owner)
+      assertEquals(1,h.cancels)
     }
   }
   @Test fun shotsBlockTakeoverWhileAWaitingCaptureDoesNotOwnFocus() = main {
     Harness().use { h ->
-      h.shot = true; h.tap(); h.candidate()
+      h.shot = true; h.tap(); h.capture()
       assertTrue(h.futures.isEmpty())
-      h.shot = false; h.candidate()
-      assertEquals(FocusOwner.DOCUMENT,h.focus.snapshot.owner)
-      h.tap()
-      assertEquals(FocusOwner.TAP,h.focus.snapshot.owner)
-      h.candidate(h.largePage)
-      assertEquals(2,h.futures.size)
-    }
-  }
-  @Test fun unavailableMeteringPointUsesFailureCooldownAndOldTargetCannotHoldLens() = main {
-    Harness().use { h ->
-      h.candidate(); h.futures.last().set(FocusMeteringResult.create(true))
-      h.advance(100); h.candidate()
-      h.advance(200); h.candidate(h.largePage)
-      h.advance(300); h.candidate(h.largePage, validPoint = false)
       assertNull(h.focus.snapshot.owner)
-      h.advance(1299); h.candidate()
+      h.shot = false; h.tap()
+      assertEquals(FocusOwner.TAP,h.focus.snapshot.owner)
       assertEquals(1,h.futures.size)
-      h.advance(1300); h.candidate()
-      assertEquals(2,h.futures.size)
     }
   }
   private class ControlledFuture<T> : ListenableFuture<T> {
@@ -192,19 +123,20 @@ class FocusControllerTest {
     override val mainExecutor = Executor { it.run() }
     override fun shotInFlight() = shot
     override fun uptimeNs() = now * 1_000_000
-    override fun applyCaptureOptions() { options.add(focus.snapshot) }
+    /** The next options' future, or null for options the camera has at once. */
+    var pendingOptions: ControlledFuture<Void?>? = null
+    @Suppress("UNCHECKED_CAST")
+    override fun applyCaptureOptions(): ListenableFuture<Void>? {
+      options.add(focus.snapshot)
+      return pendingOptions?.also { pendingOptions = null } as ListenableFuture<Void>?
+    }
     override fun postDelayed(delayMs: Long, block: () -> Unit) { tasks.add((now + delayMs) to block) }
     override fun log(message: String) = Unit
     override fun focusChanged(snapshot: FocusSnapshot) { events.add(snapshot) }
     val focus = FocusController(this)
-    val page = rect(.2,.2,.8,.8)
-    val largePage = rect(.16,.16,.84,.84)
     private val point = SurfaceOrientedMeteringPointFactory(100f,100f).createPoint(50f,50f)
     fun tap() = focus.tap(camera,point)
-    fun candidate(quad: DocumentQuad? = page, validPoint: Boolean = true) = focus.onCandidate(
-      LiveFocusCandidate(quad,OutputTransform(Matrix(),Size(1000,1000)),1000,1000,true,false),true) {
-      point.takeIf { validPoint }
-    }
+    fun capture() = focus.capture(camera,point)
     fun advance(time: Long) {
       now = time
       var iterations = 0
@@ -215,6 +147,5 @@ class FocusControllerTest {
       }
     }
     override fun close() = focus.close()
-    private fun rect(l: Double,t: Double,r: Double,b: Double) = DocumentQuad(DocumentPoint(l,t),DocumentPoint(r,t),DocumentPoint(r,b),DocumentPoint(l,b))
   }
 }
