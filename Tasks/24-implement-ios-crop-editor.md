@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Completed
 Complexity: High
 Dependencies: [05](05-share-image-geometry.md), [08](08-share-document-filters.md), [19](19-implement-ios-source-store.md), [21](21-implement-ios-processor.md)
 
@@ -62,3 +62,97 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 
 feat(ios): add native document crop editor
 
+## Implementation report — 2026-11-05
+
+Changed files:
+
+- `ios/CropEditorView.swift`: UIKit editor over a contain-fitted upright photo. The
+  photo is a `UIImageView` and the outline, handles, edge grips and magnifier are
+  layers, so a drag only moves layers. Corner and edge drags snap the grabbed handle
+  under the finger, keep the last valid quad and publish once on release. The first
+  finger picks handle or viewport for the whole sequence. Two-finger pinch and pan
+  count translation once, up to 5x, and the pan stops at the photo's edges. A double
+  tap fits again, and a handle press breaks the tap sequence. Handles keep their
+  screen size. The magnifier sits above the finger, or beside it away from the
+  nearer edge, glides on a display link, and scales `max(3 / zoom, 1.5)`. Touch
+  entry points take IDs and times, so tests drive them without synthesized
+  `UITouch`es.
+- `ios/CropQuadEditing.swift` and `ScannerCropGeometry` (in
+  `ios/ScannerDocumentRender.h/.mm`): move, clamp and editor validity through the
+  shared `moveCorner`, `moveEdge`, `clampToFrame` and `validCropQuad`. Validity also
+  requires finite coordinates inside the photo, matching Android's editor check.
+- `ScannerDocumentRenderer.filterPreview`: draws the photo into opaque RGBA8 at most
+  2400 on its long side, runs the shared `filterDocument` without shadow removal, and
+  returns an independent 32-bit image.
+- `ios/HybridDocumentCropEditorView.swift`: Nitro boundary ported from Android. It
+  binds the original through `SessionPageBinding` only while attached, and decodes
+  JPEG/PNG/TIFF upright at most 4096 on the session image worker. `onLoad` reports
+  the decoded size. Filter previews run on the same worker, keeping the current
+  image meanwhile. Load and filter generations discard outdated results. Presets
+  classify none, auto or custom with full frame first. Methods run on main. Detach
+  releases the image and pin; unmount, removal and close invalidate draft
+  operations; only `submit` mutates the page.
+- `ios/DocumentRenderService.swift`: `filterIndex` is internal for the preview.
+- `ios/Tests/CropEditorTests.swift`: 17 tests covering:
+  - corner snap and clamp, edge clamp and last-valid quad, invalid drags and quads,
+    and replacement cancelling a drag
+  - touches that start before the photo is shown
+  - two-finger pan, simultaneous pinch and pan, the zoom cap, and double tap with a
+    handle break
+  - handle screen size and zoomed edits
+  - magnifier placement and magnification
+  - the ported Android session-draft test, the auto preset without a candidate, and
+    prop/session/page replacement
+  - EXIF-rotated TIFF/PNG/JPEG originals, failed loads, and the capped off-main
+    filter preview leaving the page and original bytes unchanged
+  - stale filter and photo results
+  - detach, reattach and removal
+- Docs: architecture reference (per-platform editor ownership and the iOS
+  saved-crop rule) and `ios/README.md`.
+
+Decision: a saved crop outside the photo, which renders allow, is invalid input, as
+on Android. A Swift `afterUpdate` cannot throw, so iOS reports it through `onError`
+and shows the clamp (or the full frame when even that is invalid) as a suggestion.
+`getQuad` and `submit` reject, and no preset is classified, until an edit or preset
+replaces it, so opening the editor never changes the saved crop on its own.
+
+Review follow-up (same day):
+
+- The out-of-frame crop handling above replaced an earlier version in which the clamp
+  became the draft and `submit` could save it without any user choice.
+- Clearing the photo (detach, unmount, removal) now cancels the touch sequence in
+  progress: a drag returns to its starting quad, the magnifier's display link stops,
+  and further moves are ignored until every finger lifts. Handle moves also ignore an
+  empty content rect.
+- A touch held longer than 0.5 s is not a tap, so a long press never starts a double
+  tap.
+- Tests: the prop-replacement test covers the suggestion, the rejected reads and
+  submits, and choosing by preset and by edit. The lifecycle test removes the page
+  during a corner drag. The double-tap test covers a long press.
+- Checks: `npm run check` 41 passed; vmac `41968072125` CropEditorTests 17/17 passed.
+
+Checks:
+
+- `npm run check`: 41 passed.
+- vmac (GitHub Actions `ios-validation.yml`, `macos-15-intel` simulator, scheme
+  `ReactNativeDocumentScanner-Unit-ScaffoldTests`):
+  - `41920803102`: simulator discovery failed before the build (infrastructure).
+  - `41921895589`: build error, missing explicit `self` in a closure; fixed.
+  - `41923892078`: 29 tests, 2 failing on wrong expectations. A press on a moved
+    corner re-snaps with float rounding, and a page without an explicit crop takes
+    the analysis candidate. Tests corrected. DocumentRender 7/7 and Scaffold 5/5
+    passed.
+  - `41927369595`: 54 tests, 0 failures: CropEditor 17, ImagePager 8, ImageViewer 12,
+    ScanSession 17.
+- Not run:
+  - Shared C++ geometry tests: the code is unchanged; the bridge only wraps it.
+  - Physical-device touch feel, magnifier glide and pinch feel.
+  - Android: its code is unchanged.
+
+Limitations:
+
+- The editor handles raw touches. Inside a scrolling parent, UIKit's pan
+  recognizer can still claim a drag; Android's `requestDisallowInterceptTouchEvent`
+  has no direct counterpart.
+- Magnifier gliding is time-based and was checked only for its first-frame
+  placement.

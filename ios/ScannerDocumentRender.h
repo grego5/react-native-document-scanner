@@ -1,3 +1,4 @@
+#import <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -38,6 +39,28 @@ FOUNDATION_EXPORT NSErrorDomain const ScannerRenderErrorDomain;
                                     thumbnail:(NSURL *)thumbnail
                             thumbnailLongSide:(NSInteger)thumbnailLongSide
                                         error:(NSError **)error;
+/// The upright image under a document filter, without shadow removal, scaled to at
+/// most `longSide` pixels on its long side. Synchronous on the caller's worker.
++ (nullable CGImageRef)filterPreview:(CGImageRef)image
+                            longSide:(NSInteger)longSide
+                              filter:(NSInteger)filter
+                               error:(NSError **)error CF_RETURNS_RETAINED;
+@end
+
+/// Shared crop-editor geometry over normalized upright TL/TR/BR/BL x,y pairs.
+@interface ScannerCropGeometry : NSObject
+- (instancetype)init NS_UNAVAILABLE;
++ (NSArray<NSNumber *> *)clamp:(NSArray<NSNumber *> *)quad;
+/// Inside the photo, clockwise and not collapsed: what an edited crop must be.
++ (BOOL)validCrop:(NSArray<NSNumber *> *)quad;
+/// The quad with corner `index` moved to (x, y), or edge `index` (from that corner to
+/// the next) moved by (x, y) and shortened at the photo's bounds; nil when the result
+/// is crossed, concave or collapsed.
++ (nullable NSArray<NSNumber *> *)move:(NSArray<NSNumber *> *)quad
+                                 index:(NSInteger)index
+                                     x:(double)x
+                                     y:(double)y
+                                  edge:(BOOL)edge;
 @end
 
 /// Streams the shared PDF serializer into `output`. Eligible JPEG/four-bit gray

@@ -148,7 +148,7 @@ enum DocumentRenderService {
     }
   }
 
-  private static func filterIndex(_ filter: DocumentFilter) -> Int {
+  static func filterIndex(_ filter: DocumentFilter) -> Int {
     switch filter {
     case .none: return 0
     case .enhance: return 1

@@ -3,6 +3,8 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <document_scanner/DocumentFilters.hpp>
 #include <document_scanner/Geometry.hpp>
@@ -273,6 +275,112 @@ struct Buffer final {
                                                curved:geometric.curved
                                               polygon:polygon];
   });
+}
+
++ (CGImageRef)filterPreview:(CGImageRef)image
+                   longSide:(NSInteger)longSide
+                     filter:(NSInteger)filter
+                      error:(NSError **)error {
+  return guarded(error, [&]() -> CGImageRef {
+    if (!image || longSide <= 0 || longSide > 4096 || filter < 0 || filter > 3)
+      throw std::invalid_argument("Invalid filter preview.");
+    const size_t sourceWidth = CGImageGetWidth(image);
+    const size_t sourceHeight = CGImageGetHeight(image);
+    if (sourceWidth == 0 || sourceHeight == 0)
+      throw std::invalid_argument("Invalid filter preview.");
+    const double scale = std::min(
+        1.0, double(longSide) / double(std::max(sourceWidth, sourceHeight)));
+    const auto side = [&](size_t value) {
+      return uint32_t(std::max(1.0, std::round(double(value) * scale)));
+    };
+    const uint32_t width = side(sourceWidth), height = side(sourceHeight);
+    // Opaque RGBA8 the shared filters borrow for this call only.
+    std::vector<std::byte> rgba(size_t(width) * height * 4);
+    CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    const auto context = [&](void *data, size_t stride) {
+      CGContextRef value = CGBitmapContextCreate(
+          data, width, height, 8, stride, srgb,
+          kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+      if (!value)
+        throw std::runtime_error("Cannot create filter context.");
+      CGContextSetInterpolationQuality(value, kCGInterpolationHigh);
+      return value;
+    };
+    CGContextRef input = nullptr, output = nullptr;
+    CGImageRef filtered = nullptr;
+    try {
+      input = context(rgba.data(), size_t(width) * 4);
+      CGContextSetRGBFillColor(input, 1, 1, 1, 1);
+      CGContextFillRect(input, CGRectMake(0, 0, width, height));
+      CGContextDrawImage(input, CGRectMake(0, 0, width, height), image);
+      const OwnedPixels pixels(
+          std::move(rgba), {PixelFormat::rgba8, {width, height}, size_t(width) * 4, 4,
+                            {0, 0, width, height}, Orientation::upright});
+      Buffer page;
+      filterDocument(pixels.lease(), static_cast<DocumentFilter>(filter), false,
+                     PixelFormat::rgb8, page.allocator());
+      filtered = makeImage(page.bytes.data(), page.width, page.height,
+                           page.channels(), page.stride());
+      // An independent 32-bit copy, so the result outlives `page` and composites directly.
+      output = context(nullptr, 0);
+      CGContextDrawImage(output, CGRectMake(0, 0, width, height), filtered);
+      CGImageRef result = CGBitmapContextCreateImage(output);
+      if (!result)
+        throw std::runtime_error("Cannot create filter preview.");
+      CGImageRelease(filtered);
+      CGContextRelease(output);
+      CGContextRelease(input);
+      CGColorSpaceRelease(srgb);
+      return result;
+    } catch (...) {
+      CGImageRelease(filtered);
+      CGContextRelease(output);
+      CGContextRelease(input);
+      CGColorSpaceRelease(srgb);
+      throw;
+    }
+  });
+}
+@end
+
+namespace {
+NSArray<NSNumber *> *numbers(const Quad &quad) {
+  NSMutableArray<NSNumber *> *values = [NSMutableArray arrayWithCapacity:8];
+  for (document_scanner::Point p : quad) {
+    [values addObject:@(p.x)];
+    [values addObject:@(p.y)];
+  }
+  return values;
+}
+} // namespace
+
+@implementation ScannerCropGeometry
++ (NSArray<NSNumber *> *)clamp:(NSArray<NSNumber *> *)quad {
+  if (quad.count != 8)
+    return quad;
+  return numbers(geometry::clampToFrame(quadFrom(quad)));
+}
+
++ (BOOL)validCrop:(NSArray<NSNumber *> *)quad {
+  if (quad.count != 8)
+    return NO;
+  for (NSNumber *value in quad)
+    if (!std::isfinite(value.doubleValue) || value.doubleValue < 0 || value.doubleValue > 1)
+      return NO;
+  return geometry::validCropQuad(quadFrom(quad));
+}
+
++ (NSArray<NSNumber *> *)move:(NSArray<NSNumber *> *)quad
+                        index:(NSInteger)index
+                            x:(double)x
+                            y:(double)y
+                         edge:(BOOL)edge {
+  if (quad.count != 8 || index < 0 || index > 3)
+    return nil;
+  const Quad current = quadFrom(quad);
+  const auto next = edge ? geometry::moveEdge(current, size_t(index), {x, y})
+                         : geometry::moveCorner(current, size_t(index), {x, y});
+  return next ? numbers(*next) : nil;
 }
 @end
 

@@ -96,6 +96,21 @@ It then queues cache/observer/registry release; `drain` joins queued cleanup. Ex
 remain valid and release buffers on their final native owner. Failed deferred
 removal is logged and remains retryable through explicit retirement.
 
+## Crop editor
+
+`HybridDocumentCropEditorView` binds a session page's original through
+`SessionPageBinding` and keeps the unsubmitted draft in `CropEditorView`. Corner
+and edge moves, clamping and validity come from the shared crop geometry through
+`ScannerCropGeometry`; filter previews come from the shared filters through
+`ScannerDocumentRenderer.filterPreview`, on the session image worker. Methods
+arriving from JavaScript run on main. Unmount, page removal and session close
+invalidate the binding, pending reads and the draft; only `submit` mutates the page.
+Clearing the photo, on detach, unmount or removal, cancels the touch sequence in
+progress, and an abandoned drag returns to its starting quad. A saved crop the editor
+cannot edit is reported as invalid input; the editor shows its clamp as a
+suggestion, and reading or submitting the draft fails until an edit or preset
+replaces it.
+
 ## Binding generation
 
 Run `npm run nitrogen` in the repository. The version-guarded wrapper copies the
