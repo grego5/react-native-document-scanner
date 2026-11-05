@@ -10,13 +10,17 @@ import UIKit
 ///
 /// The bound scan session is borrowed: stopping or detaching the camera never closes it, and a
 /// replaced or closed session advances `sessionGeneration`, which later capture publication
-/// checks. The shutter is not implemented yet: `takePhoto` rejects, and capture state stays
-/// `unavailable`.
+/// checks. The camera starts only once `quadTensorModel` is prepared; a preparation failure keeps
+/// it suspended until the source changes. Live guidance analyzes the camera's frames on its frame
+/// queue and publishes here. The shutter is not implemented yet: `takePhoto` rejects, and capture
+/// state stays `unavailable`.
 final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec, @unchecked Sendable {
   private let camera: any CameraSessionControl
   private let permissions: CameraPermissions
   private let notifications: NotificationCenter
   private let inBackground: () -> Bool
+  private let models: (String, @escaping (ScannerErrorCode?) -> Void) -> Void
+  let detector: LiveDocumentDetector
 
   private lazy var preview: CameraPreviewView = MainActor.assumeIsolated {
     let preview = CameraPreviewView()
@@ -54,7 +58,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   var onCameraStateChange: ((_ state: CameraState) -> Void)? = nil { didSet { reportedState = nil } }
   var onCaptureStateChange: ((_ state: CameraCaptureState) -> Void)? = nil { didSet { captureReported = false } }
   var onAutofocusChange: ((_ state: AutofocusState) -> Void)? = nil { didSet { autofocusReported = false } }
-  var onDocumentStateChange: ((_ state: DocumentState) -> Void)? = nil { didSet { documentReported = false } }
+  var onDocumentStateChange: ((_ state: DocumentState) -> Void)? = nil { didSet { reportedDocument = nil } }
   var onCaptureStage: ((_ stage: CaptureStage, _ waitReason: CaptureWaitReason?) -> Void)? = nil
 
   // Main only.
@@ -80,22 +84,35 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var reportedState: CameraState?
   private var captureReported = false
   private var autofocusReported = false
-  private var documentReported = false
+  private var documentState = DocumentState.off
+  private var reportedDocument: DocumentState?
+  /// The source the camera waits for; nil before the first update.
+  private var requestedModel: String?
+  private var modelReady = false
+  private var guideOn = true
+  private var resolvedScore = 0.95
   private var borrowed: ScanSessionState?
   private var removeSessionObserver: (() -> Void)?
   /// Advances when the bound session is replaced or closes; capture publication must match it.
   private(set) var sessionGeneration = 0
 
   init(camera: (any CameraSessionControl)? = nil, permissions: CameraPermissions = .shared,
-       notifications: NotificationCenter = .default, inBackground: (() -> Bool)? = nil) {
+       notifications: NotificationCenter = .default, inBackground: (() -> Bool)? = nil,
+       models: ((String, @escaping (ScannerErrorCode?) -> Void) -> Void)? = nil,
+       detector: LiveDocumentDetector? = nil) {
     self.camera = camera ?? AVCameraSession()
     self.permissions = permissions
     self.notifications = notifications
     self.inBackground = inBackground ?? {
       MainActor.assumeIsolated { UIApplication.shared.applicationState == .background }
     }
+    self.models = models ?? { QuadModelLoader.shared.load($0, completion: $1) }
+    let detector = detector ?? LiveDocumentDetector()
+    self.detector = detector
     super.init()
     self.camera.onEvent = { [weak self] in self?.handle($0) }
+    self.camera.frameSink = { detector.analyze($0, sensorNs: $1) }
+    detector.onResult = { [weak self] in self?.guideResult($0) }
   }
 
   func afterUpdate() {
@@ -107,6 +124,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       let next = CameraRequest(analysisWidth: CameraFormatPolicy.analysisWidth(analysisWidth))
       if next != request { request = next; failed = false }
       preview.square = squareFrame ?? false
+      updateGuide()
+      updateModel()
       evaluate()
       report()
     }
@@ -117,6 +136,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     MainActor.assumeIsolated {
       guard !dropped else { return }
       dropped = true
+      camera.frameSink = nil
       stopObserving()
       removeSessionObserver?(); removeSessionObserver = nil
       borrowed = nil
@@ -190,13 +210,16 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// Starts, restarts or stops the camera to match the current conditions.
   private func evaluate() {
     let sized = MainActor.assumeIsolated { preview.bounds.width > 0 && preview.bounds.height > 0 }
-    let wanted = !dropped && active && attached && foreground && sized && permissions.status() == .granted
+    let wanted = !dropped && active && attached && foreground && sized && modelReady
+      && permissions.status() == .granted
     if !wanted {
       stopCamera()
     } else if started != request && !failed {
       stopCamera()
       started = request
+      detector.begin(enabled: guideOn)
       camera.start(request)
+      setDocumentState(boundDocumentState)
     }
     report()
   }
@@ -209,6 +232,9 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   }
 
   private func reset() {
+    detector.stop()
+    MainActor.assumeIsolated { preview.guide.clear() }
+    setDocumentState(.off)
     streaming = false
     configuration = nil
     frameSize = nil
@@ -254,7 +280,10 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
         coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.initial, .new]) {
           [weak self] coordinator, _ in
           let angle = Double(coordinator.videoRotationAngleForHorizonLevelCapture)
-          DispatchQueue.main.async { self?.captureAngle = angle }
+          DispatchQueue.main.async {
+            self?.captureAngle = angle
+            self?.updateDetectorSettings()
+          }
         },
       ]
       preview.rotate()
@@ -265,6 +294,84 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   func setRotation(preview previewAngle: Double, capture: Double) {
     MainActor.assumeIsolated { preview.rotationAngle = previewAngle }
     captureAngle = capture
+    updateDetectorSettings()
+  }
+
+  // MARK: - Live guidance
+
+  private var boundDocumentState: DocumentState {
+    guard started != nil, guideOn else { return .off }
+    return detector.state.hasFailed ? .unavailable : .searching
+  }
+
+  private func setDocumentState(_ state: DocumentState) {
+    documentState = state
+    MainActor.assumeIsolated { preview.guide.viewfinder = state == .searching }
+  }
+
+  /// Guide props apply without restarting the camera.
+  private func updateGuide() {
+    var score = minCornerScore ?? 0.95
+    if !score.isFinite || score < 0 || score > 1 {
+      onError?(ScannerFailure(code: .inputInvalid))
+      score = 0.95
+    }
+    resolvedScore = score
+    MainActor.assumeIsolated {
+      let overlay = preview.guide
+      overlay.color = guideColor.flatMap { $0.isFinite ? UInt32(truncatingIfNeeded: Int64($0)) : nil }
+        ?? LiveGuideOverlay.defaultColor
+      overlay.transitionNs = guideTransitionDuration.flatMap { $0.isFinite ? Int64(max(0, $0) * 1_000_000) : nil }
+        ?? QuadTransition.defaultDurationNs
+    }
+    updateDetectorSettings()
+    let nextGuide = guide ?? true
+    guard nextGuide != guideOn else { return }
+    guideOn = nextGuide
+    guard started != nil else { return }
+    detector.setEnabled(nextGuide)
+    MainActor.assumeIsolated { preview.guide.clear() }
+    setDocumentState(boundDocumentState)
+  }
+
+  private func updateDetectorSettings() {
+    detector.update(LiveDocumentDetector.Settings(adaptive: adaptiveDetection ?? false, minCornerScore: resolvedScore,
+                                                  rotationAngle: captureAngle, square: squareFrame ?? false))
+  }
+
+  private func guideResult(_ result: LiveGuideResult) {
+    guard !dropped, started != nil, guideOn else { return }
+    switch result.status {
+    case .searching: setDocumentState(.searching)
+    case .tracking: setDocumentState(.tracking)
+    case .held: setDocumentState(.held)
+    case .unavailable: setDocumentState(.unavailable)
+    }
+    MainActor.assumeIsolated { preview.guide.show(result) }
+    report()
+  }
+
+  /// A new source stops the camera until it is prepared; a failure keeps it suspended until the
+  /// source changes.
+  private func updateModel() {
+    let source = quadTensorModel ?? ""
+    guard source != requestedModel else { return }
+    requestedModel = source
+    modelReady = false
+    failed = false
+    detector.invalidate()
+    // Completions arrive on main.
+    models(source) { [weak self] code in
+      guard let self, !dropped, requestedModel == source, code != .modelSuperseded else { return }
+      if let code {
+        stopCamera()
+        setDocumentState(.unavailable)
+        onError?(ScannerFailure(code: code))
+      } else {
+        modelReady = true
+      }
+      evaluate()
+    }
   }
 
   // MARK: - Session borrowing
@@ -309,6 +416,9 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     }
     if !captureReported, let onCaptureStateChange { captureReported = true; onCaptureStateChange(.unavailable) }
     if !autofocusReported, let onAutofocusChange { autofocusReported = true; onAutofocusChange(.inactive) }
-    if !documentReported, let onDocumentStateChange { documentReported = true; onDocumentStateChange(.off) }
+    if documentState != reportedDocument, let onDocumentStateChange {
+      reportedDocument = documentState
+      onDocumentStateChange(documentState)
+    }
   }
 }

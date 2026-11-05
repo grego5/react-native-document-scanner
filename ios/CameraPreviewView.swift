@@ -2,9 +2,11 @@ import AVFoundation
 import UIKit
 
 /// The camera view's UIKit host: a black view with the preview layer placed over the framed
-/// region, aspect-filled, so a square frame shows only the centered square. Main only.
+/// region, aspect-filled, so a square frame shows only the centered square, with the live guide
+/// above it. Main only.
 final class CameraPreviewView: UIView {
   let previewLayer = AVCaptureVideoPreviewLayer()
+  let guide = LiveGuideOverlay()
   var onWindowChange: (() -> Void)?
   var onResize: (() -> Void)?
 
@@ -12,7 +14,7 @@ final class CameraPreviewView: UIView {
   var video: PixelSize? { didSet { if video != oldValue { place() } } }
   /// AVFoundation's clockwise preview rotation angle.
   var rotationAngle: Double = 0 { didSet { if rotationAngle != oldValue { rotate(); place() } } }
-  var square = false { didSet { if square != oldValue { place() } } }
+  var square = false { didSet { if square != oldValue { guide.square = square; place() } } }
   private var placedSize = CGSize.zero
 
   override init(frame: CGRect) {
@@ -22,6 +24,7 @@ final class CameraPreviewView: UIView {
     previewLayer.videoGravity = .resizeAspectFill
     previewLayer.isHidden = true
     layer.addSublayer(previewLayer)
+    addSubview(guide)
   }
 
   @available(*, unavailable)
@@ -39,6 +42,7 @@ final class CameraPreviewView: UIView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    guide.frame = bounds
     place()
     if bounds.size != placedSize {
       placedSize = bounds.size
@@ -54,6 +58,8 @@ final class CameraPreviewView: UIView {
   }
 
   private func place() {
+    let framing = framing
+    guide.previewFraming = framing
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     if let framing {

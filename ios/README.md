@@ -136,8 +136,63 @@ inference. Rotation follows `AVCaptureDevice.RotationCoordinator`.
 The camera borrows its scan session: stopping, detaching or unmounting never closes
 it. Replacing the session, or its close, advances the view's session generation for
 capture publication. Until the shutter exists, `takePhoto` rejects (with
-`feature/unsupported` once the camera is ready), capture state stays `unavailable`,
-autofocus `inactive` and the document state `off`.
+`feature/unsupported` once the camera is ready), capture state stays `unavailable` and
+autofocus `inactive`.
+
+The camera starts only once `quadTensorModel` is prepared. `QuadModelLoader` reads an
+absolute path, a `file://` URL or a main-bundle resource name on its own worker and
+installs it in `CornerInference.shared`. Only the newest request may activate: the
+loader checks it under its own lock on the inference queue, immediately before the
+validated model becomes the selection, so an older model never replaces a newer
+request's outcome. The active source is not reloaded. A new source stops the camera until it is ready; a
+failure reports `onError`, sets the document state `unavailable` and keeps the camera
+suspended until the source changes.
+
+## Live guidance
+
+`LiveDocumentDetector` analyzes each frame of the armed run synchronously on the
+camera's frame queue, its serial analysis owner, and borrows the buffer only for that
+call. The camera drops late frames meanwhile, so no buffer queues or is retained:
+flow keeps its own downscaled gray copy, and a single-slot frame request copies the
+next framed region (packed BGRA rows, raw axes, with its EXIF orientation) for a
+later shutter thumbnail. Each frame is framed from its delivered size, the capture
+rotation angle and the square setting, so orientation, square crop and padded rows
+reach both inference and flow unchanged.
+
+Guide acceptance, expiry, flow retention, score rejection and the movement wake come
+from the shared core through `ScannerLiveTracking` (the guide stabilizer, the flow
+estimator and its transform history). Pacing is `AdaptiveDetectionPolicy`, a Swift
+port of Android's, checked against the shared `adaptive.tsv` fixture. As on Android,
+inference skips frames moving faster than 5% of the buffer width per second or with
+a lost page region, waits 60 ms between inferences while a page is held, pauses
+entirely while reliable flow carries a confirmed page when `adaptiveDetection` is on,
+and pauses after a low-score frame until flow measures movement. Frames that skip
+inference may still keep the guide through flow.
+
+Results are immutable `LiveGuideResult` snapshots: status, the normalized upright
+quad with the framing it was accepted on, acceptance ID and hold deadline, detector
+and model generations, frame sequence, sensor timestamp and score. They are coalesced
+to the newest and delivered on main, which drops any from an earlier generation (a
+start, stop, guide toggle, score change or model change advances it), any already
+past its deadline, and any whose acceptance already expired. Main expires a guide at
+its 400 ms deadline. A replaced model publishes `searching` and starts the guide
+over; acceptance IDs stay monotonic across resets. Inference failure reports
+`unavailable` until the next start. The interpreter is opened and warmed off main
+when guidance starts, and its lease is released when the camera stops. A lease is
+acquired outside the detector's lock, because acquisition waits for the shared
+inference queue, and is kept only while the camera still runs; an acquisition that
+finishes after a stop is closed.
+
+`guide` toggles guidance without restarting the camera. The document state is `off`
+while the camera is stopped or the guide is off, then follows the results:
+`searching`, `tracking`, `held` or `unavailable`. `LiveGuideOverlay` draws the guide
+over the preview's presentation rectangle. AVFoundation's capture and preview rotation
+angles can differ (a portrait-locked app held sideways), so each corner is mapped back
+to buffer coordinates through the framing it was detected on and then into the
+preview's own framing; a preview framing change clears the drawn guide. It is eased over `guideTransitionDuration`
+(50 ms by default; jumps beyond a fifth of the view diagonal snap) in `guideColor`,
+dimmed to 45% while held, and corner brackets around a centered A-series page while
+searching. An invalid `minCornerScore` reports `input/invalid` and uses 0.95.
 
 ## Crop editor
 

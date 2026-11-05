@@ -146,10 +146,11 @@ Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const st
   const auto &view = lease.view();
   const auto &l = view.layout();
   if (l.size.width > uint32_t(std::numeric_limits<int>::max()) ||
-      l.size.height > uint32_t(std::numeric_limits<int>::max()) || l.format != PixelFormat::rgba8 ||
+      l.size.height > uint32_t(std::numeric_limits<int>::max()) ||
+      (l.format != PixelFormat::rgba8 && l.format != PixelFormat::bgra8) ||
       (l.orientation != Orientation::upright && l.orientation != Orientation::rotate90 &&
        l.orientation != Orientation::rotate180 && l.orientation != Orientation::rotate270))
-    throw std::invalid_argument("Expected RGBA flow pixels and a camera rotation.");
+    throw std::invalid_argument("Expected RGBA or BGRA flow pixels and a camera rotation.");
   if (region)
     for (auto p : *region)
       if (!std::isfinite(p.x) || !std::isfinite(p.y) || std::abs(p.x) > 1000 || std::abs(p.y) > 1000)
@@ -166,11 +167,13 @@ Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const st
   s.geometry = geometry;
   cv::Mat full(crop.height, crop.width, CV_8UC1);
   const auto bytes = view.bytes();
+  // The same luma weights for either channel order.
+  const int red = l.format == PixelFormat::bgra8 ? 2 : 0, blue = 2 - red;
   for (uint32_t y = 0; y < crop.height; ++y)
     for (uint32_t x = 0; x < crop.width; ++x) {
       const auto offset = (crop.top + y) * l.rowStride + (crop.left + x) * l.pixelStride;
       const auto *p = reinterpret_cast<const uint8_t *>(bytes.data() + offset);
-      full.at<uint8_t>(y, x) = static_cast<uint8_t>((77 * p[0] + 150 * p[1] + 29 * p[2]) >> 8);
+      full.at<uint8_t>(y, x) = static_cast<uint8_t>((77 * p[red] + 150 * p[1] + 29 * p[blue]) >> 8);
     }
   const double scale = std::min(1.0, double(s.maxEdge) / std::max(crop.width, crop.height));
   const int w = std::max(1, int(std::floor(crop.width * scale + .5))),

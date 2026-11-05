@@ -310,6 +310,38 @@ void tracking() {
   check(weak.expired(), "Frame owner retained");
   r = update(second, start + interval);
   near(*r.speed, 180, 18);
+  // BGRA frames with the red and blue channels swapped measure exactly what their RGBA originals do.
+  auto bgra = [](const Image &i) {
+    Image out{std::make_shared<std::vector<std::byte>>(*i.bytes), i.stride};
+    for (size_t row = 0; row < 480; ++row)
+      for (size_t x = 0; x < 640; ++x)
+        std::swap((*out.bytes)[row * out.stride + x * 4], (*out.bytes)[row * out.stride + x * 4 + 2]);
+    return out;
+  };
+  auto tinted = [](const Image &i) {
+    Image out{std::make_shared<std::vector<std::byte>>(*i.bytes), i.stride};
+    for (size_t row = 0; row < 480; ++row)
+      for (size_t x = 0; x < 640; ++x)
+        (*out.bytes)[row * out.stride + x * 4] = std::byte(uint8_t((*out.bytes)[row * out.stride + x * 4]) / 2);
+    return out;
+  };
+  {
+    const auto a = tinted(first), b = tinted(second), swappedA = bgra(a), swappedB = bgra(b);
+    m::FlowEstimator rgba, swapped;
+    auto la = a.lease(Orientation::rotate90), lb = b.lease(Orientation::rotate90);
+    auto sa = PixelLease(swappedA.bytes, *swappedA.bytes,
+                         {PixelFormat::bgra8, {640, 480}, swappedA.stride, 4, {0, 0, 640, 480}, Orientation::rotate90});
+    auto sb = PixelLease(swappedB.bytes, *swappedB.bytes,
+                         {PixelFormat::bgra8, {640, 480}, swappedB.stride, 4, {0, 0, 640, 480}, Orientation::rotate90});
+    rgba.update(la, start, {}, true);
+    swapped.update(sa, start, {}, true);
+    const auto expected = rgba.update(lb, start + interval, {}, true);
+    const auto actual = swapped.update(sb, start + interval, {}, true);
+    check(expected.status == m::Status::measured && actual.status == expected.status && actual.speed == expected.speed &&
+              actual.validTracks == expected.validTracks && actual.lostRegions == expected.lostRegions &&
+              bool(actual.transform) == bool(expected.transform),
+          "BGRA flow differs from RGBA");
+  }
   auto cropUpdate = [&](const Image &i, int64_t t) {
     auto lease = i.lease(Orientation::upright, {80, 0, 480, 480});
     return estimator.update(lease, t, {});

@@ -27,7 +27,8 @@ export type AutofocusState = 'inactive' | 'scan' | 'focused' | 'unfocused' | 'lo
 export type DocumentState = 'off' | 'searching' | 'tracking' | 'held' | 'unavailable'
 
 /**
- * CameraX still-capture mode: `quality` favors image quality, `latency` the time to deliver each photo, and `zsl`
+ * CameraX still-capture mode: `quality` favors image quality, also using the slower photo sizes some cameras hold their
+ * full-size stills in, `latency` the time to deliver each photo, and `zsl`
  * (zero shutter lag) saves a buffered frame from the moment of the request, falling back to `latency` on cameras or
  * configurations without it.
  */

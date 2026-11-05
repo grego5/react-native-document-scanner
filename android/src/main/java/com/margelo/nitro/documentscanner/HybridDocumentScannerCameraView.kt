@@ -1179,11 +1179,18 @@ open class HybridDocumentScannerCameraView(
           .also { observeStillFrames(it, generation) }
           .setResolutionSelector(
             ResolutionSelector.Builder()
-              // Reorder all CameraX-advertised sizes across aspect ratios around the target.
+              // Quality mode also offers the sizes a camera lists as slower high-resolution ones, which limited
+              // phones hold their full-size 4:3 stills in; the other modes keep the sizes their shutter lag allows.
+              .also {
+                if (props.captureMode == CaptureMode.QUALITY) {
+                  it.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
+                }
+              }
+              // Reorder all CameraX-advertised sizes across aspect ratios.
               // Keep fallbacks so the three bound use cases can negotiate a supported combination.
               .setResolutionFilter { supportedSizes, _ ->
                 CaptureResolutionPolicy.rank(supportedSizes, { it.width }, { it.height }).also { ranked ->
-                  logLifecycle("capture candidates=${ranked.joinToString()} target=3200x2400")
+                  logLifecycle("capture candidates=${ranked.joinToString()} mode=${props.captureMode}")
                 }
               }
               .build(),

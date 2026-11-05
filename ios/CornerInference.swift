@@ -93,9 +93,12 @@ final class CornerInference: @unchecked Sendable {
   }
 
   /// Read/copy model data on the caller's background worker. Validation, warmup and
-  /// publication serialize here. An outdated replacement request never publishes.
+  /// publication serialize here. An outdated replacement request never publishes: `admit` runs on
+  /// the inference queue with the validated selection immediately before it becomes current, and
+  /// returning false leaves the current selection untouched and throws `staleSelection`.
   @discardableResult
-  func replace(data: Data, expectedGeneration: UInt64? = nil) throws -> Selection {
+  func replace(data: Data, expectedGeneration: UInt64? = nil,
+               admit: ((Selection) -> Bool)? = nil) throws -> Selection {
     try queue.sync {
       if let expectedGeneration, expectedGeneration != generation { throw CornerInferenceError.staleSelection }
       guard !data.isEmpty, data.count <= 128 * 1024 * 1024 else { throw CornerInferenceError.modelLoadFailed }
@@ -103,9 +106,10 @@ final class CornerInference: @unchecked Sendable {
       let candidate: any CornerRuntime
       do { candidate = try makeRuntime(owned) }
       catch { throw CornerInferenceError.modelLoadFailed }
-      generation += 1
-      let next = Selection(data: owned, generation: generation,
+      let next = Selection(data: owned, generation: generation + 1,
                            width: candidate.inputWidth, height: candidate.inputHeight)
+      if let admit, !admit(next) { throw CornerInferenceError.staleSelection }
+      generation += 1
       selected = next
       runtime = users.isEmpty ? nil : (next.identity, candidate)
       return next
@@ -163,6 +167,14 @@ final class CornerInference: @unchecked Sendable {
     }
   }
 
+  private func prepare(id: UUID) throws {
+    try queue.sync {
+      guard users.contains(id) else { throw CornerInferenceError.disposed }
+      guard let selected else { throw CornerInferenceError.modelUnavailable }
+      _ = try open(selected)
+    }
+  }
+
   /// Joins already-enqueued owner releases, useful at a containing session's cleanup boundary.
   func drain() { queue.sync {} }
 
@@ -185,6 +197,12 @@ final class CornerInference: @unchecked Sendable {
       guard !disposed else { throw CornerInferenceError.disposed }
       let region = crop ?? CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
       return try owner.analyzeLive(id: id, buffer: buffer, orientation: orientation, crop: region)
+    }
+    /// Opens the selected model's interpreter ahead of the first live frame.
+    func prepare() throws {
+      lock.lock(); let disposed = closed; lock.unlock()
+      guard !disposed else { throw CornerInferenceError.disposed }
+      try owner.prepare(id: id)
     }
     /// Acquire before inference admission. No inference-queue -> source-queue cycle exists:
     /// the store's queue is released before the inference worker borrows the lease.

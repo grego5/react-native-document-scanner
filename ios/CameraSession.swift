@@ -30,6 +30,9 @@ enum CameraSessionEvent: Equatable {
 /// start are never delivered.
 protocol CameraSessionControl: AnyObject {
   var onEvent: ((CameraSessionEvent) -> Void)? { get set }
+  /// Live analysis of each frame of the armed run, called on the camera's serial frame queue with
+  /// the buffer, which it borrows only for the call, and its presentation time in nanoseconds.
+  var frameSink: ((CVPixelBuffer, Int64) -> Void)? { get set }
   /// The configured device, for rotation tracking; nil until `configured`.
   var device: AVCaptureDevice? { get }
   func attachPreview(_ layer: AVCaptureVideoPreviewLayer)
@@ -88,6 +91,9 @@ final class CameraFrameMonitor: @unchecked Sendable {
 
   func drop() { lock.lock(); dropped += 1; lock.unlock() }
 
+  /// Whether a run's frames currently report; frames of no run are not analyzed.
+  var isArmed: Bool { lock.lock(); defer { lock.unlock() }; return run != nil }
+
   /// Frames delivered and dropped since the last call.
   func takeCounts() -> (delivered: Int, dropped: Int) {
     lock.lock(); defer { lock.unlock() }
@@ -108,6 +114,10 @@ enum CameraLog {
 final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataOutputSampleBufferDelegate,
   @unchecked Sendable {
   var onEvent: ((CameraSessionEvent) -> Void)?
+  var frameSink: ((CVPixelBuffer, Int64) -> Void)? {
+    get { lock.lock(); defer { lock.unlock() }; return sink }
+    set { lock.lock(); sink = newValue; lock.unlock() }
+  }
   var device: AVCaptureDevice? {
     lock.lock(); defer { lock.unlock() }
     return running ? configuredDevice : nil
@@ -128,6 +138,7 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
   private var running = false
   private var configuredDevice: AVCaptureDevice?
   private var liveSession: AVCaptureSession?
+  private var sink: ((CVPixelBuffer, Int64) -> Void)?
   private var observers: [NSObjectProtocol] = []
   let frames = CameraFrameMonitor()
 
@@ -327,9 +338,13 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
 
   func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                      from connection: AVCaptureConnection) {
-    // Nothing is retained past this call; live analysis will borrow the buffer here.
+    // Nothing is retained past this call; live analysis borrows the buffer synchronously.
     guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
     frameArrived(PixelSize(CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer)))
+    guard frames.isArmed, let sink = frameSink else { return }
+    let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+    guard time.isNumeric else { return }
+    sink(buffer, CMTimeConvertScale(time, timescale: 1_000_000_000, method: .roundHalfAwayFromZero).value)
   }
 
   /// A frame of the actual delivered size; the frame callback's only effect.

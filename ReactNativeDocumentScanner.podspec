@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.platform = :ios, '18.0'
   s.swift_version = '6.0'
   s.source_files = ['ios/*.{swift,h,mm}', 'cpp/include/**/*.hpp', 'cpp/src/**/*.{hpp,cpp}']
-  s.public_header_files = ['ios/ScannerSourcePixels.h', 'ios/ScannerCornerRuntime.h', 'ios/ScannerDocumentRender.h']
+  s.public_header_files = ['ios/ScannerSourcePixels.h', 'ios/ScannerCornerRuntime.h', 'ios/ScannerDocumentRender.h', 'ios/ScannerLiveTracking.h']
   s.private_header_files = ['cpp/include/**/*.hpp', 'cpp/src/**/*.hpp']
   s.resource_bundles = { 'DocumentScannerModels' => ['resources/doccornernet/*'] }
   s.dependency 'DocumentScannerOpenCV', '4.12.0'
@@ -30,7 +30,7 @@ Pod::Spec.new do |s|
   s.test_spec 'ScaffoldTests' do |test|
     test.source_files = 'ios/Tests/**/*.{swift,mm}'
     test.frameworks = 'XCTest'
-    test.resources = 'ios/Tests/Fixtures/*.tflite'
+    test.resources = ['ios/Tests/Fixtures/*.tflite', 'tests/fixtures/parity/adaptive.tsv']
   end
   install_modules_dependencies(s)
 end

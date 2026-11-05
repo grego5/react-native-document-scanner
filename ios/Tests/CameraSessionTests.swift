@@ -14,6 +14,7 @@ private final class GrantedAuthorization: CameraAuthorization {
 /// Records the view's camera calls; tests deliver the events a real session would.
 private final class FakeCamera: CameraSessionControl {
   var onEvent: ((CameraSessionEvent) -> Void)?
+  var frameSink: ((CVPixelBuffer, Int64) -> Void)?
   var device: AVCaptureDevice? { nil }
   var starts: [CameraRequest] = []
   var stops = 0
@@ -166,8 +167,11 @@ final class CameraSessionTests: XCTestCase {
       let permissions = CameraPermissions(authorization: authorization, notifications: notifications)
       weak var harness: Harness?
       view = HybridDocumentScannerCameraView(camera: fake, permissions: permissions, notifications: notifications,
-                                             inBackground: { harness?.background ?? false })
+                                             inBackground: { harness?.background ?? false },
+                                             models: { _, done in done(nil) },
+                                             detector: LiveDocumentDetector(inference: CornerInference()))
       harness = self
+      view.quadTensorModel = "model.tflite"
       view.view.frame = window.bounds
       view.onCameraStateChange = { [unowned self] in states.append($0) }
       view.onError = { [unowned self] in errors.append($0.code) }
@@ -371,7 +375,7 @@ final class CameraSessionTests: XCTestCase {
     h.view.afterUpdate()
     XCTAssertEqual(late, [.starting])
     XCTAssertEqual(capture, [.unavailable])
-    XCTAssertEqual(document, [.off])
+    XCTAssertEqual(document, [.searching], "a started camera searches for a page")
     XCTAssertEqual(focus, [.inactive])
   }
 
