@@ -9,6 +9,8 @@ final class CameraPreviewView: UIView {
   let guide = LiveGuideOverlay()
   var onWindowChange: (() -> Void)?
   var onResize: (() -> Void)?
+  /// A tap on the shown preview, as an AVFoundation device point (unit sensor coordinates).
+  var onTap: ((CGPoint) -> Void)?
 
   /// The configured video size, in sensor axes; nil hides the preview.
   var video: PixelSize? { didSet { if video != oldValue { place() } } }
@@ -25,6 +27,21 @@ final class CameraPreviewView: UIView {
     previewLayer.isHidden = true
     layer.addSublayer(previewLayer)
     addSubview(guide)
+    addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
+  }
+
+  @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
+    guard recognizer.state == .ended, let point = devicePoint(recognizer.location(in: self)) else { return }
+    onTap?(point)
+  }
+
+  /// The device point under a view point; nil outside the shown preview. The layer converts through
+  /// its own rotation and aspect-fill crop.
+  func devicePoint(_ viewPoint: CGPoint) -> CGPoint? {
+    guard !previewLayer.isHidden, previewLayer.frame.contains(viewPoint) else { return nil }
+    let point = previewLayer.captureDevicePointConverted(fromLayerPoint: previewLayer.convert(viewPoint, from: layer))
+    guard point.x.isFinite, point.y.isFinite, (0...1).contains(point.x), (0...1).contains(point.y) else { return nil }
+    return point
   }
 
   @available(*, unavailable)

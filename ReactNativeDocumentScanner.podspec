@@ -30,7 +30,7 @@ Pod::Spec.new do |s|
   s.test_spec 'ScaffoldTests' do |test|
     test.source_files = 'ios/Tests/**/*.{swift,mm}'
     test.frameworks = 'XCTest'
-    test.resources = ['ios/Tests/Fixtures/*.tflite', 'tests/fixtures/parity/adaptive.tsv']
+    test.resources = ['ios/Tests/Fixtures/*.tflite', 'tests/fixtures/parity/adaptive.tsv', 'tests/fixtures/parity/torch.tsv']
   end
   install_modules_dependencies(s)
 end

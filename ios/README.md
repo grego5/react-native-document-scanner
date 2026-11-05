@@ -136,8 +136,7 @@ inference. Rotation follows `AVCaptureDevice.RotationCoordinator`.
 The camera borrows its scan session: stopping, detaching or unmounting never closes
 it. Replacing the session, or its close, advances the view's session generation for
 capture publication. Until the shutter exists, `takePhoto` rejects (with
-`feature/unsupported` once the camera is ready), capture state stays `unavailable` and
-autofocus `inactive`.
+`feature/unsupported` once the camera is ready) and capture state stays `unavailable`.
 
 The camera starts only once `quadTensorModel` is prepared. `QuadModelLoader` reads an
 absolute path, a `file://` URL or a main-bundle resource name on its own worker and
@@ -147,6 +146,53 @@ validated model becomes the selection, so an older model never replaces a newer
 request's outcome. The active source is not reloaded. A new source stops the camera until it is ready; a
 failure reports `onError`, sets the document state `unavailable` and keeps the camera
 suspended until the source changes.
+
+## Camera controls
+
+`CameraControls` executes focus, torch and exposure decisions on main and sends each
+hardware command to the camera's session queue, where commands apply in order after
+configuration, under the device's configuration lock. Every command, completion and
+focus observation belongs to one configured run: a stop retires them, and the device's
+focus observations are invalidated with the run.
+
+Focus follows Android's ownership rules through a Swift `FocusPolicy`. Continuous
+autofocus and auto-exposure aim at the centre of the frame, where the guide holds a page,
+whenever no scan holds the lens; there is no lens parking. A preview tap (when
+`tapToFocus` is on and the camera is streaming) is converted by the preview layer to a
+device point and starts one `.autoFocus` scan there, also metering exposure there, held
+for 5 s; a capture scan is held until the capture ends and times out after 2 s. A shot in
+flight refuses new scans, and a tap past its hold waits for that shot. A capture may
+restart its scan while it waits. A device that cannot scan to a point ignores taps, and a
+capture scan on it settles at once with an unknown result.
+
+AVFoundation reports less than Camera2. The session queue is the single source of device
+facts: commands apply there and report completion to main from there, and a focus change
+notification only asks the queue to sample the device, so main receives samples and
+completions in the order the queue saw them. A scan ends at the first sample after its own
+command's completion that shows focus mode `.locked`: applying the scan leaves the device in
+`.autoFocus` until the scan ends, and every sample delivered before the completion, such as an
+earlier scan finishing while the command waited, was taken before it applied. That end says the scan finished,
+not that it focused, so every scan settles with an unknown result. Focus observations are stamped on
+the host clock when they reach the adapter; they bound the transition, they are not its
+time. `onAutofocusChange` reports `scan` while `isAdjustingFocus` and `inactive` otherwise;
+iOS never reports `focused`, `unfocused` or `locked`.
+
+Frame times are converted from the capture session's clock to the host clock (mach
+absolute time, the domain of `DispatchTime` uptime), so frames, focus observations and
+deadlines compare directly. Each frame's exposure time and ISO come from its EXIF
+attachment; without one, the device's current exposure duration and ISO stand in, marked
+estimated. The auto torch is a Swift `TorchPolicy` matching Kotlin's, checked against the
+shared `torch.tsv`: exposure-ms times ISO of at least 20,000 sustained for one second
+lights it, and it stays lit until the camera stops or the mode changes. A frame without an
+exposure restarts the wait, as a bright one does. Frames are admitted only while a run is
+bound, so a frame delivered after a stop cannot start the next run's wait. Torch changes wait
+while a capture is pending. Cameras without a torch ignore the mode.
+
+`exposureCompensation` is clamped to the device's target-bias range (AVFoundation's bias
+is continuous, so there is no step). `minFrameRate` chooses, within the active format's
+frame-rate intervals, the lowest minimum at or above it (the highest reachable minimum when
+none reaches it) and the maximum nearest 30, then sets the frame durations; 0 restores the
+format's own. Both apply without restarting the camera.
 
 ## Live guidance
 

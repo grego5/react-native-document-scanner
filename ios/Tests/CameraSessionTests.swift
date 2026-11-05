@@ -395,6 +395,38 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertNil(camera.device)
   }
 
+  /// Focus is sampled on the session queue, so main receives each sample in order with command
+  /// completions, whatever thread AVFoundation notified on: a sample requested after a command
+  /// reaches main after that command's completion.
+  @MainActor
+  func testFocusSamplesReachMainInQueueOrderWithCommandCompletions() {
+    let camera = AVCameraSession(discovery: { nil })
+    var order: [String] = []
+    camera.focusEvents = { order.append($0.locked ? "locked" : "moving") }
+    let done = expectation(description: "delivered")
+    let notified = DispatchGroup()
+    notified.enter()
+    DispatchQueue.global().async {
+      camera.reportFocus(run: 0) { FocusObservation(adjusting: true, locked: false) }
+      notified.leave()
+    }
+    notified.wait()
+    camera.perform(.torch(true)) { applied in
+      XCTAssertFalse(applied, "a stopped camera applies nothing")
+      order.append("completion")
+    }
+    camera.reportFocus(run: 0) {
+      XCTAssertFalse(Thread.isMainThread, "sampled on the session queue")
+      return FocusObservation(adjusting: false, locked: true)
+    }
+    camera.perform(.torch(false)) { _ in
+      order.append("completion")
+      done.fulfill()
+    }
+    wait(for: [done], timeout: 5)
+    XCTAssertEqual(order, ["moving", "completion", "locked", "completion"])
+  }
+
   func testFrameMonitorReportsOnlyTheArmedRunAndItsDeliveredSizes() {
     let frames = CameraFrameMonitor()
     XCTAssertNil(frames.frame(PixelSize(1920, 1440)), "nothing is armed before a run starts")

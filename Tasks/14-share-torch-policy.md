@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Android complete; iOS parity pending Task 27
+Status: Completed — Android and Swift policies pass tests/fixtures/parity/torch.tsv
 
 The threshold-and-latch policy stays in Kotlin and Swift. Its small size does not justify a C++/JNI owner. C++ torch code, registration and build wiring have been removed. Hardware commands, capture deferral, request identity and readiness remain platform-owned.
 

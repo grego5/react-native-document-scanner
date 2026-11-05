@@ -11,6 +11,7 @@ struct CameraRequest: Equatable, Sendable {
 struct CameraConfiguration: Equatable, Sendable {
   let photo: PixelSize
   let video: PixelSize
+  var capabilities = CameraCapabilities()
 }
 
 enum CameraSessionEvent: Equatable {
@@ -31,13 +32,31 @@ enum CameraSessionEvent: Equatable {
 protocol CameraSessionControl: AnyObject {
   var onEvent: ((CameraSessionEvent) -> Void)? { get set }
   /// Live analysis of each frame of the armed run, called on the camera's serial frame queue with
-  /// the buffer, which it borrows only for the call, and its presentation time in nanoseconds.
+  /// the buffer, which it borrows only for the call, and its presentation time in host-clock
+  /// nanoseconds.
   var frameSink: ((CVPixelBuffer, Int64) -> Void)? { get set }
+  /// Each armed frame's exposure evidence, on the frame queue before `frameSink`.
+  var metadataSink: ((CameraFrameMetadata) -> Void)? { get set }
+  /// Focus states of the running configured device, on main; none after a stop. Each is sampled
+  /// on the session owner, so main receives it in order with `perform` completions: after the
+  /// completion of every command applied before the sample, before the completion of every later one.
+  var focusEvents: ((FocusObservation) -> Void)? { get set }
   /// The configured device, for rotation tracking; nil until `configured`.
   var device: AVCaptureDevice? { get }
   func attachPreview(_ layer: AVCaptureVideoPreviewLayer)
   func start(_ request: CameraRequest)
   func stop()
+  /// Applies `command` on the session owner after every earlier command and configuration, and
+  /// calls `completion` on main with whether the device accepted it, ordered with `focusEvents`. A
+  /// command for a stopped run is dropped, and so is its completion.
+  func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void)
+}
+
+/// Hardware controls are optional for a camera owner without a device.
+extension CameraSessionControl {
+  var metadataSink: ((CameraFrameMetadata) -> Void)? { get { nil } set {} }
+  var focusEvents: ((FocusObservation) -> Void)? { get { nil } set {} }
+  func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) {}
 }
 
 /// First-frame and buffer-size reporting for one camera owner. Only an armed run reports,
@@ -109,8 +128,10 @@ enum CameraLog {
 /// The one AVFoundation owner of a camera view: the rear physical wide-angle camera, a photo
 /// output with a bounded maximum still size, and a video-data output that keeps no backlog.
 /// The session is created on `queue` at the first start that finds a camera, since building
-/// it can be slow, and it, its inputs/outputs and the device are configured only there; frames
-/// arrive on `frameQueue`; `generation`, events and the preview layer belong to main.
+/// it can be slow, and it, its inputs/outputs and the device are configured only there, as are
+/// control commands, in submission order; frames arrive on `frameQueue`; `generation`, events and
+/// the preview layer belong to main. Frame times are converted from the session's clock to the
+/// host clock, the domain of `DispatchTime` uptime and focus observations.
 final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataOutputSampleBufferDelegate,
   @unchecked Sendable {
   var onEvent: ((CameraSessionEvent) -> Void)?
@@ -118,6 +139,11 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     get { lock.lock(); defer { lock.unlock() }; return sink }
     set { lock.lock(); sink = newValue; lock.unlock() }
   }
+  var metadataSink: ((CameraFrameMetadata) -> Void)? {
+    get { lock.lock(); defer { lock.unlock() }; return metadata }
+    set { lock.lock(); metadata = newValue; lock.unlock() }
+  }
+  var focusEvents: ((FocusObservation) -> Void)?
   var device: AVCaptureDevice? {
     lock.lock(); defer { lock.unlock() }
     return running ? configuredDevice : nil
@@ -133,12 +159,15 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
   private var pipeline: Pipeline?
   private var input: AVCaptureDeviceInput?
   private var configured: (request: CameraRequest, configuration: CameraConfiguration)?
+  /// The running device's focus observations; invalidated when the run stops.
+  private var deviceObservations: [NSKeyValueObservation] = []
   // Shared by main, the queue and the frame queue.
   private let lock = NSLock()
   private var running = false
   private var configuredDevice: AVCaptureDevice?
   private var liveSession: AVCaptureSession?
   private var sink: ((CVPixelBuffer, Int64) -> Void)?
+  private var metadata: ((CameraFrameMetadata) -> Void)?
   private var observers: [NSObjectProtocol] = []
   let frames = CameraFrameMonitor()
 
@@ -215,6 +244,7 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
         return publish(current) { $0.fail(.cameraUnavailable) }
       }
       lock.lock(); configuredDevice = input?.device; lock.unlock()
+      if let device = input?.device { observeFocus(device, run: current) }
       publish(current) { owner in
         owner.connectPreview()
         owner.onEvent?(.configured(configuration))
@@ -237,6 +267,22 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     lock.lock(); running = false; lock.unlock()
     frames.disarm()
     queue.async { [self] in stopSession() }
+  }
+
+  func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) {
+    dispatchPrecondition(condition: .onQueue(.main))
+    let current = generation
+    queue.async { [self] in
+      var applied = false
+      if isRunning, configured != nil, let device = input?.device {
+        applied = CameraDeviceAdapter.apply(command, to: device)
+        if !applied { CameraLog.logger.info("camera command refused \(String(describing: command), privacy: .public)") }
+      }
+      DispatchQueue.main.async { [self] in
+        guard generation == current else { return }
+        completion(applied)
+      }
+    }
   }
 
   /// Per-shot settings for the shutter: the configured still ceiling, never larger. Queue only.
@@ -298,15 +344,46 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
       throw ScannerCodeError(code: .cameraUnavailable)
     }
     photoOutput.maxPhotoDimensions = choice.photo.dimensions
-    let configuration = CameraConfiguration(photo: choice.photo, video: choice.video)
+    let configuration = CameraConfiguration(photo: choice.photo, video: choice.video,
+                                            capabilities: CameraDeviceAdapter.capabilities(device))
     configured = (request, configuration)
     CameraLog.logger.info(
       "camera configured photo=\(choice.photo, privacy: .public) video=\(choice.video, privacy: .public)")
     return configuration
   }
 
+  /// Reports the device's focus state to main for run `run` whenever it changes. A change
+  /// notification only wakes the report: the state is sampled on the queue. Queue only.
+  private func observeFocus(_ device: AVCaptureDevice, run: Int) {
+    deviceObservations.forEach { $0.invalidate() }
+    let report: @Sendable (AVCaptureDevice) -> Void = { [weak self] device in
+      self?.reportFocus(run: run) { CameraDeviceAdapter.focusObservation(device) }
+    }
+    deviceObservations = [
+      device.observe(\.isAdjustingFocus, options: [.initial, .new]) { device, _ in report(device) },
+      device.observe(\.focusMode, options: [.new]) { device, _ in report(device) },
+    ]
+  }
+
+  /// Samples focus on the queue and delivers it to main for run `run`. Commands apply on the same
+  /// queue and complete to main from it, so a sample taken after a command applied reaches main
+  /// after that command's completion, and one taken before it reaches main first. AVFoundation
+  /// notifies on its own threads, so a notification's thread never decides the order. Any thread.
+  func reportFocus(run: Int, _ sample: @escaping () -> FocusObservation) {
+    queue.async { [weak self] in
+      guard self != nil else { return }
+      let observation = sample()
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.generation == run else { return }
+        self.focusEvents?(observation)
+      }
+    }
+  }
+
   /// Returns once the run has stopped and its already queued frame callbacks have finished.
   private func stopSession() {
+    deviceObservations.forEach { $0.invalidate() }
+    deviceObservations = []
     frames.disarm()
     if let session = pipeline?.session, session.isRunning { session.stopRunning() }
     frameQueue.sync {}
@@ -341,10 +418,18 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     // Nothing is retained past this call; live analysis borrows the buffer synchronously.
     guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
     frameArrived(PixelSize(CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer)))
-    guard frames.isArmed, let sink = frameSink else { return }
+    guard frames.isArmed else { return }
+    lock.lock()
+    let sink = sink, metadata = metadata, device = configuredDevice, clock = liveSession?.synchronizationClock
+    lock.unlock()
+    guard sink != nil || metadata != nil else { return }
     let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
     guard time.isNumeric else { return }
-    sink(buffer, CMTimeConvertScale(time, timescale: 1_000_000_000, method: .roundHalfAwayFromZero).value)
+    let host = clock.map { CMSyncConvertTime(time, from: $0, to: CMClockGetHostTimeClock()) } ?? time
+    guard host.isNumeric else { return }
+    let hostNs = CMTimeConvertScale(host, timescale: 1_000_000_000, method: .roundHalfAwayFromZero).value
+    metadata?(CameraDeviceAdapter.metadata(sampleBuffer, hostNs: hostNs, device: device))
+    sink?(buffer, hostNs)
   }
 
   /// A frame of the actual delivered size; the frame callback's only effect.
