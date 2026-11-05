@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Implemented (physical-device checks pending)
 Complexity: High
 Dependencies: [04](04-verify-ios-feasibility.md), [19](19-implement-ios-source-store.md), [21](21-implement-ios-processor.md), [25](25-implement-ios-camera-session.md), [26](26-implement-ios-live-guidance.md), [27](27-implement-ios-camera-controls.md)
 
@@ -63,3 +63,24 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 
 feat(ios): implement bounded native-pixel still capture
 
+## Implementation record — 2026-11-05
+
+Changed files: `ios/StillCapture.swift` (new: still settings, format choice, geometry, processor, ticket, shot), `ios/CameraSession.swift` (`capture`, self-retaining photo delegate, per-shot settings, quality prioritization ceiling and zero shutter lag in configuration), `ios/HybridDocumentScannerCameraView.swift` (shot acceptance, busy slot, capture state, deferred restart and square framing, invalidation on session replacement/close/unmount), `ios/Tests/StillCaptureTests.swift` (new), `ios/Tests/CameraSessionTests.swift`, `ios/README.md`.
+
+Decisions and limits:
+
+- The quality gate (Task 29) and capture stages/frozen preview (Task 30) are not here: an accepted shot fires at once and `onCaptureStage` stays silent.
+- The JPEG still is decoded once and re-encoded by the source store at the same quality, so it is encoded twice. Kept as the provisional default until physical-device measurements.
+- `zsl` maps to balanced prioritization with the output's zero-shutter-lag buffer enabled; whether AVFoundation actually uses the buffer for it is unverified on a device.
+- The model selection is frozen on main at acceptance; this waits briefly for the shared inference queue.
+- The shutter frame is not waited for: a frame not yet copied when the still is processed is omitted.
+- The view relies on AVFoundation's guarantee of a final delegate callback per request to free its busy slot.
+
+Executed checks:
+
+- `npm run check`: passed.
+- Mac VM build-for-testing (Xcode 26.6, 17F113): succeeded after two Swift 6.3 sending fixes (`QuadModelLoader`, `AVCameraSession.perform`).
+- Simulator suite, built on the Mac VM and run by `ios-validation.yml` on `macos-26-intel` with the same Xcode build: 165 executed, 1 skipped, 0 failures.
+- Review fixes (any camera stop invalidates the shot; focus/torch controls follow the shot; only a guide in the current framing seeds it): `CameraSessionTests` and `CameraControlsTests`, split run, 36 executed, 0 failures.
+- Shutter frame straightened only when its orientation matches the frozen guide (a half turn after acceptance keeps the size): `StillCaptureTests` and `CameraSessionTests`, split run, 38 executed, 0 failures.
+- Not run: physical-device capture (needs a person's shutter tap), ZSL behaviour, real photo-output timing.

@@ -4,8 +4,9 @@ Requires iOS 18+, Nitro/Nitrogen 0.37.1, Swift 6 and C++20. All eight current
 registrations are generated from TypeScript. Five views mount as empty UIKit
 views. CameraPermission works independently of views; other operation result
 unions return `feature/unsupported`, and unfinished synchronous methods throw.
-The camera view streams a bounded rear-camera preview; its shutter, live guidance
-and capture gates are not implemented yet.
+The camera view streams a bounded rear-camera preview with live guidance and takes
+stills into the bound scan session; capture gates and capture feedback are not
+implemented yet.
 An internal source store is available for those later native implementations.
 
 Add the pinned official OpenCV podspec inside the app target in the Podfile,
@@ -26,7 +27,7 @@ substitute a device arm64 binary into a simulator build.
 
 The package is not release-ready. Package installation, Intel simulator and generic
 arm64 device builds, actual registry construction, UIKit mounting and bundled model
-integrity are verified; camera capture and live guidance remain unimplemented.
+integrity are verified; physical-device capture and guidance remain unverified.
 Machine-specific hosts, build scripts and test runners stay outside this repo.
 
 ## Camera permission
@@ -135,8 +136,48 @@ inference. Rotation follows `AVCaptureDevice.RotationCoordinator`.
 
 The camera borrows its scan session: stopping, detaching or unmounting never closes
 it. Replacing the session, or its close, advances the view's session generation for
-capture publication. Until the shutter exists, `takePhoto` rejects (with
-`feature/unsupported` once the camera is ready) and capture state stays `unavailable`.
+capture publication.
+
+## Still capture
+
+`takePhoto` accepts one shot at a time; another while one is in flight rejects with
+`capture/busy`. The quality gate does not exist yet, so an accepted shot fires at once and
+`skipQualityGate` changes nothing. Acceptance freezes the bound session, `renderOptions`,
+the model selection, the square framing, the still settings and the newest live outline
+(only one seen through the framing the still is shot in, so not one from before a rotation
+or square change; turning guidance off drops it), and asks live analysis for the next frame as the shutter frame. Capture state is
+`unavailable`, `ready`, `shooting`, then `saving` once AVFoundation reports the exposure
+complete.
+
+Stills are native JPEG at the configured ceiling (smaller deliveries are accepted, larger
+ones fail). `captureMode` sets the quality prioritization: `quality` (JPEG quality 1 when
+`jpegQuality` is omitted), `latency` as speed (0.95), and the default `zsl` as balanced
+with the photo output's zero-shutter-lag buffer (0.95), falling back to `latency` where
+the configuration has none. An explicit `jpegQuality` is AVFoundation's `AVVideoQualityKey`,
+clamped to 1/100...1. Where JPEG is unavailable the still is uncompressed BGRA. The still is
+tagged with the capture rotation live analysis uses. Mode and quality apply per shot
+without restarting the camera; a request change (a restart) and a `squareFrame` change wait
+until the shot settles.
+
+`AVCameraSession.capture` hands each request a self-retaining delegate that ends with one
+terminal event on main, even if the camera stops meanwhile. The still then goes to the
+session's image worker (`StillShot`): ImageIO decodes it once, the centered upright square
+is cropped when framed square, and `SourceStore.publish` writes the provisional JPEG at the
+same quality with orientation normalized, dimensions corrected and capture metadata kept;
+no embedded thumbnail is written. JPEG is therefore encoded twice; avoiding that, and
+measuring TIFF/BGRA, wait for physical-device samples. The shutter frame is written upright
+as the page's retained frame, straightened to the live outline when it was detected on the
+same framed size and orientation (a rotation between acceptance and the frame leaves it
+upright but unstraightened), and is the page's thumbnail until a render. The live outline is mapped to
+the still (both centered on the sensor, sharing its long side) and seeds analysis.
+
+Publication is claimed through the shot's ticket: admission into the session runs only
+while the ticket is unsettled, and settling is exactly once. Replacing the session rejects
+the shot with `processor/superseded`, its close with `processor/disposed`, and any camera
+stop (detaching, backgrounding, mode `off`, losing permission, unmounting) with
+`camera/unavailable`, immediately; the camera restarts only after the shot settles, and the physical shot keeps the busy slot until AVFoundation
+finishes and the worker has written nothing, admitted the page, or retired what it wrote.
+The promise resolves with the page ID after admission; no source path reaches JavaScript.
 
 The camera starts only once `quadTensorModel` is prepared. `QuadModelLoader` reads an
 absolute path, a `file://` URL or a main-bundle resource name on its own worker and
@@ -160,8 +201,9 @@ autofocus and auto-exposure aim at the centre of the frame, where the guide hold
 whenever no scan holds the lens; there is no lens parking. A preview tap (when
 `tapToFocus` is on and the camera is streaming) is converted by the preview layer to a
 device point and starts one `.autoFocus` scan there, also metering exposure there, held
-for 5 s; a capture scan is held until the capture ends and times out after 2 s. A shot in
-flight refuses new scans, and a tap past its hold waits for that shot. A capture may
+for 5 s; a capture scan is held until the capture ends and times out after 2 s. A shot
+whose photo is still exposing refuses new scans, and a tap past its hold waits until the
+shot settles, which also applies a torch change made during it. A capture may
 restart its scan while it waits. A device that cannot scan to a point ignores taps, and a
 capture scan on it settles at once with an unknown result.
 

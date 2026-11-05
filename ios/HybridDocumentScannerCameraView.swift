@@ -13,8 +13,8 @@ import UIKit
 /// checks. The camera starts only once `quadTensorModel` is prepared; a preparation failure keeps
 /// it suspended until the source changes. Live guidance analyzes the camera's frames on its frame
 /// queue and publishes here. Focus, torch and exposure run through `CameraControls`, which executes
-/// their policies on the camera's session owner. The shutter is not implemented yet: `takePhoto`
-/// rejects, and capture state stays `unavailable`.
+/// their policies on the camera's session owner. `takePhoto` takes one still at a time and admits it
+/// to the bound session as a page (`StillShot`); a restart or framing change waits for the shot.
 final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec, @unchecked Sendable {
   private let camera: any CameraSessionControl
   private let permissions: CameraPermissions
@@ -59,7 +59,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   var captureColor: Double? = nil
   // Each callback hears the current state when it is set, then changes only.
   var onCameraStateChange: ((_ state: CameraState) -> Void)? = nil { didSet { reportedState = nil } }
-  var onCaptureStateChange: ((_ state: CameraCaptureState) -> Void)? = nil { didSet { captureReported = false } }
+  var onCaptureStateChange: ((_ state: CameraCaptureState) -> Void)? = nil { didSet { reportedCapture = nil } }
   var onAutofocusChange: ((_ state: AutofocusState) -> Void)? = nil { didSet { reportedAutofocus = nil } }
   var onDocumentStateChange: ((_ state: DocumentState) -> Void)? = nil { didSet { reportedDocument = nil } }
   var onCaptureStage: ((_ stage: CaptureStage, _ waitReason: CaptureWaitReason?) -> Void)? = nil
@@ -85,7 +85,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var removePermissionListener: (() -> Void)?
   private var lifecycleObservers: [NSObjectProtocol] = []
   private var reportedState: CameraState?
-  private var captureReported = false
+  private var reportedCapture: CameraCaptureState?
   private var reportedAutofocus: AutofocusState?
   private var documentState = DocumentState.off
   private var reportedDocument: DocumentState?
@@ -98,6 +98,15 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var removeSessionObserver: (() -> Void)?
   /// Advances when the bound session is replaced or closes; capture publication must match it.
   private(set) var sessionGeneration = 0
+  /// The one accepted shot, from takePhoto until its still is admitted or every file it wrote is
+  /// retired; it keeps the busy slot even after its promise settles.
+  private var shot: StillShot?
+  /// Whether the shot's exposure has ended, so it is saving.
+  private var shotExposed = false
+  /// The square framing in effect; a change waits for the shot in flight.
+  private var appliedSquare = false
+  /// The newest guide with an outline, which a shot freezes as its live candidate.
+  private var latestGuide: LiveGuideResult?
 
   init(camera: (any CameraSessionControl)? = nil, permissions: CameraPermissions = .shared,
        notifications: NotificationCenter = .default, inBackground: (() -> Bool)? = nil,
@@ -122,6 +131,9 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     self.camera.focusEvents = { [weak controls] in controls?.focusObserved($0) }
     detector.onResult = { [weak self] in self?.guideResult($0) }
     controls.onChange = { [weak self] in self?.report() }
+    // Focus holds still while the photo exposes; torch changes wait for the whole shot.
+    controls.shotInFlight = { [weak self] in self.map { $0.shot != nil && !$0.shotExposed } ?? false }
+    controls.capturePending = { [weak self] in self?.shot != nil }
   }
 
   func afterUpdate() {
@@ -132,7 +144,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       if nextActive != active { active = nextActive; failed = false }
       let next = CameraRequest(analysisWidth: CameraFormatPolicy.analysisWidth(analysisWidth))
       if next != request { request = next; failed = false }
-      preview.square = squareFrame ?? false
+      applyFraming()
       controls.update(controlSettings)
       updateGuide()
       updateModel()
@@ -153,15 +165,24 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       removeSessionObserver?(); removeSessionObserver = nil
       borrowed = nil
       sessionGeneration += 1
+      shot?.ticket.reject(.cameraUnavailable)
       evaluate()
     }
   }
 
+  /// The quality gate is not implemented yet, so `options` changes nothing: an accepted shot fires
+  /// at once.
   func takePhotoResult(options: TakePhotoOptions?) throws -> Promise<Variant_String_ScannerFailure> {
     let promise = Promise<Variant_String_ScannerFailure>()
+    let ticket = CaptureTicket { result in
+      switch result {
+      case .success(let id): promise.resolve(withResult: .first(id))
+      case .failure(let error): promise.resolve(withResult: .second(ScannerFailure(code: error.code)))
+      }
+    }
     DispatchQueue.main.async { [weak self] in
-      let code = MainActor.assumeIsolated { self?.captureRejection() } ?? .cameraUnavailable
-      promise.resolve(withResult: .second(ScannerFailure(code: code)))
+      guard let self else { ticket.reject(.cameraUnavailable); return }
+      MainActor.assumeIsolated { shoot(ticket) }
     }
     return promise
   }
@@ -169,7 +190,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// The framing live analysis will apply to raw video buffers, from the size actually
   /// delivered rather than the configured format; nil until the first frame.
   var analysisFraming: CameraFraming? {
-    frameSize.flatMap { CameraFraming(buffer: $0, rotationAngle: captureAngle, square: squareFrame ?? false) }
+    frameSize.flatMap { CameraFraming(buffer: $0, rotationAngle: captureAngle, square: appliedSquare) }
   }
 
   var cameraState: CameraState {
@@ -226,7 +247,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       && permissions.status() == .granted
     if !wanted {
       stopCamera()
-    } else if started != request && !failed {
+    } else if started != request && !failed && shot == nil {
+      // A restart for a new request waits for the shot in flight; losing a condition does not.
       stopCamera()
       started = request
       detector.begin(enabled: guideOn)
@@ -236,7 +258,10 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     report()
   }
 
+  /// Any stop (detach, background, mode off, permission or unmount) invalidates the shot in
+  /// flight at once; its slot stays busy until the camera settles it.
   private func stopCamera() {
+    shot?.ticket.reject(.cameraUnavailable)
     guard started != nil else { return }
     camera.stop()
     started = nil
@@ -248,6 +273,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     controls.unbind()
     MainActor.assumeIsolated { preview.guide.clear() }
     setDocumentState(.off)
+    latestGuide = nil
     streaming = false
     configuration = nil
     frameSize = nil
@@ -342,6 +368,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     let nextGuide = guide ?? true
     guard nextGuide != guideOn else { return }
     guideOn = nextGuide
+    latestGuide = nil
     guard started != nil else { return }
     detector.setEnabled(nextGuide)
     MainActor.assumeIsolated { preview.guide.clear() }
@@ -350,11 +377,22 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   private func updateDetectorSettings() {
     detector.update(LiveDocumentDetector.Settings(adaptive: adaptiveDetection ?? false, minCornerScore: resolvedScore,
-                                                  rotationAngle: captureAngle, square: squareFrame ?? false))
+                                                  rotationAngle: captureAngle, square: appliedSquare))
+  }
+
+  /// Applies the square prop unless a shot is in flight; the shot's end applies it.
+  private func applyFraming() {
+    guard shot == nil else { return }
+    let square = squareFrame ?? false
+    MainActor.assumeIsolated { preview.square = square }
+    guard square != appliedSquare else { return }
+    appliedSquare = square
+    updateDetectorSettings()
   }
 
   private func guideResult(_ result: LiveGuideResult) {
     guard !dropped, started != nil, guideOn else { return }
+    latestGuide = result.quad != nil && result.framing != nil ? result : nil
     switch result.status {
     case .searching: setDocumentState(.searching)
     case .tracking: setDocumentState(.tracking)
@@ -413,11 +451,14 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     removeSessionObserver?(); removeSessionObserver = nil
     borrowed = next
     sessionGeneration += 1
+    shot?.ticket.reject(.processorSuperseded)
     guard let next else { return }
     do {
       removeSessionObserver = try next.observe { [weak self, weak next] change in
         guard let self, let next, change.closed, borrowed === next else { return }
         sessionGeneration += 1
+        shot?.ticket.reject(.processorDisposed)
+        report()
       }.unsubscribe
     } catch {
       // Only a closed session refuses observation; it stays unavailable for capture.
@@ -426,15 +467,83 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   // MARK: - Capture
 
-  private func captureRejection() -> ScannerErrorCode {
+  /// Why a new shot cannot start now; nil when it can.
+  private func captureRejection() -> ScannerErrorCode? {
     guard !dropped else { return .cameraUnavailable }
+    if shot != nil { return .captureBusy }
     guard let borrowed else { return .captureNotReady }
     if borrowed.snapshot().closed { return .processorDisposed }
     guard active, attached else { return .cameraUnavailable }
     guard permissions.status() == .granted else { return .cameraPermissionDenied }
     if failed { return .cameraUnavailable }
     guard cameraState == .ready else { return .captureNotReady }
-    return .featureUnsupported
+    return nil
+  }
+
+  /// Accepts one shot: freezes the bound session, render options, model selection, still
+  /// settings, framing and live guide, asks live analysis for the shutter frame, and fires.
+  private func shoot(_ ticket: CaptureTicket) {
+    if let code = captureRejection() { ticket.reject(code); return }
+    guard let borrowed else { return }
+    var settings = StillSettings.resolve(mode: captureMode, jpegQuality: jpegQuality,
+                                         zeroShutterLag: configuration?.zeroShutterLag ?? false)
+    settings.rotationAngle = captureAngle
+    // Only an outline seen through the framing the still is shot in; one from before a rotation
+    // or square change would land elsewhere on the still.
+    let framing = analysisFraming
+    let guide = latestGuide.flatMap { result in
+      result.quad.flatMap { quad in result.framing.flatMap { $0 == framing ? (quad: quad, framing: $0) : nil } }
+    }
+    let shot = StillShot(ticket: ticket, session: borrowed, options: renderOptions,
+                         selection: try? CornerInference.shared.selection(), settings: settings,
+                         square: appliedSquare, guide: guide)
+    self.shot = shot
+    shotExposed = false
+    detector.requestFrame { [slot = shot.frame] in slot.fill($0) }
+    CameraLog.logger.info(
+      "still requested quality=\(settings.quality, privacy: .public) priority=\(String(describing: settings.priority), privacy: .public)")
+    camera.capture(settings) { [weak self] event in
+      guard let self else { shot.ticket.reject(.cameraUnavailable); return }
+      shotEvent(shot, event)
+    }
+    report()
+  }
+
+  private func shotEvent(_ shot: StillShot, _ event: StillEvent) {
+    switch event {
+    case .exposed:
+      guard self.shot === shot else { return }
+      shotExposed = true
+      report()
+    case .failed(let code):
+      shot.ticket.reject(code)
+      finishShot(shot)
+    case .delivered(let data):
+      shotExposed = true
+      // An invalidated shot writes nothing; the slot frees at once.
+      guard !shot.ticket.isSettled else { return finishShot(shot) }
+      shot.save(data) {
+        DispatchQueue.main.async { [weak self] in self?.finishShot(shot) }
+      }
+      report()
+    }
+  }
+
+  /// Frees the busy slot, then applies a restart or framing change that waited for the shot.
+  private func finishShot(_ shot: StillShot) {
+    guard self.shot === shot else { return }
+    self.shot = nil
+    shotExposed = false
+    guard !dropped else { return }
+    // Releases focus held for the shot and applies a torch change that waited for it.
+    controls.afterCapture()
+    applyFraming()
+    evaluate()
+  }
+
+  private var captureState: CameraCaptureState {
+    if shot != nil { return shotExposed ? .saving : .shooting }
+    return captureRejection() == nil ? .ready : .unavailable
   }
 
   // MARK: - Callbacks
@@ -445,7 +554,11 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       reportedState = state
       onCameraStateChange(state)
     }
-    if !captureReported, let onCaptureStateChange { captureReported = true; onCaptureStateChange(.unavailable) }
+    let capture = captureState
+    if capture != reportedCapture, let onCaptureStateChange {
+      reportedCapture = capture
+      onCaptureStateChange(capture)
+    }
     let autofocus = controls.autofocus
     if autofocus != reportedAutofocus, let onAutofocusChange {
       reportedAutofocus = autofocus

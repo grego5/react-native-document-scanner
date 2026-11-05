@@ -20,6 +20,8 @@ final class QuadModelLoader: @unchecked Sendable {
     request += 1
     let current = request
     lock.unlock()
+    // Called once, on main only.
+    nonisolated(unsafe) let completion = completion
     worker.async { [self] in
       let outcome: ScannerErrorCode?
       do {

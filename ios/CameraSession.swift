@@ -12,6 +12,16 @@ struct CameraConfiguration: Equatable, Sendable {
   let photo: PixelSize
   let video: PixelSize
   var capabilities = CameraCapabilities()
+  /// Whether the photo output keeps a zero-shutter-lag buffer in this configuration.
+  var zeroShutterLag = false
+}
+
+/// One still's progress, on main: `exposed` once its exposure ends, then exactly one terminal
+/// `delivered` (the encoded still) or `failed`.
+enum StillEvent: @unchecked Sendable {
+  case exposed
+  case delivered(Data)
+  case failed(ScannerErrorCode)
 }
 
 enum CameraSessionEvent: Equatable {
@@ -50,6 +60,10 @@ protocol CameraSessionControl: AnyObject {
   /// calls `completion` on main with whether the device accepted it, ordered with `focusEvents`. A
   /// command for a stopped run is dropped, and so is its completion.
   func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void)
+  /// Takes one still with `settings` on the session owner after every earlier command. `events`
+  /// runs on main and always ends with one terminal event, even when the camera stops meanwhile,
+  /// so a caller's busy slot always settles. A camera that is not streaming fails at once.
+  func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void)
 }
 
 /// Hardware controls are optional for a camera owner without a device.
@@ -57,6 +71,9 @@ extension CameraSessionControl {
   var metadataSink: ((CameraFrameMetadata) -> Void)? { get { nil } set {} }
   var focusEvents: ((FocusObservation) -> Void)? { get { nil } set {} }
   func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) {}
+  func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) {
+    DispatchQueue.main.async { events(.failed(.cameraUnavailable)) }
+  }
 }
 
 /// First-frame and buffer-size reporting for one camera owner. Only an armed run reports,
@@ -272,6 +289,8 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
   func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) {
     dispatchPrecondition(condition: .onQueue(.main))
     let current = generation
+    // Created and called on main only.
+    nonisolated(unsafe) let completion = completion
     queue.async { [self] in
       var applied = false
       if isRunning, configured != nil, let device = input?.device {
@@ -285,12 +304,97 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     }
   }
 
-  /// Per-shot settings for the shutter: the configured still ceiling, never larger. Queue only.
-  func photoSettings() -> AVCapturePhotoSettings? {
-    guard let configured else { return nil }
-    let settings = AVCapturePhotoSettings()
-    settings.maxPhotoDimensions = configured.configuration.photo.dimensions
-    return settings
+  func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) {
+    dispatchPrecondition(condition: .onQueue(.main))
+    queue.async { [self] in
+      guard isRunning, let configured, let pipeline, pipeline.session.isRunning,
+            let connection = pipeline.photoOutput.connection(with: .video), connection.isEnabled, connection.isActive,
+            let format = StillFormat.choose(codecs: pipeline.photoOutput.availablePhotoCodecTypes,
+                                            pixelFormats: pipeline.photoOutput.availablePhotoPixelFormatTypes)
+      else {
+        CameraLog.logger.info("still refused: the camera is not streaming")
+        return DispatchQueue.main.async { events(.failed(.cameraNotReady)) }
+      }
+      // The still is tagged with the rotation live analysis applies, so their upright frames match.
+      if connection.isVideoRotationAngleSupported(settings.rotationAngle) {
+        connection.videoRotationAngle = settings.rotationAngle
+      }
+      let photo = Self.photoSettings(settings, format: format, dimensions: configured.configuration.photo,
+                                     maxPriority: pipeline.photoOutput.maxPhotoQualityPrioritization)
+      pipeline.photoOutput.capturePhoto(with: photo, delegate: PhotoDelegate(events: events))
+    }
+  }
+
+  /// Per-shot settings: the configured still ceiling (a delivered still may be smaller, never
+  /// larger), the frozen JPEG quality, or uncompressed BGRA where JPEG is unavailable.
+  static func photoSettings(_ settings: StillSettings, format: StillFormat, dimensions: PixelSize,
+                            maxPriority: AVCapturePhotoOutput.QualityPrioritization) -> AVCapturePhotoSettings {
+    let photo: AVCapturePhotoSettings
+    switch format {
+    case .jpeg:
+      photo = AVCapturePhotoSettings(format: [
+        AVVideoCodecKey: AVVideoCodecType.jpeg,
+        AVVideoCompressionPropertiesKey: [AVVideoQualityKey: settings.quality],
+      ])
+    case .bgra:
+      photo = AVCapturePhotoSettings(format: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+    }
+    photo.maxPhotoDimensions = dimensions.dimensions
+    let priority: AVCapturePhotoOutput.QualityPrioritization
+    switch settings.priority {
+    case .quality: priority = .quality
+    case .balanced: priority = .balanced
+    case .speed: priority = .speed
+    }
+    photo.photoQualityPrioritization = priority.rawValue <= maxPriority.rawValue ? priority : maxPriority
+    return photo
+  }
+
+  /// Owns itself from the request until AVFoundation's final callback, which the photo output
+  /// makes for every request, and turns the callbacks into exactly one terminal event.
+  private final class PhotoDelegate: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+    private let events: @Sendable (StillEvent) -> Void
+    private let lock = NSLock()
+    private var keepAlive: PhotoDelegate?
+    private var result: StillEvent?
+
+    init(events: @escaping @Sendable (StillEvent) -> Void) {
+      self.events = events
+      super.init()
+      keepAlive = self
+    }
+
+    private func send(_ event: StillEvent) {
+      let events = events
+      DispatchQueue.main.async { events(event) }
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didCapturePhotoFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
+      send(.exposed)
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+      let event: StillEvent
+      if let error {
+        CameraLog.logger.error("still failed \(error.localizedDescription, privacy: .public)")
+        event = .failed(.captureFailed)
+      } else if let data = photo.fileDataRepresentation() {
+        event = .delivered(data)
+      } else {
+        event = .failed(.captureFailed)
+      }
+      lock.lock(); result = event; lock.unlock()
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings,
+                     error: Error?) {
+      lock.lock()
+      let event = error == nil ? result ?? .failed(.captureFailed) : .failed(.captureFailed)
+      keepAlive = nil
+      lock.unlock()
+      if let error { CameraLog.logger.error("still capture ended \(error.localizedDescription, privacy: .public)") }
+      send(event)
+    }
   }
 
   // MARK: - Queue
@@ -344,11 +448,15 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
       throw ScannerCodeError(code: .cameraUnavailable)
     }
     photoOutput.maxPhotoDimensions = choice.photo.dimensions
+    // Per-shot prioritization may then go up to quality; zero shutter lag stays on where supported.
+    photoOutput.maxPhotoQualityPrioritization = .quality
+    if photoOutput.isZeroShutterLagSupported { photoOutput.isZeroShutterLagEnabled = true }
     let configuration = CameraConfiguration(photo: choice.photo, video: choice.video,
-                                            capabilities: CameraDeviceAdapter.capabilities(device))
+                                            capabilities: CameraDeviceAdapter.capabilities(device),
+                                            zeroShutterLag: photoOutput.isZeroShutterLagEnabled)
     configured = (request, configuration)
     CameraLog.logger.info(
-      "camera configured photo=\(choice.photo, privacy: .public) video=\(choice.video, privacy: .public)")
+      "camera configured photo=\(choice.photo, privacy: .public) video=\(choice.video, privacy: .public) zsl=\(configuration.zeroShutterLag, privacy: .public)")
     return configuration
   }
 

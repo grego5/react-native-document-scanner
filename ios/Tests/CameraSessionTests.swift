@@ -23,6 +23,30 @@ private final class FakeCamera: CameraSessionControl {
   func start(_ request: CameraRequest) { starts.append(request) }
   func stop() { stops += 1 }
   func emit(_ event: CameraSessionEvent) { onEvent?(event) }
+  var stills: [(settings: StillSettings, events: @Sendable (StillEvent) -> Void)] = []
+  func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) { stills.append((settings, events)) }
+  /// Control commands, never completed: each stays pending.
+  var commands: [CameraCommand] = []
+  func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) { commands.append(command) }
+}
+
+/// Session actions that record each admitted page's live quad and fail its analysis at once.
+private final class RecordedQuads: ScanSessionActions, @unchecked Sendable {
+  private let lock = NSLock()
+  private var quads: [QuadCoordinates?] = []
+  var liveQuads: [QuadCoordinates?] { lock.lock(); defer { lock.unlock() }; return quads }
+
+  func prepareAnalysis(_ source: SessionResources.Lease, liveQuad: QuadCoordinates?,
+                       selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
+    lock.lock(); quads.append(liveQuad); lock.unlock()
+    return { throw ScannerCodeError(code: .analysisFailed) }
+  }
+
+  func render(_ source: SessionResources.Lease, key: ScanPage.RenderKey) throws -> ScanPage.Artifact {
+    throw ScannerCodeError(code: .renderFailed)
+  }
+
+  func close() {}
 }
 
 private func sizes(_ pairs: [(Int, Int)]) -> [PixelSize] { pairs.map { PixelSize($0.0, $0.1) } }
@@ -159,6 +183,8 @@ final class CameraSessionTests: XCTestCase {
     let notifications = NotificationCenter()
     var background = false
     let view: HybridDocumentScannerCameraView
+    let detector = LiveDocumentDetector(inference: CornerInference())
+    let controls: CameraControls
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
     var states: [CameraState] = []
     var errors: [ScannerErrorCode] = []
@@ -166,10 +192,11 @@ final class CameraSessionTests: XCTestCase {
     init() {
       let permissions = CameraPermissions(authorization: authorization, notifications: notifications)
       weak var harness: Harness?
+      controls = CameraControls(camera: fake)
       view = HybridDocumentScannerCameraView(camera: fake, permissions: permissions, notifications: notifications,
                                              inBackground: { harness?.background ?? false },
                                              models: { _, done in done(nil) },
-                                             detector: LiveDocumentDetector(inference: CornerInference()))
+                                             detector: detector, controls: controls)
       harness = self
       view.quadTensorModel = "model.tflite"
       view.view.frame = window.bounds
@@ -330,7 +357,10 @@ final class CameraSessionTests: XCTestCase {
     h.post(UIApplication.didBecomeActiveNotification)
     XCTAssertEqual(rejection(h.view), .captureNotReady, "starting")
     h.fake.emit(.streaming(PixelSize(1920, 1440)))
-    XCTAssertEqual(rejection(h.view), .featureUnsupported, "the shutter is not implemented")
+    let shot = photo(h.view)
+    XCTAssertEqual(h.fake.stills.count, 1, "a ready camera fires")
+    h.fake.stills[0].events(.failed(.captureFailed))
+    XCTAssertEqual(outcome(shot), .second(.captureFailed))
     h.fake.stops += 1
     h.fake.emit(.failed(.cameraUnavailable))
     XCTAssertEqual(rejection(h.view), .cameraUnavailable, "no bounded configuration")
@@ -469,14 +499,209 @@ final class CameraSessionTests: XCTestCase {
   }
 
   @MainActor
-  private func rejection(_ view: HybridDocumentScannerCameraView) -> ScannerErrorCode? {
-    let done = expectation(description: "takePhoto")
-    var code: ScannerErrorCode?
-    _ = try? view.takePhotoResult(options: nil).then {
-      code = $0.asType(ScannerFailure.self)?.code
+  func testShotKeepsItsSlotDefersRestartsAndAdmitsOnePage() throws {
+    let h = Harness()
+    let session = HybridScanSession()
+    let state = try XCTUnwrap(session.state)
+    defer { _ = state.close() }
+    h.view.session = session
+    h.view.captureMode = .quality
+    h.view.jpegQuality = 0.8
+    var capture: [CameraCaptureState] = []
+    h.view.onCaptureStateChange = { capture.append($0) }
+    h.view.afterUpdate()
+    h.attach()
+    h.fake.emit(.configured(CameraConfiguration(photo: PixelSize(640, 480), video: PixelSize(640, 480))))
+    h.view.setRotation(preview: 90, capture: 90)
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    XCTAssertEqual(capture, [.unavailable, .ready])
+
+    let first = photo(h.view)
+    XCTAssertEqual(h.fake.stills.count, 1)
+    XCTAssertEqual(h.fake.stills[0].settings, StillSettings(priority: .quality, quality: 0.8, rotationAngle: 90))
+    XCTAssertEqual(capture.last, .shooting)
+    XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy), "one shot at a time")
+    // A new request and framing wait for the shot.
+    h.view.analysisWidth = 1280
+    h.view.squareFrame = true
+    h.view.afterUpdate()
+    XCTAssertEqual(h.fake.starts.count, 1, "no restart during the shot")
+    XCTAssertEqual(h.view.analysisFraming?.square, false)
+    h.fake.stills[0].events(.exposed)
+    XCTAssertEqual(capture.last, .saving)
+    h.fake.stills[0].events(.delivered(try encodedStill(width: 640, height: 480, orientation: 6)))
+    guard case .first(let id) = outcome(first) else { return XCTFail("the shot resolves with a page ID") }
+    XCTAssertNotNil(state.snapshot().pages[id])
+    let deadline = Date().addingTimeInterval(10)
+    while h.fake.starts.count < 2 && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    XCTAssertEqual(h.fake.starts.last, CameraRequest(analysisWidth: 1280), "the deferred restart follows the shot")
+    h.fake.emit(.streaming(PixelSize(1280, 960)))
+    XCTAssertEqual(h.view.analysisFraming?.square, true)
+  }
+
+  @MainActor
+  func testReplacingTheSessionRejectsTheShotButKeepsItsSlotUntilTheCameraSettles() throws {
+    let h = Harness()
+    let session = HybridScanSession()
+    let state = try XCTUnwrap(session.state)
+    defer { _ = state.close() }
+    h.view.session = session
+    h.view.afterUpdate()
+    h.attach()
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    let shot = photo(h.view)
+    let replacement = HybridScanSession()
+    defer { _ = replacement.state?.close() }
+    h.view.session = replacement
+    h.view.afterUpdate()
+    XCTAssertEqual(outcome(shot), .second(.processorSuperseded), "rejected at once")
+    XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy), "the physical shot still owns the slot")
+    h.fake.stills[0].events(.delivered(try encodedStill(width: 320, height: 240)))
+    XCTAssertTrue(state.snapshot().pages.isEmpty, "nothing reaches the old session")
+    XCTAssertTrue(replacement.state?.snapshot().pages.isEmpty ?? false, "nor the new one")
+    let next = photo(h.view)
+    XCTAssertEqual(h.fake.stills.count, 2, "the slot is free again")
+    h.view.onDropView()
+    XCTAssertEqual(outcome(next), .second(.cameraUnavailable), "unmount rejects the shot in flight")
+  }
+
+  @MainActor
+  func testStoppingTheCameraRejectsTheShotButKeepsItsSlotUntilTheCameraSettles() throws {
+    let h = Harness()
+    let session = HybridScanSession()
+    let state = try XCTUnwrap(session.state)
+    defer { _ = state.close() }
+    h.view.session = session
+    h.view.afterUpdate()
+    h.attach()
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    let shot = photo(h.view)
+    h.detach()
+    XCTAssertEqual(outcome(shot), .second(.cameraUnavailable), "detaching rejects at once")
+    h.attach()
+    XCTAssertEqual(h.fake.starts.count, 1, "the camera restarts only after the shot settles")
+    XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy), "the physical shot still owns the slot")
+    h.fake.stills[0].events(.delivered(try encodedStill(width: 320, height: 240)))
+    XCTAssertTrue(state.snapshot().pages.isEmpty, "a delivered still publishes nothing")
+    XCTAssertEqual(h.fake.starts.count, 2)
+  }
+
+  @MainActor
+  func testFocusAndTorchHoldStillForTheShot() throws {
+    let h = Harness()
+    let session = HybridScanSession()
+    let state = try XCTUnwrap(session.state)
+    defer { _ = state.close() }
+    h.view.session = session
+    h.view.afterUpdate()
+    h.attach()
+    var capabilities = CameraCapabilities()
+    capabilities.focusPoint = true
+    capabilities.scanFocus = true
+    capabilities.torch = true
+    h.fake.emit(.configured(CameraConfiguration(photo: PixelSize(640, 480), video: PixelSize(640, 480),
+                                                capabilities: capabilities)))
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    func scans() -> Int { h.fake.commands.filter { if case .scanFocus = $0 { true } else { false } }.count }
+    let shot = photo(h.view)
+    h.controls.tap(at: CGPoint(x: 0.5, y: 0.5))
+    XCTAssertEqual(scans(), 0, "no tap moves the lens while the photo exposes")
+    h.view.torch = .on
+    h.view.afterUpdate()
+    XCTAssertFalse(h.fake.commands.contains(.torch(true)), "the torch waits for the shot")
+    h.fake.stills[0].events(.exposed)
+    h.controls.tap(at: CGPoint(x: 0.5, y: 0.5))
+    XCTAssertEqual(scans(), 1, "a tap is accepted once the exposure ended")
+    XCTAssertFalse(h.fake.commands.contains(.torch(true)))
+    h.fake.stills[0].events(.delivered(try encodedStill(width: 320, height: 240)))
+    guard case .first = outcome(shot) else { return XCTFail("the shot is admitted") }
+    let deadline = Date().addingTimeInterval(10)
+    while !h.fake.commands.contains(.torch(true)) && Date() < deadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    XCTAssertTrue(h.fake.commands.contains(.torch(true)), "the deferred torch change applies after the shot")
+  }
+
+  @MainActor
+  func testOnlyACurrentGuideSeedsTheShot() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let store = SourceStore(directory: root.appendingPathComponent("sources"))
+    let registry = ScanSessionRegistry(root: root.appendingPathComponent("sessions"), store: store,
+                                       queue: ScannerWorkQueue(worker: DispatchQueue(label: "test.guide")),
+                                       report: { _ in })
+    let actions = RecordedQuads()
+    let state = try registry.createState(actions: { _ in actions })
+    defer { _ = state.close(); store.shutdown(); store.drain(); try? FileManager.default.removeItem(at: root) }
+    let h = Harness()
+    h.view.session = HybridScanSession(state: state)
+    h.view.afterUpdate()
+    h.attach()
+    h.fake.emit(.configured(CameraConfiguration(photo: PixelSize(640, 480), video: PixelSize(640, 480))))
+    h.view.setRotation(preview: 90, capture: 90)
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    let quad: LiveQuad = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
+    func seeGuide() throws {
+      let framing = try XCTUnwrap(h.view.analysisFraming)
+      h.detector.onResult?(LiveGuideResult(status: .tracking, quad: quad, framing: framing))
+    }
+    func shoot() throws {
+      let shot = photo(h.view)
+      let still = try encodedStill(width: 640, height: 480, orientation: 6)
+      h.fake.stills[h.fake.stills.count - 1].events(.delivered(still))
+      guard case .first = outcome(shot) else { return XCTFail("the shot is admitted") }
+    }
+    try seeGuide()
+    try shoot()
+    XCTAssertEqual(actions.liveQuads.count, 1)
+    XCTAssertNotNil(actions.liveQuads.last ?? nil, "a guide in the current framing seeds the page")
+    try seeGuide()
+    h.view.setRotation(preview: 0, capture: 0)
+    try shoot()
+    XCTAssertEqual(actions.liveQuads.count, 2)
+    XCTAssertNil(actions.liveQuads.last ?? nil, "an outline from before the rotation is dropped")
+    h.view.setRotation(preview: 90, capture: 90)
+    try seeGuide()
+    h.view.guide = false
+    h.view.afterUpdate()
+    try shoot()
+    XCTAssertEqual(actions.liveQuads.count, 3)
+    XCTAssertNil(actions.liveQuads.last ?? nil, "disabling guidance drops its outline")
+  }
+
+  enum Outcome: Equatable {
+    case first(String)
+    case second(ScannerErrorCode)
+  }
+
+  @MainActor
+  private func photo(_ view: HybridDocumentScannerCameraView) -> Promise<Variant_String_ScannerFailure> {
+    let promise = try! view.takePhotoResult(options: nil)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    return promise
+  }
+
+  private final class Box<T>: @unchecked Sendable { var value: T?; init() {} }
+
+  // Not main-actor isolated: a promise settled by the work queue runs its callback there, and a
+  // main-actor closure would trap the runtime isolation check.
+  private func outcome(_ promise: Promise<Variant_String_ScannerFailure>) -> Outcome? {
+    let done = expectation(description: "settled")
+    let result = Box<Outcome>()
+    _ = promise.then {
+      switch $0 {
+      case .first(let id): result.value = .first(id)
+      case .second(let failure): result.value = .second(failure.code)
+      }
       done.fulfill()
     }
-    wait(for: [done], timeout: 10)
-    return code
+    wait(for: [done], timeout: 20)
+    return result.value
+  }
+
+  @MainActor
+  private func rejection(_ view: HybridDocumentScannerCameraView) -> ScannerErrorCode? {
+    outcome(try! view.takePhotoResult(options: nil)).flatMap {
+      if case .second(let code) = $0 { code } else { nil }
+    }
   }
 }
