@@ -38,6 +38,12 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  ios: {
+    bundleIdentifier: 'dev.reactnativedocumentscanner.example',
+    infoPlist: {
+      NSCameraUsageDescription: 'Document Scanner uses the camera to scan documents.',
+    },
+  },
   android: {
     package: 'dev.reactnativedocumentscanner.example',
   },

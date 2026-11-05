@@ -4,7 +4,8 @@ Requires iOS 18+, Nitro/Nitrogen 0.37.1, Swift 6 and C++20. All eight current
 registrations are generated from TypeScript. Five views mount as empty UIKit
 views. CameraPermission works independently of views; other operation result
 unions return `feature/unsupported`, and unfinished synchronous methods throw.
-Camera capture, session orchestration, inference and export remain scaffolds.
+The camera view streams a bounded rear-camera preview; its shutter, live guidance
+and capture gates are not implemented yet.
 An internal source store is available for those later native implementations.
 
 Add the pinned official OpenCV podspec inside the app target in the Podfile,
@@ -23,9 +24,9 @@ slices. Build an Intel simulator or generic arm64 device; Apple Silicon simulato
 support remains unverified and needs a separate platform-correct slice. Do not
 substitute a device arm64 binary into a simulator build.
 
-The package is not release-ready. Task 17 verified package installation, Intel simulator and generic arm64 device
-builds, actual registry construction, UIKit mounting and bundled model integrity.
-Functional iOS behavior remains for the following tasks.
+The package is not release-ready. Package installation, Intel simulator and generic
+arm64 device builds, actual registry construction, UIKit mounting and bundled model
+integrity are verified; camera capture and live guidance remain unimplemented.
 Machine-specific hosts, build scripts and test runners stay outside this repo.
 
 ## Camera permission
@@ -95,6 +96,48 @@ marks closed immediately and rejects pending/new work with `processor/disposed`.
 It then queues cache/observer/registry release; `drain` joins queued cleanup. Existing leases
 remain valid and release buffers on their final native owner. Failed deferred
 removal is logged and remains retryable through explicit retirement.
+
+## Camera session
+
+`HybridDocumentScannerCameraView` owns one `AVCameraSession`: the rear physical
+wide-angle camera, configured and started on its serial queue, with the preview layer
+on main. The camera runs only while `mode` is not `off`, the view is in a window with
+a size, the app is in the foreground and camera permission is granted. Losing any of
+them stops it and keeps the view mounted; regaining them starts it again. `starting`
+becomes `ready` on the first video frame and returns to `starting` while the system
+interrupts the session. Each stop or restart advances a generation, so events of an
+earlier start never publish. First-frame reporting is armed on the camera queue only
+after the previous run has stopped and its queued frame callbacks have drained, so a
+late frame of an earlier run cannot mark a restart ready.
+
+Stills have a strict ceiling: at most 4096 pixels on the long side and 12,582,912
+pixels in total, which excludes 24 and 48 MP modes. Among every format's advertised
+`supportedMaxPhotoDimensions`, the largest bounded 4:3 size wins, then the largest
+bounded size of another aspect. Among the formats offering it, a 4:3 video stream
+comes first, then the video width nearest `analysisWidth` (default 640) at or above
+it, then below it. The photo output's `maxPhotoDimensions` is set to that size before
+the session starts, and per-shot settings use the same size. A delivered photo may be
+smaller, never larger. With no bounded configuration, or no camera, the view stays
+`suspended`, reports `camera/unavailable` through `onError`, and does not retry until
+the mode, request, attachment, foreground or permission changes.
+
+The video-data output delivers BGRA, drops late frames and retains nothing past its
+callback, so analysis never builds a backlog. Automatic buffer sizing is off, so it
+delivers the active format's size rather than smaller preview-sized buffers; analysis
+framing still comes from each delivered buffer's actual size, never the configured
+format. Buffers stay in sensor axes:
+`CameraFraming` names the clockwise turn (an EXIF orientation) and the centered crop
+that make a buffer the upright frame shown. `squareFrame` is virtual: the sensor
+streams its full frame and only the centered square is shown and analyzed, so it
+changes framing without restarting the camera. The preview layer is aspect-filled
+into the framed region's aspect-fitted rectangle. Model tensor resizing stays inside
+inference. Rotation follows `AVCaptureDevice.RotationCoordinator`.
+
+The camera borrows its scan session: stopping, detaching or unmounting never closes
+it. Replacing the session, or its close, advances the view's session generation for
+capture publication. Until the shutter exists, `takePhoto` rejects (with
+`feature/unsupported` once the camera is ready), capture state stays `unavailable`,
+autofocus `inactive` and the document state `off`.
 
 ## Crop editor
 
