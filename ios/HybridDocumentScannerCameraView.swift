@@ -248,12 +248,12 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// Starts, restarts or stops the camera to match the current conditions.
   private func evaluate() {
     let sized = MainActor.assumeIsolated { preview.bounds.width > 0 && preview.bounds.height > 0 }
-    let wanted = !dropped && activeApplied && attached && foreground && sized && modelReady
+    let available = !dropped && attached && foreground && sized && modelReady
       && permissions.status() == .granted
-    if !wanted {
+    if !available || (!activeApplied && shot == nil) {
       stopCamera()
-    } else if started != request && !failed && shot == nil {
-      // A restart for a new request waits for the shot in flight; losing a condition does not.
+    } else if activeApplied && started != request && !failed && shot == nil {
+      // Inactivity and a new request wait for the shot; losing availability cancels it.
       stopCamera()
       started = request
       detector.begin(enabled: guideOn)
@@ -263,8 +263,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     report()
   }
 
-  /// Any stop (detach, background, inactive, permission or unmount) invalidates the shot in
-  /// flight at once; its slot stays busy until the camera settles it.
+  /// A stop invalidates the shot at once; its slot stays busy until the camera settles it.
+  /// Inactivity alone defers this stop until the shot finishes.
   private func stopCamera() {
     shot?.ticket.reject(.cameraUnavailable)
     guard started != nil else { return }

@@ -399,9 +399,8 @@ open class HybridDocumentScannerCameraView(
 
   override var imageCorrection = ImageCorrectionOptions(null, null, null)
   override var outputOptions = ImageOutputOptions(null, null, null, null, null)
-  @Volatile private var captureRenderOptions: DocumentRenderOptions? = null
 
-  private fun captureRenderOptions(): DocumentRenderOptions {
+  private fun resolveRenderOptions(): DocumentRenderOptions {
     val correction = imageCorrection
     val output = outputOptions
     val paper = if (output.width == null && output.height == null) null
@@ -491,19 +490,19 @@ open class HybridDocumentScannerCameraView(
   override var guideColor: Double? = null
   override var captureFeedback: Boolean? = null
   override var captureColor: Double? = null
-  /** Applied prop values with defaults; main thread. */
+  /** Applied prop values with defaults, written on main. A capture admits with one read, so it keeps one whole batch. */
   @Volatile private var props = resolveProps()
 
   /** Main thread, after each React prop batch; tests that set props directly call it themselves. */
   override fun afterUpdate() {
     if (disposed) return
-    synchronized(this) { captureRenderOptions = captureRenderOptions() }
     updateSession()
     updateModel()
     val old = props
+    // Resolved whole before publishing, so an invalid batch changes nothing.
     val next = resolveProps()
     if (next == old) return
-    props = next
+    synchronized(this) { props = next }
     liveDetector.inferenceThrottling = next.inferenceThrottling
     liveDetector.minCornerScore = next.minCornerScore
     liveDetector.flowGate = next.flowMotion
@@ -633,6 +632,7 @@ open class HybridDocumentScannerCameraView(
       flowMotion = maxCaptureBlur > 0,
       documentFocus = detection,
       autoCrop = autoCrop ?: true,
+      renderOptions = resolveRenderOptions(),
       tapToFocus = tapToFocus ?: true,
       exposureCompensation = exposureCompensation?.takeIf { it.isFinite() } ?: 0.0,
       minFrameRate = minFrameRate?.takeIf { it.isFinite() }?.toInt()?.coerceAtLeast(0) ?: 0,
@@ -691,10 +691,11 @@ open class HybridDocumentScannerCameraView(
         if (disposed) throw ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE)
         val owner = (requestedSession as? HybridScanSession)?.state
           ?: throw ScannerException(ScannerErrorCode.CAPTURE_NOT_READY)
-        val source = SessionCapture.reserve(owner, captureRenderOptions)
+        val config = props
+        val source = SessionCapture.reserve(owner, config.renderOptions)
         pendingPromises[promise] = Unit
         GatedCapture(promise, SystemClock.uptimeMillis(), options?.skipLowQualityControl == true,
-          source, props, sessionGeneration)
+          source, config, sessionGeneration)
       }
       mainHandler.post { takePhotoOnMain(capture) }
     } catch (error: Throwable) { promise.reject(error) }
@@ -1894,6 +1895,8 @@ private data class ResolvedProps(
   val documentFocus: Boolean,
   /** New photos crop to the page their analysis finds. */
   val autoCrop: Boolean,
+  /** `imageCorrection` and `outputOptions` for new pages. */
+  val renderOptions: DocumentRenderOptions,
   val tapToFocus: Boolean,
   val exposureCompensation: Double,
   val minFrameRate: Int,

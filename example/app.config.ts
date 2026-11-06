@@ -36,6 +36,9 @@ const config: ExpoConfig = {
     [
       'expo-build-properties',
       {
+        ios: {
+          deploymentTarget: '18.0',
+        },
         android: {
           cmakeVersion: '4.1.2',
           buildArchs: [androidAbi],

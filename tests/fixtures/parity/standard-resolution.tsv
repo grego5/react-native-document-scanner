@@ -1,0 +1,14 @@
+# v1; no pixels; standard (non-high-resolution) still choice from bounded candidates (within 4096 long side and 12,582,912 pixels); sizes are widthxheight, comma separated, orientation independent; exact expected size
+id	candidates	expected
+smallest-4x3-at-1080	4000x3000,3840x2160,1920x1080,1440x1080,1440x1440,640x480	1440x1080
+next-larger-4x3	4000x3000,1600x1200,1280x960	1600x1200
+4x3-before-wider	1920x1080,1600x1200,640x480	1600x1200
+smaller-4x3-before-1080	640x480,1920x1080	640x480
+wider-smallest-short-side	3840x2160,1920x1080	1920x1080
+wider-closest-aspect	2336x1080,1920x1080,1088x1088	1920x1080
+smaller-4x3-before-wider	1280x720,640x480	640x480
+smaller-closest-aspect	1280x720,960x720,640x480	960x720
+smaller-before-square	1280x960,640x480,960x960	1280x960
+square-last	1440x1440,1280x720	1280x720
+only-square	1088x1088,1440x1440	1440x1440
+portrait	3000x4000,1080x1440	1080x1440

@@ -13,6 +13,7 @@ import android.hardware.camera2.CameraManager
 import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.util.Size
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -54,12 +55,15 @@ class ResolutionCheckActivity : ComponentActivity() {
   private lateinit var report: TextView
   private lateinit var captureButton: Button
   private lateinit var shareButton: Button
-  private lateinit var modes: LinearLayout
+  private lateinit var timingsButton: Button
+  private val modeButtons = mutableListOf<Button>()
   private var provider: ProcessCameraProvider? = null
   private var controller: LifecycleCameraController? = null
   private var imageCapture: ImageCapture? = null
   private var capturing = false
-  private var mode = "zsl"
+  private var mode = Mode.ZSL
+  /** One line per finished capture this session, the short report to share. */
+  private val timings = mutableListOf<String>()
   private var candidates = ""
   private var bindReport = ""
   private var frameReport = "waiting for an analysis frame"
@@ -82,16 +86,23 @@ class ResolutionCheckActivity : ComponentActivity() {
       for ((name, action) in buttons) addView(Button(context).apply { text = name; setOnClickListener { action() } },
         LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
     }
-    modes = row("zsl" to { mode = "zsl"; bind() }, "latency" to { mode = "latency"; bind() },
-      "quality" to { mode = "quality"; bind() })
-    val actions = row("capture" to { capture() }, "share diagnostics" to { share() })
+    fun modes(vararg list: Mode) = row(*list.map { it.label to { mode = it; bind() } }.toTypedArray()).also { row ->
+      for (index in 0 until row.childCount) modeButtons += row.getChildAt(index) as Button
+    }
+    val normalModes = modes(Mode.ZSL, Mode.LATENCY, Mode.QUALITY)
+    val highResolutionModes = modes(Mode.LATENCY_HIGH_RESOLUTION, Mode.QUALITY_HIGH_RESOLUTION)
+    val actions = row("capture" to { capture() }, "share timings" to { shareTimings() },
+      "share diagnostics" to { share() })
     captureButton = actions.getChildAt(0) as Button
-    shareButton = actions.getChildAt(1) as Button
+    timingsButton = actions.getChildAt(1) as Button
+    shareButton = actions.getChildAt(2) as Button
     captureButton.isEnabled = false
+    timingsButton.isEnabled = false
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       setBackgroundColor(Color.WHITE)
-      addView(modes, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+      addView(normalModes, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+      addView(highResolutionModes, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
       addView(previewView, LinearLayout.LayoutParams(MATCH_PARENT, 0, 2f))
       addView(actions, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
       addView(ScrollView(context).apply { addView(report) }, LinearLayout.LayoutParams(MATCH_PARENT, 0, 3f))
@@ -128,21 +139,17 @@ class ResolutionCheckActivity : ComponentActivity() {
     captureButton.isEnabled = false
     grabFrame = false
     candidates = ""
-    bindReport = "binding $mode"
+    bindReport = "binding ${mode.label}"
     frameReport = "waiting for an analysis frame"
     show()
     val rotation = previewView.display?.rotation ?: 0
     val preview = Preview.Builder().setTargetRotation(rotation).build()
     val capture = ImageCapture.Builder()
-      .setCaptureMode(when (mode) {
-        "quality" -> ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY
-        "latency" -> ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
-        else -> ImageCapture.CAPTURE_MODE_ZERO_SHUTTER_LAG
-      })
+      .setCaptureMode(mode.cameraMode)
       .setResolutionSelector(ResolutionSelector.Builder()
-        .also { if (mode == "quality") it.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE) }
+        .also { if (mode.highResolution) it.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE) }
         .setResolutionFilter { sizes, _ ->
-          CaptureResolutionPolicy.rank(sizes, { it.width }, { it.height }).also { ranked ->
+          CaptureResolutionPolicy.rank(sizes, { it.width }, { it.height }, { it in slowSizes }).also { ranked ->
             candidates = ranked.joinToString()
           }
         }
@@ -190,7 +197,7 @@ class ResolutionCheckActivity : ComponentActivity() {
       imageCapture = capture
       captureButton.isEnabled = true
       listOf(
-        "bound mode=$mode zsl supported=${info.isZslSupported}",
+        "bound mode=${mode.label} zsl supported=${info.isZslSupported}",
         "minimum frame rate=$MIN_FRAME_RATE selected range=${range ?: "camera default"} supported=$ranges",
         "preview  ${info(preview.resolutionInfo)}",
         "capture  ${info(capture.resolutionInfo)}",
@@ -199,7 +206,7 @@ class ResolutionCheckActivity : ComponentActivity() {
     } catch (error: Throwable) {
       previewView.controller = null
       analysis.clearAnalyzer()
-      "bind failed for $mode: ${error.message}"
+      "bind failed for ${mode.label}: ${error.message}"
     }
     show()
   }
@@ -212,27 +219,39 @@ class ResolutionCheckActivity : ComponentActivity() {
     shared.listFiles()?.forEach { it.delete() }
     previewView.bitmap?.let { save(it, "preview.png", Bitmap.CompressFormat.PNG) }
     grabFrame = true
-    captureReport = "capturing ($captureMode)…"
+    captureReport = "capturing (${captureMode.label})…"
     show()
-    val started = System.currentTimeMillis()
+    val zsl = controller?.cameraInfo?.isZslSupported == true
+    val started = SystemClock.elapsedRealtime()
+    var shutterMs: Long? = null
     val file = File(shared, "photo.jpg")
     capture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), ContextCompat.getMainExecutor(this),
       object : ImageCapture.OnImageSavedCallback {
+        // The camera began exposing the photo's frame: the press-to-shutter delay.
+        override fun onCaptureStarted() {
+          shutterMs = SystemClock.elapsedRealtime() - started
+        }
+
         override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+          val savedMs = SystemClock.elapsedRealtime() - started
           val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
           BitmapFactory.decodeFile(file.path, bounds)
           val orientation = ExifInterface(file.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)
           val turned = orientation in 5..8
           val upright = if (turned) "${bounds.outHeight}x${bounds.outWidth}" else "${bounds.outWidth}x${bounds.outHeight}"
-          captureReport = "capture ($captureMode) in ${System.currentTimeMillis() - started} ms: JPEG ${bounds.outWidth}x" +
+          val shutter = shutterMs?.let { "$it ms" } ?: "unreported"
+          captureReport = "capture (${captureMode.label}) shutter $shutter, saved $savedMs ms: JPEG ${bounds.outWidth}x" +
             "${bounds.outHeight}, EXIF orientation $orientation, upright $upright, ${file.length() / 1024} KB\n" +
             "saved photo.jpg, analysis.png and preview.png for sharing"
+          timings += "${captureMode.label}${if (captureMode == Mode.ZSL && !zsl) " (no zsl)" else ""}: " +
+            "${bounds.outWidth}x${bounds.outHeight}, shutter $shutter, saved $savedMs ms, ${file.length() / 1024} KB"
           setCapturing(false)
           show()
         }
 
         override fun onError(error: ImageCaptureException) {
-          captureReport = "capture failed ($captureMode): ${error.imageCaptureError} ${error.message}"
+          captureReport = "capture failed (${captureMode.label}): ${error.imageCaptureError} ${error.message}"
+          timings += "${captureMode.label}: failed, ${error.imageCaptureError}"
           setCapturing(false)
           show()
         }
@@ -243,8 +262,19 @@ class ResolutionCheckActivity : ComponentActivity() {
     capturing = value
     captureButton.isEnabled = !value && imageCapture != null
     shareButton.isEnabled = !value
-    for (index in 0 until modes.childCount) modes.getChildAt(index).isEnabled = !value
+    timingsButton.isEnabled = !value && timings.isNotEmpty()
+    for (button in modeButtons) button.isEnabled = !value
   }
+
+  /** Shares only the device line and one line per capture, as plain text. */
+  private fun shareTimings() {
+    val text = timingsText()
+    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
+      .putExtra(Intent.EXTRA_TEXT, text).putExtra(Intent.EXTRA_SUBJECT, "Scanner capture timings"), "Share timings"))
+  }
+
+  private fun timingsText() = (listOf("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, " +
+    "Android ${android.os.Build.VERSION.RELEASE}") + timings).joinToString("\n")
 
   private fun share() {
     File(shared, "report.txt").writeText(report.text.toString())
@@ -261,13 +291,17 @@ class ResolutionCheckActivity : ComponentActivity() {
   }
 
   private fun show() {
-    val text = listOf(device(), "capture candidates (ranked, as passed to the filter):\n$candidates", bindReport,
+    val summary = if (timings.isEmpty()) null else "timings (shutter = press to exposure, saved = press to file):\n" +
+      timings.joinToString("\n")
+    val text = listOfNotNull(summary, device(), "capture candidates (ranked, as passed to the filter):\n$candidates", bindReport,
       frameReport, captureReport).joinToString("\n\n")
     report.text = text
     Log.i(TAG, text)
   }
 
   private var deviceText: String? = null
+  /** The camera's high-resolution JPEG sizes, ranked as the scanner ranks them; read with the device report. */
+  private var slowSizes = emptySet<Size>()
   private fun device(): String = deviceText ?: run {
     val provider = provider ?: return "no camera provider"
     val info = CameraSelector.DEFAULT_BACK_CAMERA.filter(provider.availableCameraInfos).firstOrNull()
@@ -286,13 +320,15 @@ class ResolutionCheckActivity : ComponentActivity() {
     fun sizes(list: Array<Size>?) = list.orEmpty().sortedByDescending { it.width.toLong() * it.height }
     val jpeg = sizes(map?.getOutputSizes(ImageFormat.JPEG))
     val highRes = sizes(map?.getHighResolutionOutputSizes(ImageFormat.JPEG))
-    fun ranked(list: List<Size>) = CaptureResolutionPolicy.rank(list, { it.width }, { it.height }).firstOrNull()
+    slowSizes = highRes.toSet()
+    fun ranked(list: List<Size>) =
+      CaptureResolutionPolicy.rank(list, { it.width }, { it.height }, { it in highRes }).firstOrNull()
     listOf(
       "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}",
       "back camera id=$id level=$level active=${rect(characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE))}",
       "JPEG sizes: ${jpeg.joinToString()}",
       "JPEG high-resolution sizes: ${highRes.joinToString().ifEmpty { "none" }}",
-      "policy pick: zsl/latency ${ranked(jpeg)}, quality ${ranked(jpeg + highRes)} (before CameraX combination checks)",
+      "policy pick: normal ${ranked(jpeg)}, hi-res ${ranked(jpeg + highRes)} (before CameraX combination checks)",
     ).joinToString("\n").also { deviceText = it }
   }
 
@@ -316,6 +352,16 @@ class ResolutionCheckActivity : ComponentActivity() {
 
   private fun rect(rect: android.graphics.Rect?) =
     rect?.let { "${it.left},${it.top} ${it.width()}x${it.height()}" } ?: "none"
+
+  /** A CameraX capture mode, and whether the photo may use the sizes the camera lists as high-resolution, which it
+   * captures below 20 fps. The scanner allows them in `document` mode, and in `photo` mode with `highResolutionPhoto`. */
+  private enum class Mode(val label: String, val cameraMode: Int, val highResolution: Boolean) {
+    ZSL("zsl", ImageCapture.CAPTURE_MODE_ZERO_SHUTTER_LAG, false),
+    LATENCY("latency", ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY, false),
+    QUALITY("quality", ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY, false),
+    LATENCY_HIGH_RESOLUTION("latency hi-res", ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY, true),
+    QUALITY_HIGH_RESOLUTION("quality hi-res", ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY, true),
+  }
 
   companion object {
     private const val TAG = "ResolutionCheck"

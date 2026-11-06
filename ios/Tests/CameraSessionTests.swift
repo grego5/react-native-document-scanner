@@ -54,7 +54,7 @@ private func sizes(_ pairs: [(Int, Int)]) -> [PixelSize] { pairs.map { PixelSize
 final class CameraSessionTests: XCTestCase {
   // MARK: - Still dimensions
 
-  func testStillSelectionPrefersLargestBounded4By3AndExcludes24And48MP() {
+  func testStillSelectionRanksForTextLikeAndroidAndExcludes24And48MP() {
     // 12, 24 and 48 MP 4:3 modes as a 48 MP sensor advertises them.
     let advertised = sizes([(4032, 3024), (5712, 4284), (8064, 6048)])
     XCTAssertEqual(CameraStillPolicy.select(advertised), PixelSize(4032, 3024))
@@ -65,8 +65,11 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertFalse(CameraStillPolicy.isBounded(PixelSize(4200, 1000)))
     XCTAssertFalse(CameraStillPolicy.isBounded(PixelSize(4096, 3100)))
     XCTAssertFalse(CameraStillPolicy.isBounded(PixelSize(0, 3024)))
-    // A smaller 4:3 size beats a larger size of another aspect.
+    // Both platforms prefer 4:3 even when a wider photo has a larger short side.
     XCTAssertEqual(CameraStillPolicy.select(sizes([(4032, 2268), (2048, 1536)])), PixelSize(2048, 1536))
+    // At equal short sides, the aspect closest to 4:3 wins; square sizes follow wider ones.
+    XCTAssertEqual(CameraStillPolicy.select(sizes([(1920, 1080), (1440, 1080)])), PixelSize(1440, 1080))
+    XCTAssertEqual(CameraStillPolicy.select(sizes([(3000, 3000), (1600, 1200)])), PixelSize(1600, 1200))
   }
 
   func testStillSelectionFallsBackToLargestOtherAspectThenNothing() {
@@ -91,6 +94,24 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertFalse(CameraStillPolicy.accepts(PixelSize(4284, 5712), requested: requested))
     XCTAssertFalse(CameraStillPolicy.accepts(PixelSize(4096, 3072), requested: requested))
     XCTAssertFalse(CameraStillPolicy.accepts(PixelSize(0, 0), requested: requested))
+  }
+
+  func testStandardStillMatchesTheSharedPlatformVectors() throws {
+    let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "standard-resolution", withExtension: "tsv"))
+    let rows = try String(contentsOf: url, encoding: .utf8).split(separator: "\n").map(String.init)
+      .filter { !$0.isEmpty && !$0.hasPrefix("#") }.dropFirst()
+    func parse(_ list: String) -> [PixelSize] {
+      list.split(separator: ",").map { item in
+        let side = item.split(separator: "x").map { Int($0)! }
+        return PixelSize(side[0], side[1])
+      }
+    }
+    for line in rows {
+      let v = line.split(separator: "\t").map(String.init)
+      XCTAssertEqual(v.count, 3, line)
+      XCTAssertEqual(CameraStillPolicy.selectStandard(parse(v[1])), parse(v[2]).first, v[0])
+    }
+    XCTAssertEqual(rows.count, 12)
   }
 
   func testStandardStillIsTheSmallest4By3WithA1080ShortSide() {
@@ -583,6 +604,35 @@ final class CameraSessionTests: XCTestCase {
   }
 
   @MainActor
+  func testInactivityWaitsForTheShotToPublishBeforeStopping() throws {
+    let h = Harness()
+    let session = HybridScanSession()
+    let state = try XCTUnwrap(session.state)
+    defer { _ = state.close() }
+    h.view.session = session
+    h.view.afterUpdate()
+    h.attach()
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    let shot = photo(h.view)
+    h.view.active = false
+    h.view.afterUpdate()
+    XCTAssertEqual(h.fake.stops, 0, "inactivity leaves the admitted shot running")
+    h.fake.stills[0].events(.exposed)
+    h.view.afterUpdate()
+    XCTAssertEqual(h.fake.stops, 0, "saving also keeps the camera alive")
+    h.fake.stills[0].events(.delivered(try encodedStill(width: 320, height: 240)))
+    guard case .first(let id) = outcome(shot) else { return XCTFail("the shot publishes despite inactivity") }
+    XCTAssertNotNil(state.snapshot().pages[id])
+    let deadline = Date().addingTimeInterval(10)
+    while h.fake.stops == 0 && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    XCTAssertEqual(h.fake.stops, 1, "the camera stops after publication")
+    XCTAssertEqual(rejection(h.view), .cameraUnavailable)
+    h.view.active = true
+    h.view.afterUpdate()
+    XCTAssertEqual(h.fake.starts.count, 2, "reactivation resumes the camera")
+  }
+
+  @MainActor
   func testStoppingTheCameraRejectsTheShotButKeepsItsSlotUntilTheCameraSettles() throws {
     let h = Harness()
     let session = HybridScanSession()
@@ -593,11 +643,15 @@ final class CameraSessionTests: XCTestCase {
     h.attach()
     h.fake.emit(.streaming(PixelSize(640, 480)))
     let shot = photo(h.view)
+    h.view.active = false
+    h.view.afterUpdate()
     h.detach()
     XCTAssertEqual(outcome(shot), .second(.cameraUnavailable), "detaching rejects at once")
     h.attach()
     XCTAssertEqual(h.fake.starts.count, 1, "the camera restarts only after the shot settles")
     XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy), "the physical shot still owns the slot")
+    h.view.active = true
+    h.view.afterUpdate()
     h.fake.stills[0].events(.delivered(try encodedStill(width: 320, height: 240)))
     XCTAssertTrue(state.snapshot().pages.isEmpty, "a delivered still publishes nothing")
     XCTAssertEqual(h.fake.starts.count, 2)
