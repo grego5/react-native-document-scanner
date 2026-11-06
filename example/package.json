@@ -14,11 +14,11 @@
     "android:lifecycle": "pwsh -NoProfile -File ../tools/android-lifecycle.ps1"
   },
   "overrides": {
-    "uuid": "14.0.1",
+    "uuid": "14.0.3",
     "zod": "4.6.7",
     "deepmerge": "4.1.2",
-    "glob": "14.0.3",
-    "minimatch": "11.0.4"
+    "glob": "14.0.4",
+    "minimatch": "11.0.5"
   },
   "expo": {
     "install": {
@@ -35,30 +35,29 @@
     }
   },
   "dependencies": {
-    "@expo/metro-runtime": "~58.0.15",
-    "expo": "^58.0.23",
-    "expo-asset": "~58.0.17",
-    "expo-build-properties": "~58.0.12",
-    "expo-constants": "~58.0.13",
-    "expo-dev-client": "~58.0.18",
-    "expo-file-system": "~58.0.10",
-    "expo-linking": "~58.0.16",
-    "expo-media-library": "~58.0.13",
-    "expo-modules-core": "~58.0.12",
-    "expo-router": "~58.0.30",
-    "expo-sharing": "~58.0.22",
-    "expo-system-ui": "~58.0.7",
+    "@expo/metro-runtime": "58.0.17",
+    "expo": "58.0.23",
+    "expo-asset": "58.0.20",
+    "expo-build-properties": "58.0.12",
+    "expo-constants": "58.0.15",
+    "expo-dev-client": "58.0.18",
+    "expo-file-system": "58.0.13",
+    "expo-linking": "58.0.16",
+    "expo-media-library": "58.0.13",
+    "expo-modules-core": "58.0.30",
+    "expo-router": "58.0.30",
+    "expo-sharing": "58.0.22",
+    "expo-system-ui": "58.0.7",
     "react": "19.3.0",
     "react-native": "0.88.1",
     "react-native-document-scanner": "file:../",
-    "react-native-nitro-modules": "0.37.1",
-    "react-native-safe-area-context": "~5.11.1",
-    "react-native-screens": "~4.30.1"
+    "react-native-nitro-modules": "0.37.2",
+    "react-native-safe-area-context": "5.11.1",
+    "react-native-screens": "4.30.1"
   },
   "devDependencies": {
-    "@types/react": "~19.3.0",
-    "react-dom": "^19.3.0",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "@types/react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }
-

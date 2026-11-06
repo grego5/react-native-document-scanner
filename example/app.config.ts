@@ -38,6 +38,12 @@ const config: ExpoConfig = {
       {
         ios: {
           deploymentTarget: '18.0',
+          extraPods: [
+            {
+              name: 'DocumentScannerOpenCV',
+              podspec: '../../ios/DocumentScannerOpenCV.podspec',
+            },
+          ],
         },
         android: {
           cmakeVersion: '4.1.2',

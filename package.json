@@ -33,6 +33,9 @@
     "test:native": "pwsh -NoProfile -File tools/test-native.ps1",
     "test:device": "pwsh -NoProfile -File tools/test-device.ps1"
   },
+  "overrides": {
+    "minimatch": "11.0.4"
+  },
   "peerDependencies": {
     "react": "*",
     "react-native": ">=0.78.0",
@@ -44,12 +47,12 @@
     }
   },
   "devDependencies": {
-    "@types/react": "^19.3.0",
-    "nitrogen": "0.37.1",
-    "react": "^19.3.0",
-    "react-native": "^0.88.1",
-    "react-native-nitro-modules": "0.37.1",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "@types/react": "19.3.0",
+    "nitrogen": "0.37.2",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-nitro-modules": "0.37.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "engines": {
     "node": ">=20"
