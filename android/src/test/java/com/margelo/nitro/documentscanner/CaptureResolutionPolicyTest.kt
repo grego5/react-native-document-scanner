@@ -1,5 +1,6 @@
 package com.margelo.nitro.documentscanner
 
+import com.margelo.nitro.documentscanner.processing.ParityFixtures
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -56,6 +57,17 @@ class CaptureResolutionPolicyTest {
   }
 
   @Test
+  fun theStandardPhotoMatchesTheSharedPlatformVectors() {
+    val rows = ParityFixtures.resource("standard-resolution")
+    for (row in rows) {
+      val ranked = CaptureResolutionPolicy.rankStandard(sizes(row.getValue("candidates").replace(",", ", ")),
+        { it.width }, { it.height })
+      assertEquals(row.getValue("id"), sizes(row.getValue("expected")).single(), ranked.first())
+    }
+    assertEquals(12, rows.size)
+  }
+
+  @Test
   fun squareSizesFollowEvenWithAWiderShortSide() {
     // Samsung SM-G998U rear: a square capture would crop the shared viewport, and live analysis with it.
     assertEquals(listOf(Dimensions(4000, 3000), Dimensions(3840, 2160), Dimensions(2992, 2992)),
@@ -74,7 +86,8 @@ class CaptureResolutionPolicyTest {
   @Test
   fun rankingIsOrientationIndependentAndSmallOnlyDevicesStillWork() {
     assertEquals(Dimensions(3000, 4000), rank(Dimensions(3000, 4000), Dimensions(2400, 3200)).first())
-    assertEquals(Dimensions(1920, 1080), rank(Dimensions(640, 480), Dimensions(1280, 720), Dimensions(1920, 1080)).first())
+    assertEquals(Dimensions(640, 480), rank(Dimensions(640, 480), Dimensions(1280, 720), Dimensions(1920, 1080)).first())
+    assertEquals(Dimensions(2048, 1536), rank(Dimensions(4032, 2268), Dimensions(2048, 1536)).first())
     assertTrue(rank().isEmpty())
   }
 }

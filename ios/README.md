@@ -102,9 +102,10 @@ removal is logged and remains retryable through explicit retirement.
 
 `HybridDocumentScannerCameraView` owns one `AVCameraSession`: the rear physical
 wide-angle camera, configured and started on its serial queue, with the preview layer
-on main. The camera runs only while `mode` is not `off`, the view is in a window with
-a size, the app is in the foreground and camera permission is granted. Losing any of
-them stops it and keeps the view mounted; regaining them starts it again. `starting`
+on main. The camera runs while `active` is true, the view is in a window with
+a size, the app is in the foreground and camera permission is granted. Setting
+`active` false waits for an admitted capture to finish before stopping; losing any
+other condition stops it immediately. Regaining the conditions starts it again. `starting`
 becomes `ready` on the first video frame and returns to `starting` while the system
 interrupts the session. Each stop or restart advances a generation, so events of an
 earlier start never publish. First-frame reporting is armed on the camera queue only
@@ -113,14 +114,20 @@ late frame of an earlier run cannot mark a restart ready.
 
 Stills have a strict ceiling: at most 4096 pixels on the long side and 12,582,912
 pixels in total, which excludes 24 and 48 MP modes. Among every format's advertised
-`supportedMaxPhotoDimensions`, the largest bounded 4:3 size wins, then the largest
-bounded size of another aspect. Among the formats offering it, a 4:3 video stream
+`supportedMaxPhotoDimensions`, both resolution modes prefer bounded 4:3 sizes.
+High resolution chooses the largest short side. Standard resolution chooses the smallest
+short side reaching 1080, or the largest smaller one. Wider sizes are fallbacks only
+when no 4:3 size is available, with square and narrower sizes last.
+Both platforms check the standard order
+against `tests/fixtures/parity/standard-resolution.tsv`. The React document profile defaults
+to high resolution; the photo profile defaults to standard resolution.
+Among the formats offering the selected size, a 4:3 video stream
 comes first, then the video width nearest `analysisFrameWidth` (default 640) at or above
 it, then below it. The photo output's `maxPhotoDimensions` is set to that size before
 the session starts, and per-shot settings use the same size. A delivered photo may be
 smaller, never larger. With no bounded configuration, or no camera, the view stays
 `suspended`, reports `camera/unavailable` through `onError`, and does not retry until
-the mode, request, attachment, foreground or permission changes.
+`active`, request, attachment, foreground or permission changes.
 
 The video-data output delivers BGRA, drops late frames and retains nothing past its
 callback, so analysis never builds a backlog. Automatic buffer sizing is off, so it
@@ -173,9 +180,11 @@ the still (both centered on the sensor, sharing its long side) and seeds analysi
 Publication is claimed through the shot's ticket: admission into the session runs only
 while the ticket is unsettled, and settling is exactly once. Replacing the session rejects
 the shot with `processor/superseded`, its close with `processor/disposed`, and any camera
-stop (detaching, backgrounding, mode `off`, losing permission, unmounting) with
+stop (detaching, backgrounding, losing permission, unmounting) with
 `camera/unavailable`, immediately; the camera restarts only after the shot settles, and the physical shot keeps the busy slot until AVFoundation
 finishes and the worker has written nothing, admitted the page, or retired what it wrote.
+Setting `active` false alone keeps the admitted shot alive through publication and stops
+the camera when its slot frees; a detach or background event during that wait still cancels it.
 The promise resolves with the page ID after admission; no source path reaches JavaScript.
 
 The camera starts only once `cornerDetectionModel` is prepared. `CornerModelLoader` reads an
@@ -270,7 +279,7 @@ acquired outside the detector's lock, because acquisition waits for the shared
 inference queue, and is kept only while the camera still runs; an acquisition that
 finishes after a stop is closed.
 
-`guide` toggles guidance without restarting the camera. The document state is `off`
+`guideLiveCorners` toggles guidance without restarting the camera. The document state is `off`
 while the camera is stopped or the guide is off, then follows the results:
 `searching`, `tracking`, `held` or `unavailable`. `LiveGuideOverlay` draws the guide
 over the preview's presentation rectangle. AVFoundation's capture and preview rotation

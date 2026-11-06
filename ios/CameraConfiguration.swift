@@ -29,27 +29,35 @@ enum CameraStillPolicy {
     !size.isEmpty && size.longSide <= maxLongSide && size.pixels <= maxPixels
   }
 
-  /// The largest bounded 4:3 size, else the largest bounded size of another aspect; nil when
-  /// nothing fits.
+  /// Prefer bounded 4:3 sizes, widest short side first. Other aspects are fallbacks.
   static func select(_ sizes: [PixelSize]) -> PixelSize? {
-    sizes.filter(isBounded).max { rank($0) < rank($1) }
+    sizes.filter(isBounded).min { rank($0) < rank($1) }
   }
 
-  private static func rank(_ size: PixelSize) -> (Int, Int, Int, Int) {
-    (size.isFourByThree ? 1 : 0, size.pixels, size.longSide, size.width)
+  private static func rank(_ size: PixelSize) -> (Int, Int, Double, Int, Int) {
+    let aspect = Double(size.longSide) / Double(size.shortSide)
+    return (size.isFourByThree ? 0 : (aspect > 4.0 / 3.0 ? 1 : 2), -size.shortSide,
+            abs(aspect - 4.0 / 3.0), size.pixels, size.longSide)
   }
 
   /// A short side of 1080 px, as 1440x1080: enough for an ordinary photo at a fraction of the file size.
   static let standardShortSide = 1080
 
-  /// `camera` mode's standard photo, as Android's: among bounded sizes, 4:3 ones if any, the smallest with a short
-  /// side of at least `standardShortSide`, else the widest smaller one; nil when nothing fits.
+  /// Prefer 4:3, then wider, then narrower fallback sizes. Within 4:3 and wider groups,
+  /// choose the smallest short side reaching 1080, or the largest smaller one; narrower sizes rank largest first.
+  /// Shared vectors live in standard-resolution.tsv.
   static func selectStandard(_ sizes: [PixelSize]) -> PixelSize? {
-    let bounded = sizes.filter(isBounded)
-    let fourByThree = bounded.filter(\.isFourByThree)
-    let pool = fourByThree.isEmpty ? bounded : fourByThree
-    func key(_ size: PixelSize) -> (Int, Int) { (size.shortSide, size.pixels) }
-    return pool.filter { $0.shortSide >= standardShortSide }.min { key($0) < key($1) } ?? pool.max { key($0) < key($1) }
+    func aspect(_ size: PixelSize) -> Double { Double(size.longSide) / Double(size.shortSide) }
+    func tier(_ size: PixelSize) -> Int {
+      if size.isFourByThree { return size.shortSide >= standardShortSide ? 0 : 1 }
+      if aspect(size) > 4.0 / 3.0 { return size.shortSide >= standardShortSide ? 2 : 3 }
+      return 4
+    }
+    func key(_ size: PixelSize) -> (Int, Int, Double, Int) {
+      let tier = tier(size)
+      return (tier, tier == 0 || tier == 2 ? size.shortSide : -size.shortSide, abs(aspect(size) - 4.0 / 3.0), size.pixels)
+    }
+    return sizes.filter(isBounded).min { key($0) < key($1) }
   }
 
   static func select(_ sizes: [PixelSize], highResolution: Bool) -> PixelSize? {
@@ -81,7 +89,7 @@ struct CameraFormatChoice: Equatable, Sendable {
 enum CameraFormatPolicy {
   static let defaultAnalysisWidth = 640
 
-  /// Still size first: the best bounded still any format offers, the largest or, without `highResolution`, the
+  /// Still size first: the best bounded still any format offers, ranked for text or, without `highResolution`, the
   /// standard one. Among the formats offering
   /// it, a 4:3 video stream comes first, so preview and analysis show what the photo shows;
   /// then the video width closest to `analysisFrameWidth` at or above it, then below it; then the

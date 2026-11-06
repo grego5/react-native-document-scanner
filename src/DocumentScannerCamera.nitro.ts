@@ -164,7 +164,8 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   captureMode?: CaptureMode
   /**
-   * The photo size for text, the largest 4:3 within 4096 px and 12.6 MP, as 4032x3024; defaults to true. On Android that
+   * The photo size for text, preferring 4:3 within 4096 px and 12.6 MP, widest short side first; other aspects
+   * are binding fallbacks. Defaults to true. On Android that
    * includes the sizes the camera lists as high-resolution (below 20 fps, generally without zero shutter lag) when no
    * normal 4:3 size has a 2400 px short side, as on limited phones that list their 12 MP size only there. False takes a
    * standard photo, the smallest 4:3 with a 1080 px short side, as 1440x1080. Changing it rebinds the camera.
