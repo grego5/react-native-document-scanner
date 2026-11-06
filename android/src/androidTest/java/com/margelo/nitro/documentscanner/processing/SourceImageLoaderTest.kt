@@ -1,0 +1,132 @@
+package com.margelo.nitro.documentscanner.processing
+
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class SourceImageLoaderTest {
+  private val fixtures = mutableListOf<File>()
+  private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+  @After
+  fun removeFixtures() {
+    fixtures.forEach { it.delete() }
+  }
+
+  @Test
+  fun allExifOrientationsProduceExpectedUprightDimensionsAndMarkerPositions() {
+    val colors = mapOf("RED" to Color.RED, "GREEN" to Color.GREEN, "YELLOW" to Color.YELLOW, "BLUE" to Color.BLUE)
+    val assets = InstrumentationRegistry.getInstrumentation().context.assets
+    ParityFixtures.read(assets.open("parity/orientation.tsv")).forEach { fixture ->
+      val orientation = fixture.getValue("exif").toInt()
+      val expected = fixture.getValue("corners").split(',').map { colors.getValue(it) }
+      val file = createFixture(orientation)
+      SourceImageLoader.load(Uri.fromFile(file).toString(), maxDimension = 128).use { image ->
+        assertEquals(fixture.getValue("width").toInt(), image.uprightWidth)
+        assertEquals(fixture.getValue("height").toInt(), image.uprightHeight)
+        assertEquals(orientation, image.exifOrientation)
+        assertCorners(image.bitmap, expected, orientation)
+
+        val encodedPoint = ImagePoint(20.0, 15.0)
+        val uprightPoint = image.encodedToUpright.encodedToUpright(encodedPoint)
+        val roundTrip = image.encodedToUpright.uprightToEncoded(uprightPoint)
+        assertEquals(encodedPoint.x, roundTrip.x, 1e-8)
+        assertEquals(encodedPoint.y, roundTrip.y, 1e-8)
+      }
+    }
+  }
+
+  @Test
+  fun regionDecodeMatchesTheSameRegionOfTheFullUprightDecodeForEveryOrientation() {
+    for (orientation in ExifInterface.ORIENTATION_NORMAL..ExifInterface.ORIENTATION_ROTATE_270) {
+      val file = createFixture(orientation)
+      val header = SourceImageLoader.inspect(Uri.fromFile(file).toString())
+      // Straddles the quadrant borders, off-centre, so a wrong mapping shows a different colour mix.
+      val region = PhotoInferenceCrop(10, 8, header.uprightWidth / 2, header.uprightHeight / 3)
+      SourceImageLoader.load(Uri.fromFile(file).toString(), maxDimension = 1024).use { full ->
+        val part = SourceImageLoader.loadRegion(header, region)
+        try {
+          assertEquals(region.width, part.width)
+          assertEquals(region.height, part.height)
+          for ((x, y) in listOf(1 to 1, part.width - 2 to 1, 1 to part.height - 2, part.width - 2 to part.height - 2)) {
+            val expected = full.bitmap.getPixel(region.left + x, region.top + y)
+            assertTrue("orientation $orientation at $x,$y", colorDistance(expected, part.getPixel(x, y)) < 40)
+          }
+        } finally { part.recycle() }
+      }
+    }
+  }
+
+  @Test
+  fun sampledDecodeHonorsRequestedMaximumDimensionAndPreservesAspect() {
+    val file = createFixture(ExifInterface.ORIENTATION_NORMAL, width = 640, height = 480)
+    SourceImageLoader.load(Uri.fromFile(file).toString(), maxDimension = 160).use { image ->
+      assertTrue(image.uprightWidth <= 160)
+      assertTrue(image.uprightHeight <= 160)
+      assertEquals(image.encodedWidth.toDouble() / image.encodedHeight, image.uprightWidth.toDouble() / image.uprightHeight, 0.01)
+    }
+  }
+
+  private fun createFixture(
+    orientation: Int,
+    width: Int = 80,
+    height: Int = 60,
+  ): File {
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    for (y in 0 until height) {
+      for (x in 0 until width) {
+        val color = when {
+          x < width / 2 && y < height / 2 -> Color.RED
+          x >= width / 2 && y < height / 2 -> Color.GREEN
+          x < width / 2 -> Color.BLUE
+          else -> Color.YELLOW
+        }
+        bitmap.setPixel(x, y, color)
+      }
+    }
+    val file = newFixtureFile()
+    file.outputStream().use { output ->
+      assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 100, output))
+    }
+    bitmap.recycle()
+
+    ExifInterface(file.absolutePath).apply {
+      setAttribute(ExifInterface.TAG_ORIENTATION, orientation.toString())
+      saveAttributes()
+    }
+    return file
+  }
+
+  private fun newFixtureFile(): File = File.createTempFile("scanner-fixture-", ".jpg", context.cacheDir)
+    .also(fixtures::add)
+
+  private fun assertCorners(bitmap: Bitmap, expected: List<Int>, orientation: Int) {
+    val samples = listOf(
+      bitmap.getPixel(bitmap.width / 4, bitmap.height / 4),
+      bitmap.getPixel(bitmap.width * 3 / 4, bitmap.height / 4),
+      bitmap.getPixel(bitmap.width * 3 / 4, bitmap.height * 3 / 4),
+      bitmap.getPixel(bitmap.width / 4, bitmap.height * 3 / 4),
+    )
+    expected.zip(samples).forEachIndexed { index, (expectedColor, actualColor) ->
+      assertTrue(
+        "Orientation $orientation corner $index expected $expectedColor near $actualColor",
+        colorDistance(expectedColor, actualColor) < 140,
+      )
+    }
+  }
+
+  private fun colorDistance(left: Int, right: Int): Int =
+    kotlin.math.abs(Color.red(left) - Color.red(right)) +
+      kotlin.math.abs(Color.green(left) - Color.green(right)) +
+      kotlin.math.abs(Color.blue(left) - Color.blue(right))
+}
