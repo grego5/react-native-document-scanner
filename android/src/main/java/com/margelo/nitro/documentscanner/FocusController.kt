@@ -10,7 +10,7 @@ import java.util.concurrent.Executor
 /** The bound camera's controls; a new binding gives a new instance. */
 internal class BoundCamera(val control: CameraControl, val info: CameraInfo)
 
-/** Who holds the lens: a tap's or a quality capture's scan, each locking focus. */
+/** Who holds the lens: a tap's or a capture's scan, each locking focus. */
 internal enum class FocusOwner { TAP, CAPTURE }
 
 /**
@@ -66,7 +66,7 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     trigger(next, FocusMeteringAction.Builder(focusPoint, FocusMeteringAction.FLAG_AF)
       .addPoint(exposurePoint, FocusMeteringAction.FLAG_AE).disableAutoCancel().build())
   }
-  /** A quality capture's own scan at [point], held until [afterCapture]. */
+  /** A capture's own scan at [point], held until [afterCapture]. */
   fun capture(camera: BoundCamera, point: MeteringPoint) {
     if (closed || host.shotInFlight()) return
     val next = start(camera, FocusOwner.CAPTURE)

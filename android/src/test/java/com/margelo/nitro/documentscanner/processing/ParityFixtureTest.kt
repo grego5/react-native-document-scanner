@@ -35,7 +35,7 @@ class ParityFixtureTest {
         val actual = gate.next(CaptureState(
           nowMs = row.getValue("nowMs").toLong(), focusCheckEnabled = true, documentRequired = true,
           requireFocus = true, focusTimeoutMs = 2_000, documentFound = b("document"), focused = b("focus"),
-          zslCheckEnabled = true, zslReady = b("zsl"), torchReady = b("torch"),
+          zslCheckEnabled = true, zslReady = b("zsl"), lightReady = b("torch"),
           motionCheckEnabled = true, steady = b("steady"),
         ))
         val expected = when (row.getValue("decision")) {

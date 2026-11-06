@@ -32,7 +32,7 @@ class FocusPolicyTest {
     val shot = f.start(FocusOwner.CAPTURE, 7 * second)
     assertTrue(f.owner == FocusOwner.CAPTURE && f.pending)
     assertEquals(Long.MAX_VALUE, f.heldUntilNs)
-    assertEquals(9 * second, f.scanDeadline())
+    assertEquals(13 * second, f.scanDeadline())
     assertNull(f.tapDeadline())
     assertTrue(f.complete(shot, false))
     assertTrue(f.locked == false && f.scanDeadline() == null)

@@ -12,7 +12,7 @@ Run the existing React scan workflow on iOS without separate session logic.
 
 ## Non-goals
 
-Do not implement later task outcomes, redesign unrelated Android behavior, change the model/thresholds, or perform an optimization/cleanup pass. Do not hand-edit generated sources. Missing environment facts require verification, not guessed substitutions.
+Do not create separate iOS session/navigation state or duplicate native readiness in React. Refactor existing example wiring where needed for the unified workflow, preserving Android behavior. Do not add SwiftUI, a second media/share stack, Android-only camera capabilities on iOS, unrelated optimization or handwritten generated changes.
 
 ## Read before editing
 
@@ -32,11 +32,12 @@ One explicitly owned native scan session supplies ordered page metadata through 
 
 ## Implementation steps
 
-1. Add iOS bundle identity, deployment target, camera usage description, photo-library add permission, and iOS development/test commands using the repository's Expo version.
-2. Keep the existing scan-session owner, reducer, metadata subscription, crop submit/cancel workflow, and host export retention. Use session/page IDs throughout React; TIFF/JPEG/PNG sources remain native-private. Export rendered JPEG/PNG/PDF to host-owned locations outside native session/source resources; do not add a JS image janitor or alternate iOS session flow.
-3. Hide deferred sample controls on iOS; keep squareFrame and jpegQuality controls functional.
-4. Verify native share-sheet/iPad presentation and photo-library saving through existing dependencies; do not introduce a second media/share stack.
-5. Update relevant public source-format/platform documentation and maintainer architecture guidance when the implementation becomes true.
+1. Verify and reuse the iOS bundle identity and camera usage text already added by Task 25; complete only missing deployment, photo-library add permission and supported Expo development/test configuration. Do not overwrite existing app settings with an older scaffold.
+2. Keep the existing scan-session owner, reducer, metadata subscription, crop submit/cancel workflow and export retention. React owns navigation/defaults and the operation UX lock; native code owns readiness, scan retries, physical busy state, pixels and file retirement. Use session/page IDs throughout, with no alternate iOS flow or JS image janitor.
+3. Integrate Task 29/30 state and wait reasons into the existing shutter/error/feedback UI. Keep the camera mounted but inactive under review/crop/options; block conflicting operations until the authoritative capture settles. Do not mirror native scan attempts or light acknowledgements in React.
+4. Preserve the current torch UX: parent-owned auto/off default, scan-local on/off override, long press changes the default, and New scan resets the override. Keep squareFrame and jpegQuality functional. Hide deferred sample controls and hide or clearly disable Android-only lowLightBoost on iOS; never imply that a no-op prop enables an iOS capability.
+5. Verify native share-sheet/iPad presentation and photo-library saving through existing dependencies. Export rendered JPEG/PNG/PDF to host-owned locations outside session/source resources; internal source encoding remains private.
+6. Update public platform documentation and maintainer guidance to match implemented behavior, including the iOS focus-evidence rule and physical checks still outstanding.
 
 ## Ownership and boundary rules
 
@@ -44,16 +45,14 @@ Keep platform handles out of portable C++ interfaces; borrow pixels only through
 
 ## Tests and expected results
 
-- Run JS session contracts plus iOS capture→review→crop/filter→accept→navigate→PDF/share/gallery scenarios.
-- Check 50-page limits, unsaved-change confirmation, Add page, delete/new scan, TIFF reopen, and retained preview handoff.
+- JS session/interaction contracts: torch default versus scan override, New scan reset, unsupported controls, capture wait reasons/errors and blocking conflicting actions without extra native state copies.
+- iOS capture→review→crop/filter→accept→navigate→PDF/share/gallery, plus tap/quality scans, dark scenes, motion rejection and retry/recovery. Check 50-page limits, unsaved-change confirmation, Add page, delete/new scan, TIFF reopen and retained-preview handoff.
+- Existing Android example behavior remains intact; validate shared JS changes on both platforms.
 
 ## Validation commands
 
-- npm run check
-- On the verified Mac, generate/install the iOS example using supported Expo commands and run its verified scheme.
-- Perform human-triggered camera and share/gallery workflow checks on iPhone and iPad where supported.
-
-Verification prerequisites: establish the exact compiler/OpenCV setup before shared builds and the exact Mac workspace/scheme/destination before Xcode commands. Replace command placeholders only with verified values and record the expanded command. Report each unavailable environment or private fixture as not run with its reason; never report missing tests or compilation as passed. When moving a pure algorithm to C++, move its assertions in the same task so removed JVM tests do not become a false validation signal. Native camera captures always require a human tap.
+- Run npm run check for shared JS changes. Build/install the existing Expo example on the verified Mac configuration; use GitHub simulator tests for UIKit/native integration that requires the simulator.
+- Perform human-triggered camera and share/gallery workflows on iPhone and iPad where supported, recording OS/device and unavailable checks. Keep native policy test, build, simulator and physical-device results separate.
 
 ## Completion criteria
 

@@ -20,9 +20,9 @@ class TorchPolicyTest {
   @Test fun exactThresholdAndNanosecondBoundary() {
     TorchPolicy().let { p ->
       val time = 9_007_199_254_740_993L
-      assertFalse(p.observe(time,20_000_000,1000))
-      assertFalse(p.observe(time + 999_999_999,20_000_000,1000))
-      assertTrue(p.observe(time + 1_000_000_000,20_000_000,1000))
+      assertFalse(p.observe(time,100_000_000,1000))
+      assertFalse(p.observe(time + 999_999_999,100_000_000,1000))
+      assertTrue(p.observe(time + 1_000_000_000,100_000_000,1000))
       assertFalse(p.observe(time + 2_000_000_000,0,null))
       assertTrue(p.lit)
     }

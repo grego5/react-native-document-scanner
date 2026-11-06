@@ -18,6 +18,7 @@
     "exposureCompensation": true,
     "minFrameRate": true,
     "torch": true,
+    "lowLightBoost": true,
     "captureMode": true,
     "jpegQuality": true,
     "guideTransitionDuration": true,

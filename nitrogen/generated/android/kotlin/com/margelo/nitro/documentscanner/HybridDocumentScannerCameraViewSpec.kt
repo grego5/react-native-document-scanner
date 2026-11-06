@@ -124,6 +124,12 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
+  abstract var lowLightBoost: Boolean?
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
   abstract var captureMode: CaptureMode?
   
   @get:DoNotStrip

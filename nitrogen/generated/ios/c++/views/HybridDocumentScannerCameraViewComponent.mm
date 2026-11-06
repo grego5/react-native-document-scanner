@@ -182,6 +182,12 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.torch.hasSameValue(oldViewProps->torch)) {
       swiftPart.setTorch(newViewProps.torch.get());
     }
+    // lowLightBoost: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.lowLightBoost.isProvided()
+          : !newViewProps.lowLightBoost.hasSameValue(oldViewProps->lowLightBoost)) {
+      swiftPart.setLowLightBoost(newViewProps.lowLightBoost.get());
+    }
     // captureMode: optional
     if (oldViewProps == nullptr
           ? newViewProps.captureMode.isProvided()

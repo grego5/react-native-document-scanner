@@ -70,6 +70,7 @@ namespace margelo::nitro::documentscanner::views {
     nitro::ReactProp<std::optional<double>> exposureCompensation;
     nitro::ReactProp<std::optional<double>> minFrameRate;
     nitro::ReactProp<std::optional<TorchMode>> torch;
+    nitro::ReactProp<std::optional<bool>> lowLightBoost;
     nitro::ReactProp<std::optional<CaptureMode>> captureMode;
     nitro::ReactProp<std::optional<double>> jpegQuality;
     nitro::ReactProp<std::optional<double>> guideTransitionDuration;
@@ -102,6 +103,7 @@ namespace margelo::nitro::documentscanner::views {
              exposureCompensation.hasSameValue(other.exposureCompensation) &&
              minFrameRate.hasSameValue(other.minFrameRate) &&
              torch.hasSameValue(other.torch) &&
+             lowLightBoost.hasSameValue(other.lowLightBoost) &&
              captureMode.hasSameValue(other.captureMode) &&
              jpegQuality.hasSameValue(other.jpegQuality) &&
              guideTransitionDuration.hasSameValue(other.guideTransitionDuration) &&
@@ -135,6 +137,7 @@ namespace margelo::nitro::documentscanner::views {
              exposureCompensation.isProvided() ||
              minFrameRate.isProvided() ||
              torch.isProvided() ||
+             lowLightBoost.isProvided() ||
              captureMode.isProvided() ||
              jpegQuality.isProvided() ||
              guideTransitionDuration.isProvided() ||

@@ -33,6 +33,7 @@ import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraState
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.LowLightBoostState
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -81,6 +82,8 @@ import com.margelo.nitro.documentscanner.processing.LiveQuadTraceObserver
 import com.margelo.nitro.documentscanner.processing.LiveQuadStabilizerConfig
 import com.margelo.nitro.documentscanner.processing.LiveFocusCandidate
 import com.margelo.nitro.documentscanner.processing.TorchPolicy
+import com.margelo.nitro.documentscanner.processing.DarkScenePolicy
+import com.margelo.nitro.documentscanner.processing.WhiteBalancePolicy
 import com.margelo.nitro.documentscanner.processing.hasAdjustableAutofocus
 import com.margelo.nitro.documentscanner.processing.LiveCaptureGateSample
 import com.margelo.nitro.documentscanner.processing.FrameRecord
@@ -136,7 +139,7 @@ open class HybridDocumentScannerCameraView(
         // Rebinding closes the camera and fails a photo in flight, so a resize during capture waits for it to settle.
         if (hasPendingCapture()) {
           logLifecycle("viewport resize deferred until capture settles")
-          rebindPending = true
+          requestRebind(RebindReason.CONFIGURATION)
           return
         }
         this@HybridDocumentScannerCameraView.stopCamera("viewport-resized")
@@ -226,6 +229,8 @@ open class HybridDocumentScannerCameraView(
           "sharpRange=${result.get(CaptureResult.LENS_FOCUS_RANGE)} pipelineDepth=${result.get(CaptureResult.REQUEST_PIPELINE_DEPTH)}")
       }
       var lightTorch = false
+      var darknessFlipped = false
+      var whiteBalanceFlipped = false
       val changed = synchronized(metadataLock) {
         if (generation != metadataGeneration) return
         // When autofocus last reached focus, on the sensor clock, recorded with each frame so that frame alone decides
@@ -234,7 +239,11 @@ open class HybridDocumentScannerCameraView(
         if (focusedNow && autofocusState != AutofocusState.FOCUSED && autofocusState != AutofocusState.LOCKED &&
           timestampNs != null) focusReachedSensorNs = timestampNs
         exposureIsoMs = if (exposureNs != null && iso != null) exposureNs / 1e6 * iso else null
+        aeAwbStates = "${result.get(CaptureResult.CONTROL_AE_STATE) ?: "n/a"}/${result.get(CaptureResult.CONTROL_AWB_STATE) ?: "n/a"}"
         if (torchAuto && timestampNs != null && exposureNs != null) lightTorch = torchPolicy.observe(SystemClock.uptimeMillis() * 1_000_000, exposureNs, iso)
+        if (timestampNs != null && exposureNs != null) darknessFlipped = darkScene.observe(SystemClock.uptimeMillis() * 1_000_000, exposureNs, iso)
+        whiteBalanceFlipped = whiteBalance.observe(SystemClock.uptimeMillis() * 1_000_000,
+          result.get(CaptureResult.CONTROL_AE_STATE), result.get(CaptureResult.CONTROL_AWB_STATE))
         if (timestampNs != null && exposureNs != null) liveDetector.frames.add(timestampNs, CameraFrameState(
           exposureNs, result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW) ?: 0L,
           autofocus == AutofocusState.SCAN || autofocus == AutofocusState.UNFOCUSED || manualFocus && lensMoving, afState,
@@ -254,7 +263,9 @@ open class HybridDocumentScannerCameraView(
         }
       }
       if (changed) mainHandler.post { if (generation == metadataGeneration) emitAutofocus() }
-      if (lightTorch) mainHandler.post { if (generation == metadataGeneration) applyTorch() }
+      // A lit torch binds `latency` for `zsl`; that rebind lights it on the new binding.
+      if (lightTorch) mainHandler.post { if (generation == metadataGeneration && !rebindForLight()) applyLight() }
+      if (darknessFlipped || whiteBalanceFlipped) mainHandler.post { if (generation == metadataGeneration) rebindForLight() }
     }
   }
   /** Main thread; for instrumentation tests. */
@@ -281,8 +292,8 @@ open class HybridDocumentScannerCameraView(
   private val pendingPromises = IdentityHashMap<Promise<*>, Unit>()
 
   private var disposed = false
-  /** Main thread: the viewport or a use-case prop changed while a photo was in flight; rebind once captures settle. */
-  private var rebindPending = false
+  /** Main thread: a rebind waiting for captures to settle, and why; null when none waits. */
+  private var pendingRebind: RebindReason? = null
   /** Main thread: removes the permission listener while the view is attached. */
   private var removePermissionListener: (() -> Unit)? = null
   private var imageCapture: ImageCapture? = null
@@ -334,18 +345,25 @@ open class HybridDocumentScannerCameraView(
   private var loggedAfState: Int? = null
   /** Auto-torch decision for the current binding, fed by capture results; guarded by [metadataLock]. */
   private val torchPolicy = TorchPolicy()
+  /** Sustained room darkness for [captureModeFor]; guarded by [metadataLock]. It outlives bindings, since the
+   * rebind it causes must not reset it. */
+  private val darkScene = DarkScenePolicy()
+  /** Sustained searching white balance for [captureModeFor]; guarded by [metadataLock], outlives bindings. */
+  private val whiteBalance = WhiteBalancePolicy()
   @Volatile private var torchAuto = false
   /** Latest exposure time (ms) times ISO, for the stats strip. */
   @Volatile private var exposureIsoMs: Double? = null
-  /** Main-thread hardware requests/completion evidence, independent of the shared auto latch. */
-  private val torchControl = TorchController(ContextCompat.getMainExecutor(themedContext),
-    ::scheduleCaptureEvaluation, ::logLifecycle)
-  /** Uptime when [autofocusState] last changed. */
+  /** Latest raw CONTROL_AE_STATE/CONTROL_AWB_STATE, for the stats strip: zero shutter lag needs both converged (2). */
+  @Volatile private var aeAwbStates = "n/a"
+  /** Main thread: torch and boost commands and their evidence, and `zsl`'s light fallback. A refused boost may leave a
+   * dark scene unlit, so it re-evaluates the bound mode. */
+  private val light = CameraLightController(ContextCompat.getMainExecutor(themedContext),
+    ::scheduleCaptureEvaluation, { rebindForLight() }, ::logLifecycle)
   /** takePhoto calls in flight, until the shot has settled; guarded by this. */
   private val captureAdmission = CaptureAdmission<GatedCapture>(this)
   /** Main thread: the bound camera moves its lens to focus; a fixed-focus camera never reports a focus state. */
   private var hasAutofocus = false
-  /** Main thread: the newest analyzed frame's page, where a quality capture's scan focuses; null without one. */
+  /** Main thread: the newest analyzed frame's page, where a capture's scan focuses; null without one. */
   private var focusCandidate: LiveFocusCandidate? = null
   /**
    * Main thread: sensor time of the first frame showing the page in view, which a focus must postdate to be the page's;
@@ -454,6 +472,7 @@ open class HybridDocumentScannerCameraView(
   override var exposureCompensation: Double? = null
   override var minFrameRate: Double? = null
   override var torch: TorchMode? = null
+  override var lowLightBoost: Boolean? = null
   override var captureMode: CaptureMode? = null
   override var jpegQuality: Double? = null
   override var guideTransitionDuration: Double? = null
@@ -489,8 +508,12 @@ open class HybridDocumentScannerCameraView(
         torchPolicy.reset()
         torchAuto = next.torch == TorchMode.AUTO
       }
-      applyTorch()
+      applyLight()
+    } else if (old.lowLightBoost != next.lowLightBoost) {
+      applyLight()
     }
+    // In a dark scene, the torch and the boost decide whether `zsl` binds `latency`.
+    val lightChangesMode = bound?.let { captureModeFor(next, it).first != it.captureMode } == true
     liveDetector.statsListener = if (next.showStats) ::renderStats else null
     if (old.showStats != next.showStats) {
       statsFigures = ""
@@ -502,13 +525,13 @@ open class HybridDocumentScannerCameraView(
     // A rebind applies the guide when it binds; a deferred one leaves the bound camera, which applies it below.
     var rebinding = false
     // The frame rate belongs to the bound session, so it rebinds too.
-    if (old.analysisWidth != next.analysisWidth || old.captureMode != next.captureMode ||
+    if (old.analysisWidth != next.analysisWidth || old.captureMode != next.captureMode || lightChangesMode ||
       old.jpegQuality != next.jpegQuality || old.squareFrame != next.squareFrame || old.minFrameRate != next.minFrameRate) {
       logLifecycle("use cases changed analysisWidth=${next.analysisWidth} captureMode=${next.captureMode} " +
         "jpegQuality=${next.jpegQuality} squareFrame=${next.squareFrame} minFrameRate=${next.minFrameRate}")
       if (hasPendingCapture()) {
         logLifecycle("use-case rebind deferred until capture settles")
-        rebindPending = true
+        requestRebind(RebindReason.CONFIGURATION)
       } else if (next.active && container.isAttachedToWindow) {
         rebinding = true
         stopCamera("use-cases-changed")
@@ -600,6 +623,7 @@ open class HybridDocumentScannerCameraView(
       exposureCompensation = exposureCompensation?.takeIf { it.isFinite() } ?: 0.0,
       minFrameRate = minFrameRate?.takeIf { it.isFinite() }?.toInt()?.coerceAtLeast(0) ?: 0,
       torch = torch ?: TorchMode.OFF,
+      lowLightBoost = lowLightBoost ?: true,
       guideTransitionNs = guideTransitionDuration?.let { (it * 1_000_000).toLong() } ?: QuadTransition.DEFAULT_DURATION_NS,
       squareFrame = squareFrame ?: false,
       analysisWidth = analysisWidth?.toInt()?.coerceIn(160, 1920) ?: DEFAULT_ANALYSIS_WIDTH,
@@ -853,6 +877,8 @@ open class HybridDocumentScannerCameraView(
     // Whether this evaluation read a record analysis just published, for the log: shooting on one an earlier evaluation
     // read, after a focus or torch change, means analysis had not produced a newer frame.
     var newFrame = false
+    // A frame smeared past the blur limit while the capture's own scan scanned; the gate retries its failure.
+    var movedDuringScan = false
     if (missed && motionCheckEnabled) capture.stability.interrupt()
     for (frame in frames) {
       capture.frameCursor = frame.sequence + 1
@@ -860,6 +886,9 @@ open class HybridDocumentScannerCameraView(
       capture.latest = frame
       newFrame = true
       if (!motionCheckEnabled) continue
+      if (snapshot.owner == FocusOwner.CAPTURE && snapshot.locked == null && (frame.motion?.blur ?: 0.0) > blurLimit) {
+        movedDuringScan = true
+      }
       // A frame exposed while focus was lost does not continue the sequence; one without its result cannot tell.
       val state = frame.frame
       if (waitsForFocus && !capture.gate.focusSkipped && state != null && (!frameFocused(state.afState) || predatesPage(state))) {
@@ -874,22 +903,35 @@ open class HybridDocumentScannerCameraView(
     val skip = capture.skipQualityGate
     val scanningFrame = afState == CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN || afState == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN
     val staleFocus = latest?.frame?.let(::predatesPage) == true
-    // Quality mode scans for its photo. Zero shutter lag and latency use continuous autofocus's focus, and scan only for
-    // a stale one that is not scanning already; continuous autofocus may never rescan a page it was already focused on.
-    val shutterScan = !skip && waitsForFocus && !capture.gate.focusSkipped &&
-      (!documentRequired || latest?.guide != null) && !(snapshot.owner == FocusOwner.TAP && snapshot.scanHolds(nowMs)) &&
-      (binding?.captureMode == CaptureMode.QUALITY || staleFocus && !scanningFrame)
-    if (shutterScan && hasAutofocus && !capture.focusRequested) {
-      val camera = boundCamera
-      val point = focusCandidate?.let(::meteringPoint)
-        ?: previewView.meteringPointFactory.createPoint(previewView.width / 2f, previewView.height / 2f)
-      if (camera != null) {
-        capture.focusRequested = true
-        logLifecycle("capture focus scan stale=$staleFocus")
-        // The new focus generation re-evaluates this capture.
-        focus.capture(camera, point)
-        return
-      }
+    // Quality mode scans for each photo: at the page once one is found, or the preview's centre, since a dim, blurred
+    // page may never be detected before its scan. Zero shutter lag and latency use continuous autofocus's focus, and
+    // scan only at a page whose focus is stale and not scanning already; continuous autofocus may never rescan a page
+    // it was already focused on.
+    val qualityScan = binding?.captureMode == CaptureMode.QUALITY && (!documentRequired || latest != null)
+    val staleScan = staleFocus && !scanningFrame && (!documentRequired || latest?.guide != null)
+    // In a dark scene with no lit torch and no active low-light boost, zero shutter lag and latency scan too, at the page
+    // or the preview's centre: there continuous autofocus held blurred pages while reporting focus on the SM-G998U, and
+    // the blur hid the page from detection. The shot then waits for frames exposed after the lock, four steady ones
+    // with motion checking, and zero shutter lag saves only a buffered frame that reports the lock.
+    val dark = (exposureIsoMs ?: 0.0) >= TorchPolicy.DARK_ISO_MS && light.torchLit != true &&
+      boundCamera?.info?.lowLightBoostState?.value != LowLightBoostState.ACTIVE
+    val darkScan = dark && !scanningFrame && (!documentRequired || latest != null)
+    // In `latency` bound for the light, a press with no page found scans at the preview's centre: under the torch on the
+    // SM-G998U continuous autofocus held a page too blurred to detect while reporting focus, so the capture waited for
+    // the page until it was rejected; the torch kept the scene from counting as dark.
+    val unseenPageScan = binding?.lightFallback != null && documentRequired && latest != null && latest.guide == null &&
+      !scanningFrame
+    val scanTrigger = when {
+      qualityScan -> ScanTrigger.QUALITY
+      staleScan -> ScanTrigger.STALE_FOCUS
+      darkScan -> ScanTrigger.DARK
+      unseenPageScan -> ScanTrigger.UNSEEN_PAGE
+      else -> null
+    }
+    val ownScan = if (snapshot.owner != FocusOwner.CAPTURE) OwnScan.NONE else when (snapshot.locked) {
+      null -> OwnScan.SCANNING
+      true -> OwnScan.LOCKED
+      false -> OwnScan.FAILED
     }
     val focused = when {
       !hasAutofocus || !config.requireFocus -> true
@@ -909,9 +951,11 @@ open class HybridDocumentScannerCameraView(
       snapshot.scanning(nowMs) -> Long.MAX_VALUE
       else -> frameScanningUntilMs?.takeIf { it > nowMs }
     }
-    // Zero shutter lag saves only frames CameraX finds focused, exposed and balanced; otherwise it takes a new one.
-    val waitForZsl = config.qualityGate && binding?.zsl == true && hasAutofocus && config.requireFocus
-    val torchPending = torchControl.pending
+    // Zero shutter lag saves the newest buffered frame CameraX found focused, exposed and balanced, however old, so a gated
+    // shot waits for the newest frame to qualify, whether or not focus is required. A fixed-focus camera never reports
+    // focus, so its buffer stays empty and CameraX takes a new frame.
+    val waitForZsl = config.qualityGate && binding?.zsl == true && hasAutofocus
+    val lightPending = light.pending
     val captureState = CaptureState(
       nowMs, if (skip) hasAutofocus && config.requireFocus else focusCheckEnabled, documentRequired, config.requireFocus,
       FOCUS_TIMEOUT_MS,
@@ -919,17 +963,32 @@ open class HybridDocumentScannerCameraView(
       focused = focused,
       zslCheckEnabled = waitForZsl,
       zslReady = latest?.zslReady == true,
-      torchReady = !torchPending,
+      lightReady = !lightPending,
       motionCheckEnabled = motionCheckEnabled,
       // The sequence must reach the newest frame, so a sequence that stopped short of it is not steady.
       steady = capture.stability.stable && latest != null && latest.sensorNs == capture.stability.latestSensorNs,
       focusingUntilMs = focusingUntilMs,
+      scanAvailable = !skip && waitsForFocus && boundCamera != null &&
+        !(snapshot.owner == FocusOwner.TAP && snapshot.scanHolds(nowMs)),
+      scanTrigger = scanTrigger,
+      ownScan = ownScan,
+      movedDuringScan = movedDuringScan,
+      frameSinceFocusChange = latest != null,
     )
     fun traceGate(fired: Boolean) = liveDetector.traceObserver?.onCaptureGate(LiveCaptureGateSample(
       SystemClock.elapsedRealtimeNanos(), fired, latest?.realtimeSensorNs, latest?.frame?.exposureNs, latest?.motion?.blur, latest?.motion?.source,
       latest?.flow, null, latest?.ageNanos(System.nanoTime(), SystemClock.elapsedRealtimeNanos()),
     ))
     when (val decision = capture.gate.next(captureState)) {
+      is CaptureDecision.StartFocusScan -> {
+        val camera = boundCamera ?: return
+        val point = focusCandidate?.let(::meteringPoint)
+          ?: previewView.meteringPointFactory.createPoint(previewView.width / 2f, previewView.height / 2f)
+        logLifecycle("capture focus scan ${decision.attempt} trigger=${decision.trigger} stale=$staleFocus dark=$dark " +
+          "page=${latest?.guide != null} moved=${decision.moved}")
+        // The new focus generation re-evaluates this capture.
+        focus.capture(camera, point)
+      }
       is CaptureDecision.Wait -> {
         if (capture.reason != decision.reason) {
           logLifecycle("capture waiting for ${decision.reason}")
@@ -941,7 +1000,7 @@ open class HybridDocumentScannerCameraView(
       }
       is CaptureDecision.Reject -> {
         logLifecycle("capture rejected: ${decision.code} waiting for ${decision.reason} focusGeneration=${snapshot.generation} " +
-          "document=${captureState.documentFound} focused=$focused torchReady=${captureState.torchReady} zsl=${latest?.zslReady} " +
+          "document=${captureState.documentFound} focused=$focused lightReady=${captureState.lightReady} zsl=${latest?.zslReady} ae/awb=$aeAwbStates " +
           "stableFrames=${capture.stability.count} break=${capture.stability.lastBreak}")
         traceGate(fired = false)
         rejectPromise(capture.promise, ScannerException(decision.code))
@@ -1162,13 +1221,19 @@ open class HybridDocumentScannerCameraView(
       try {
         future.get()
         layoutStats()
+        val selector = CameraSelector.DEFAULT_BACK_CAMERA
+        val cameraInfo = ProcessCameraProvider.getInstance(themedContext).get().getCameraInfo(selector)
+        val lowLightBoostSupported = cameraInfo.isLowLightBoostSupported
+        val hasFlash = cameraInfo.hasFlashUnit()
+        val (captureMode, lightFallback) = captureModeFor(props, lowLightBoostSupported, hasFlash, atBind = true)
+        if (lightFallback != null) logLifecycle("capture mode=$captureMode for $lightFallback, requested ${props.captureMode}")
         // The controller attaches the preview to previewView.
         val preview = Preview.Builder()
           .setTargetRotation(targetRotation)
           .build()
         val capture = ImageCapture.Builder()
           .setCaptureMode(
-            when (props.captureMode) {
+            when (captureMode) {
               CaptureMode.QUALITY -> ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY
               CaptureMode.LATENCY -> ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
               // CameraX falls back to MINIMIZE_LATENCY where zero shutter lag is unsupported.
@@ -1182,7 +1247,7 @@ open class HybridDocumentScannerCameraView(
               // Quality mode also offers the sizes a camera lists as slower high-resolution ones, which limited
               // phones hold their full-size 4:3 stills in; the other modes keep the sizes their shutter lag allows.
               .also {
-                if (props.captureMode == CaptureMode.QUALITY) {
+                if (captureMode == CaptureMode.QUALITY) {
                   it.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
                 }
               }
@@ -1190,7 +1255,7 @@ open class HybridDocumentScannerCameraView(
               // Keep fallbacks so the three bound use cases can negotiate a supported combination.
               .setResolutionFilter { supportedSizes, _ ->
                 CaptureResolutionPolicy.rank(supportedSizes, { it.width }, { it.height }).also { ranked ->
-                  logLifecycle("capture candidates=${ranked.joinToString()} mode=${props.captureMode}")
+                  logLifecycle("capture candidates=${ranked.joinToString()} mode=$captureMode")
                 }
               }
               .build(),
@@ -1208,9 +1273,8 @@ open class HybridDocumentScannerCameraView(
           .setTargetRotation(targetRotation)
           .build()
         check(previewView.width > 0 && previewView.height > 0) { "The camera viewport is not measured yet." }
-        val selector = CameraSelector.DEFAULT_BACK_CAMERA
         val useCases = listOf(preview, capture, analysis)
-        val range = ProcessCameraProvider.getInstance(themedContext).get().getCameraInfo(selector)
+        val range = cameraInfo
           .getSupportedFrameRateRanges(SessionConfig(useCases)).toList()
           .let { CameraExposurePolicy.targetFpsRange(it, props.minFrameRate, { range -> range.lower }, { range -> range.upper }) }
         logLifecycle("session fpsRange=$range")
@@ -1252,12 +1316,13 @@ open class HybridDocumentScannerCameraView(
           "pipelineMaxDepth=${characteristics.get(CameraCharacteristics.REQUEST_PIPELINE_MAX_DEPTH)}")
         liveDetector.cameraOptics = backCameraOptics(camera.info)
         // The ImageCapture above was built from these props in this same call; a later change waits for a rebind.
-        bound = BoundCapture(props.captureMode, props.jpegQuality,
-          zsl = props.captureMode == CaptureMode.ZSL && camera.info.isZslSupported)
-        if (props.captureMode == CaptureMode.ZSL) logLifecycle("zero shutter lag supported=${camera.info.isZslSupported}")
+        bound = BoundCapture(captureMode, props.jpegQuality,
+          zsl = captureMode == CaptureMode.ZSL && camera.info.isZslSupported, lowLightBoostSupported = lowLightBoostSupported,
+          hasFlash = hasFlash, lightFallback = lightFallback)
+        if (captureMode == CaptureMode.ZSL) logLifecycle("zero shutter lag supported=${camera.info.isZslSupported}")
         applyExposureCompensation()
         aimContinuousFocus()
-        applyTorch()
+        applyLight()
         updateGyroscope()
         imageCapture = capture
         imageAnalysis = analysis
@@ -1282,9 +1347,10 @@ open class HybridDocumentScannerCameraView(
     }, ContextCompat.getMainExecutor(themedContext))
   }
 
-  private fun stopCamera(reason: String) {
+  /** [keepLightDecision]: the stop is a rebind for the light, whose readings still hold; see [RebindReason.LIGHT]. */
+  private fun stopCamera(reason: String, keepLightDecision: Boolean = false) {
     captureAdmission.current?.let { rejectPromise(it.promise, ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE)) }
-    rebindPending = false
+    pendingRebind = null
     providerRequestGeneration += 1L
     cameraStartRequestInFlight = false
     val controller = cameraController
@@ -1296,11 +1362,15 @@ open class HybridDocumentScannerCameraView(
       liveDetector.frames.clear()
       autofocusState = AutofocusState.INACTIVE
       focusReachedSensorNs = null
-      // A new binding re-evaluates the room lighting; CameraX turns the torch off with the camera.
-      torchPolicy.reset()
+      // A new binding re-evaluates the room lighting; CameraX turns the torch off with the camera. A rebind for the
+      // light keeps the auto torch's decision, so the torch relights at once rather than after another dark second.
+      if (!keepLightDecision) torchPolicy.reset()
+      // The room's readings outlive the binding, but a flip still under way must not count the time without frames.
+      darkScene.interrupt()
+      whiteBalance.interrupt()
       exposureIsoMs = null
     }
-    torchControl.reset()
+    light.unbind()
     // The camera keeps its interop options across bindings; drop this binding's capture callback with it.
     boundCamera?.let { stopFrameState(it) }
     boundCamera = null
@@ -1343,8 +1413,10 @@ open class HybridDocumentScannerCameraView(
       stats.preprocessingMs, stats.inferenceMs, stats.analysisMs,
       stats.cameraToAnalysisMs?.let { String.format(Locale.US, "\ncamera to analysis %.1f ms", it) } ?: "") +
       String.format(Locale.US, "\nchecks %.2f ms  %s", stats.checksMsPerFrame, stats.adaptiveStatus) +
-      String.format(Locale.US, "\ntorch %s%s  exposure x ISO %s", props.torch.name.lowercase(),
-        if (torchControl.applied == true) " lit" else "", exposureIsoMs?.let { String.format(Locale.US, "%.0f", it) } ?: "n/a") +
+      // Two short lines rather than one that wraps, so the strip keeps its height.
+      String.format(Locale.US, "\ncapture %s  torch %s%s\nboost %s  exposure x ISO %s  ae/awb %s", boundCaptureLabel(),
+        props.torch.name.lowercase(), if (light.torchLit == true) " lit" else "", lowLightBoostLabel(),
+        exposureIsoMs?.let { String.format(Locale.US, "%.0f", it) } ?: "n/a", aeAwbStates) +
       (stats.peakBlurPercent?.let { String.format(Locale.US, "\nblur peak %.2f%%  gated %d", it, stats.gatedFrames) } ?: "") +
       (if (stats.unmatchedFrames > 0) String.format(Locale.US, "  no metadata %d", stats.unmatchedFrames) else "")
     renderStatus()
@@ -1400,13 +1472,29 @@ open class HybridDocumentScannerCameraView(
     focus.tap(camera, factory.createPoint(x, y, TAP_FOCUS_AREA), factory.createPoint(x, y, TAP_METERING_AREA))
   }
 
-  /** Main thread: sets the bound camera's torch from the mode and the auto decision. A change waits while a photo is in
-   * flight, so the light does not change during its shot; the capture's end applies it. A failed change is
-   * retried by the next call.
-   */
-  private fun applyTorch() {
-    torchControl.apply(boundCamera, props.torch, hasPendingCapture()) {
+  /** Main thread: sets the bound camera's torch and low-light boost from the props and the auto decision. Changes wait
+   * while a capture is pending, so the light does not change under its judgment or shot; the capture's end applies
+   * them. A failed change is retried by the next call. */
+  private fun applyLight() {
+    light.apply(boundCamera, props.torch, props.lowLightBoost, hasPendingCapture()) {
       synchronized(metadataLock) { torchPolicy.lit }
+    }
+  }
+
+  /** The bound still-capture mode for the stats strip; `zsl` without camera support shoots as `latency`. */
+  private fun boundCaptureLabel(): String {
+    val binding = bound ?: return "n/a"
+    return if (binding.captureMode == CaptureMode.ZSL && !binding.zsl) "latency" else binding.captureMode.name.lowercase()
+  }
+
+  /** Low-light boost for the stats strip: unsupported, off, inactive or active. */
+  private fun lowLightBoostLabel(): String {
+    val info = boundCamera?.info ?: return "n/a"
+    if (!info.isLowLightBoostSupported) return "unsupported"
+    return when (info.lowLightBoostState.value) {
+      LowLightBoostState.ACTIVE -> "active"
+      LowLightBoostState.INACTIVE -> "inactive"
+      else -> "off"
     }
   }
 
@@ -1636,7 +1724,7 @@ open class HybridDocumentScannerCameraView(
       if (!hasPendingCapture() && modelLoadPending) loadRequestedModel()
       if (!hasPendingCapture()) {
         clearCapturePreview()
-        applyTorch()
+        applyLight()
       }
       if (!disposed && !props.active && !hasPendingCapture()) {
         stopCamera("inactive-after-capture")
@@ -1652,27 +1740,67 @@ open class HybridDocumentScannerCameraView(
   /** A capture has requested its shot, whose focus and exposure must not change until it settles. */
   private fun hasShotInFlight(): Boolean = captureAdmission.current?.physicalInFlight == true
 
-  /** Main thread: rebinds for a change deferred by a capture once the last capture settles; binding reads current props. */
+  /** The still-capture mode to bind for [props], and the light fallback that chose `latency` for `zsl`, if one did;
+   * see [CameraLightController.zslFallback]. */
+  private fun captureModeFor(props: ResolvedProps, lowLightBoostSupported: Boolean, hasFlash: Boolean,
+    atBind: Boolean = false): Pair<CaptureMode, LightFallback?> {
+    val (autoLit, dark, unsettled) = synchronized(metadataLock) {
+      Triple(torchPolicy.lit, darkScene.dark, whiteBalance.unsettled)
+    }
+    val fallback = light.zslFallback(props.captureMode, props.torch, autoLit, hasFlash, props.lowLightBoost,
+      lowLightBoostSupported, dark, unsettled, atBind)
+    return (if (fallback != null) CaptureMode.LATENCY else props.captureMode) to fallback
+  }
+
+  /** Main thread: rebinds when the room's light, a light prop or a refused boost changes the mode [captureModeFor]
+   * picks, after any capture in flight settles. */
+  private fun rebindForLight(): Boolean {
+    val binding = bound ?: return false
+    val (next, fallback) = captureModeFor(props, binding)
+    if (next == binding.captureMode) return false
+    logLifecycle("capture mode ${binding.captureMode} -> $next for ${fallback ?: "the light"}")
+    requestRebind(RebindReason.LIGHT)
+    return true
+  }
+
+  private fun captureModeFor(props: ResolvedProps, binding: BoundCapture) =
+    captureModeFor(props, binding.lowLightBoostSupported, binding.hasFlash)
+
+  /** Main thread: rebinds now, or once the last capture settles; binding reads the current props. */
+  private fun requestRebind(reason: RebindReason) {
+    // A light rebind's readings stay valid whatever else rebinds with it.
+    pendingRebind = if (reason == RebindReason.LIGHT || pendingRebind == RebindReason.LIGHT) RebindReason.LIGHT else reason
+    applyPendingRebind()
+  }
+
+  /** Main thread: rebinds for a change deferred by a capture once the last capture settles. */
   private fun applyPendingRebind() {
-    if (!rebindPending || disposed || hasPendingCapture()) return
-    stopCamera("deferred-rebind")
+    val reason = pendingRebind
+    if (reason == null || disposed || hasPendingCapture()) return
+    stopCamera("deferred-rebind reason=$reason", keepLightDecision = reason == RebindReason.LIGHT)
     startCamera()
   }
 
   private fun dp(value: Int): Int = (value * themedContext.resources.displayMetrics.density).toInt()
 
   /** The capture configuration the bound use cases were built with; [zsl] means zero shutter lag is both asked for and
-   * supported, so CameraX takes the photo from its buffer.
+   * supported, so CameraX takes the photo from its buffer. [lightFallback]: why this binding is `latency` for a `zsl`
+   * request, or null when it binds what was requested.
    */
-  private data class BoundCapture(val captureMode: CaptureMode, val jpegQuality: Int, val zsl: Boolean)
+  private data class BoundCapture(val captureMode: CaptureMode, val jpegQuality: Int, val zsl: Boolean,
+    val lowLightBoostSupported: Boolean, val hasFlash: Boolean, val lightFallback: LightFallback?)
+
+  /** Why a stop rebinds. [LIGHT] comes from sustained readings that outlive the stop, so the auto torch keeps its
+   * decision and relights at once instead of after another dark second; [CONFIGURATION] re-evaluates the room. */
+  private enum class RebindReason { CONFIGURATION, LIGHT }
 
   /** One takePhoto's progress through its gate; main thread. */
   private class GatedCapture(val promise: Promise<String>, val requestedMs: Long, val skipQualityGate: Boolean,
     val source: SessionCapture, val config: ResolvedProps, val generation: Long) {
     var physicalInFlight = false
     var registered = false
-    /** Owns the capture's deadlines and decides each evaluation. */
-    val gate = CaptureGate(STEADY_TIMEOUT_MS, skipQualityGate)
+    /** Owns the capture's deadlines and own focus scans, and decides each evaluation. */
+    val gate = CaptureGate(STEADY_TIMEOUT_MS, skipQualityGate, MAX_CAPTURE_SCANS, FRESH_FOCUS_FRAME_NS / 1_000_000)
     /** What the capture is waiting for, shown over the guide while it pulses; null once it shoots. */
     var reason: WaitReason? = null
     /** The next frame results to consume, and the newest consumed frame exposed since the last focus change. */
@@ -1682,8 +1810,6 @@ open class HybridDocumentScannerCameraView(
     var focus = FocusSnapshot(0, null, null, 0, 0, 0)
     /** Framing stability over consecutive frames since the press and the latest focus change. */
     val stability = CaptureStability()
-    /** A quality capture, or one whose focus predates its page, started its own focus scan. */
-    var focusRequested = false
     /** Identifies this capture's pending deadline on the main handler. */
     val deadlineToken = Any()
     /** elapsedRealtimeNanos() when the shot was requested, for the still frame's timestamp in the lifecycle log. */
@@ -1710,7 +1836,10 @@ open class HybridDocumentScannerCameraView(
     const val STEADY_TIMEOUT_MS = 1_000L
     /** How long a capture waits for its page and for focus; autofocus still moving extends the focus wait. */
     const val FOCUS_TIMEOUT_MS = 4_000L
-    /** How recent a frame must be for its scanning autofocus state to extend a focus wait. */
+    /** A capture's first focus scan and its one unconditional retry; a scan the camera moved during retries again. */
+    const val MAX_CAPTURE_SCANS = 2
+    /** How recent a frame must be for its scanning autofocus state to extend a focus wait; also how long a settled
+     * capture scan waits for a frame exposed after it. */
     const val FRESH_FOCUS_FRAME_NS = 500_000_000L
     /** A page unseen this long arrives anew, so a focus reached before it no longer counts. */
     const val PAGE_LOST_NS = 1_000_000_000L
@@ -1747,6 +1876,7 @@ private data class ResolvedProps(
   val exposureCompensation: Double,
   val minFrameRate: Int,
   val torch: TorchMode,
+  val lowLightBoost: Boolean,
   val guideTransitionNs: Long,
   val analysisWidth: Int,
   val squareFrame: Boolean,

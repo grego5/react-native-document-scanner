@@ -42,6 +42,8 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridSetter("minFrameRate", &HybridDocumentScannerCameraViewSpec::setMinFrameRate);
       prototype.registerHybridGetter("torch", &HybridDocumentScannerCameraViewSpec::getTorch);
       prototype.registerHybridSetter("torch", &HybridDocumentScannerCameraViewSpec::setTorch);
+      prototype.registerHybridGetter("lowLightBoost", &HybridDocumentScannerCameraViewSpec::getLowLightBoost);
+      prototype.registerHybridSetter("lowLightBoost", &HybridDocumentScannerCameraViewSpec::setLowLightBoost);
       prototype.registerHybridGetter("captureMode", &HybridDocumentScannerCameraViewSpec::getCaptureMode);
       prototype.registerHybridSetter("captureMode", &HybridDocumentScannerCameraViewSpec::setCaptureMode);
       prototype.registerHybridGetter("jpegQuality", &HybridDocumentScannerCameraViewSpec::getJpegQuality);

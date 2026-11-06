@@ -29,12 +29,13 @@ Shared algorithms/contracts are required; identical camera hardware output and J
 
 ## Implementation steps
 
-1. Run all required core, JS, Android, and iOS tests/builds, verifying regenerated output is reproducible and packed library contents contain every iOS dependency/resource.
-2. Compare tensor, corner, and pre-encoding image fixtures using existing thresholds; do not widen them to conceal migration drift.
-3. On iOS 18 and a current iOS release, verify every still dimension obeys both caps before capture and square framing agrees through final exports.
-4. Measure the shipped source format against the alternative Task 04 compared, end to end: capture-to-review latency, peak resident memory, file sizes, and repeat-edit cost. Record the method and actual device/configuration; if the chosen default loses materially or contradicts Task 04's evidence, return that evidence for architectural review rather than changing source policy silently.
-5. Exercise a 50-page session with navigation/re-edit and repeated background/remount; verify source memory does not scale with page count and report actual disk cost.
-6. Update README/maintainer references only to describe implemented supported behavior. Retain unmet physical-device evidence as outstanding and do not mark the release complete.
+1. Establish the exact reviewed Android baseline and iOS revisions, public specs, generated output and documented platform differences. Verify reproducible generation and clean-consumer package contents/dependencies/resources. Do not use historical parking or no-shutter-scan behavior as the parity baseline.
+2. Run the required core/JS/native checks, separating host-runnable policies/fixtures and compilation on the Mac VM from simulator integration on GitHub Actions. Reuse matching compiled products only through the verified workflow; report test counts, failures, skips and toolchain identity. A build, zero executed tests or a compiled instrumented suite is not a pass.
+3. Compare tensor, corner and pre-encoding image fixtures using existing thresholds. Run shared capture decision sequences for admission, retries, post-scan frame handoff, optional focus, light readiness and cancellation. Test platform adapters separately: Android AF/AE/AWB ZSL and light fallback do not become fabricated iOS evidence.
+4. On Android hardware, validate the light-driven one-restart fallback, delayed return to zsl on an ordinary restart, explicit capture modes, boost refusal/unsupported cases, torch deferral and stale completion rejection. On iOS 18 and a current iOS release, validate the documented focus/readiness rule, tap/quality/dark/stale-focus scans, motion waits, deferred controls and interruption using human shutter taps. Carry forward unmet device checks from Tasks 25–31; no earlier implementation label waives them.
+5. Verify still dimensions obey both caps before capture and square/orientation framing agrees through review, crop, thumbnails and exports. Measure the shipped source format against the alternative from Task 04 end to end: capture-to-review latency, peak resident memory, disk size and repeat-edit cost. Record actual device/configuration and method; return materially contradictory measurements for architecture review rather than silently changing source policy.
+6. Exercise a 50-page session with navigation/re-edit and repeated background/remount, interruption and close/replacement. Check bounded source memory, actual disk cost, one physical capture slot, resource cleanup and no stale installs/events.
+7. Update release/maintainer docs only for implemented supported behavior. Keep Android-only features, iOS unknown focus evidence, deferred sampling and missing hardware results explicit. Do not mark release readiness complete until required physical evidence exists.
 
 ## Ownership and boundary rules
 
@@ -47,12 +48,10 @@ Keep platform handles out of portable C++ interfaces; borrow pixels only through
 
 ## Validation commands
 
-- npm run check
-- npm run test:native
-- Run shared CMake build/ctest, verified Android instrumented suites, and exact Mac xcodebuild test/build commands recorded by Task 17.
-- git diff --check
-
-Verification prerequisites: establish the exact compiler/OpenCV setup before shared builds and the exact Mac workspace/scheme/destination before Xcode commands. Replace command placeholders only with verified values and record the expanded command. Report each unavailable environment or private fixture as not run with its reason; never report missing tests or compilation as passed. When moving a pure algorithm to C++, move its assertions in the same task so removed JVM tests do not become a false validation signal. Native camera captures always require a human tap.
+- npm run check; npm run test:native; shared CMake/ctest and the affected Android instrumented suites on a reachable device.
+- Verified Mac VM host tests and package/test-product builds; GitHub Actions simulator integration/full-suite runs with matching Xcode/products when using the split workflow. Use actual active vmac capabilities and report exact commands/run IDs; no assumed runner/profile names or test counts.
+- Human-triggered physical Android/iPhone/iPad scenarios as applicable, with OS/device, method, results, skipped prerequisites and measurement artifacts recorded separately. Keep private photos/reports under ignored .local/.
+- git diff --check. Report generated-output whitespace separately if it originates in the generator; do not hand-edit generated files to hide it.
 
 ## Completion criteria
 

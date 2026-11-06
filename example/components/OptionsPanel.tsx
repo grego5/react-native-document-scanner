@@ -20,7 +20,9 @@ export interface LiveTuning {
   adaptiveDetection: boolean
   exposureCompensation: number
   minFrameRate: number
-  torch: TorchMode
+  /** The torch for each new scan, `off` or `auto`; the camera screen's torch button sets it with a long press. */
+  torch: Extract<TorchMode, 'off' | 'auto'>
+  lowLightBoost: boolean
   captureFeedback: boolean
   captureMode: CaptureMode
   jpegQuality: number | undefined
@@ -30,7 +32,6 @@ export interface LiveTuning {
 const GUIDE_TRANSITIONS_MS = [50, 16, 0]
 const EXPOSURE_EV = [0, -0.3, -0.7, -1]
 const MIN_FRAME_RATES = [0, 24, 30]
-const TORCH_MODES: TorchMode[] = ['off', 'auto', 'on']
 const CAMERA_MODES: Exclude<CameraMode, 'off'>[] = ['scanner', 'camera']
 const CAPTURE_MODES: CaptureMode[] = ['zsl', 'latency', 'quality']
 const JPEG_QUALITIES = [undefined, 0.95, 0.85]
@@ -43,7 +44,8 @@ export const DEFAULT_TUNING: LiveTuning = {
   adaptiveDetection: true,
   exposureCompensation: EXPOSURE_EV[0],
   minFrameRate: MIN_FRAME_RATES[0],
-  torch: TORCH_MODES[0],
+  torch: 'off',
+  lowLightBoost: true,
   captureFeedback: true,
   captureMode: CAPTURE_MODES[0],
   jpegQuality: JPEG_QUALITIES[0],
@@ -72,7 +74,7 @@ const OPTIONS: { label: (tuning: LiveTuning) => string; next: (tuning: LiveTunin
     label: (t) => `Min fps ${t.minFrameRate || 'auto'}`,
     next: (t) => ({ minFrameRate: nextValue(MIN_FRAME_RATES, t.minFrameRate) }),
   },
-  { label: (t) => `Torch ${t.torch}`, next: (t) => ({ torch: nextValue(TORCH_MODES, t.torch) }) },
+  { label: (t) => `Low light boost ${onOff(t.lowLightBoost)}`, next: (t) => ({ lowLightBoost: !t.lowLightBoost }) },
   { label: (t) => `Shutter feedback ${onOff(t.captureFeedback)}`, next: (t) => ({ captureFeedback: !t.captureFeedback }) },
   {
     label: (t) => `Capture ${t.captureMode}`,

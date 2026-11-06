@@ -118,6 +118,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setMinFrameRate(std::optional<double> minFrameRate) = 0;
       virtual std::optional<TorchMode> getTorch() = 0;
       virtual void setTorch(std::optional<TorchMode> torch) = 0;
+      virtual std::optional<bool> getLowLightBoost() = 0;
+      virtual void setLowLightBoost(std::optional<bool> lowLightBoost) = 0;
       virtual std::optional<CaptureMode> getCaptureMode() = 0;
       virtual void setCaptureMode(std::optional<CaptureMode> captureMode) = 0;
       virtual std::optional<double> getJpegQuality() = 0;

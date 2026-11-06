@@ -12,7 +12,7 @@ Prove all iOS owners stop, recover, and dispose together without stale publicati
 
 ## Non-goals
 
-Do not implement later task outcomes, redesign unrelated Android behavior, change the model/thresholds, or perform an optimization/cleanup pass. Do not hand-edit generated sources. Missing environment facts require verification, not guessed substitutions.
+Do not reopen completed controls/view tasks or replace their owners. Refactor existing lifecycle glue where integration exposes duplicated state or cleanup; fix defects in the owning component. Do not change model/quality thresholds, add Android-only light features, perform unrelated optimization, or hand-edit generated sources.
 
 ## Read before editing
 
@@ -28,10 +28,11 @@ Each resource has one owner; one component's teardown cannot destroy an interpre
 
 ## Implementation steps
 
-1. Integrate session interruption/runtime-error recovery, foreground/permission return, view attachment, and mode=off around a single session eligibility state.
-2. Reject requests that cannot finish after interruption; finish an already-submitted shot when the platform allows, settle once, and prevent callbacks from resurrecting stopped owners.
-3. Ensure model buffers, CVPixelBuffers, KVO tokens, notifications, timers, queued results, source leases, and temporary files release on every teardown path.
-4. Add bounded-resource stress scenarios across camera→pager→crop→background→resume and scan-session close/replacement; fix failures in the owning component rather than duplicating lifecycle state.
+1. Integrate interruption/runtime-error recovery, foreground/permission return, attachment and mode=off around the existing session eligibility owner. Retain typed reasons for configuration/light recovery where applicable; do not add a second camera-running flag or revive parking.
+2. Exercise Task 29's gate and Task 28's physical capture as separate lifetimes. Cancel waiting requests/deadlines on invalidation; finish an already-submitted shot when the platform permits, reject publication once, and hold its busy slot/leases until terminal cleanup. Repeated stops, immediate remount and session replacement must not resurrect an old request.
+3. Verify pending focus/light commands, command acknowledgements, focus observations and gate wakeups are run/request-scoped. Deferred settings apply once after settlement. Preserve established light decisions only where policy requires; interrupted partial observation windows must restart without counting time when frames were absent. Do not infer command success from stale callbacks.
+4. Ensure model buffers, CVPixelBuffers, KVO tokens, notifications, timers, queued results, source leases and temporary files release on all success/failure/cancellation paths. Preserve the existing camera-queue ordering contract and immutable cross-owner snapshots.
+5. Add bounded-resource stress sequences across camera→pager→crop→background→resume and scan-session close/replacement. Check state/event ordering as well as allocation counts, including a scan retry, settled-frame wait and deferred light command interrupted at each boundary.
 
 ## Ownership and boundary rules
 
@@ -39,15 +40,14 @@ Keep platform handles out of portable C++ interfaces; borrow pixels only through
 
 ## Tests and expected results
 
-- Exercise late delegate/model/load completion after detach, permission revoke, interruption, dispose, and immediate remount.
-- Verify no background camera/sensor activity, no observer cycles, no increasing native source count, and no stale UI installs.
+- Fake-session adverse sequences: late scan/light/frame/delegate/model/load completions after detach, permission loss, interruption, dispose and immediate remount; exactly one terminal publication and no early physical-slot release.
+- Resume after partial light evidence versus an established decision; no stale deadline, duplicate restart, control application or feedback install.
+- Verify no background camera/sensor activity, observer cycles, increasing source/lease counts or stale UI installs. Exercise simulator lifecycle integration separately from real camera interruption/recovery.
 
 ## Validation commands
 
-- Run focused iOS lifecycle/concurrency XCTest integration tests.
-- Run device and simulator stress scenarios; use supported ownership/concurrency sanitizers and report their availability.
-
-Verification prerequisites: establish the exact compiler/OpenCV setup before shared builds and the exact Mac workspace/scheme/destination before Xcode commands. Replace command placeholders only with verified values and record the expanded command. Report each unavailable environment or private fixture as not run with its reason; never report missing tests or compilation as passed. When moving a pure algorithm to C++, move its assertions in the same task so removed JVM tests do not become a false validation signal. Native camera captures always require a human tap.
+- Run deterministic owner/clock/decision tests on the Mac VM where host-runnable, compile there, and run simulator-dependent lifecycle/concurrency/resource integration through GitHub Actions. Use focused suites for fixes and a full iOS regression suite for the integrated result.
+- Run human-triggered physical-device interruption, background/resume and repeated-session checks. Use supported ownership/concurrency sanitizers and report availability and actual results. Simulator/fake-session success is not hardware recovery or memory-pressure evidence.
 
 ## Completion criteria
 

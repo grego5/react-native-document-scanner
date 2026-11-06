@@ -260,6 +260,15 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTorchMode> /* torch */)>("setTorch");
     method(_javaPart, torch.has_value() ? JTorchMode::fromCpp(torch.value()) : nullptr);
   }
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getLowLightBoost() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getLowLightBoost");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridDocumentScannerCameraViewSpec::setLowLightBoost(std::optional<bool> lowLightBoost) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* lowLightBoost */)>("setLowLightBoost");
+    method(_javaPart, lowLightBoost.has_value() ? jni::JBoolean::valueOf(lowLightBoost.value()) : nullptr);
+  }
   std::optional<CaptureMode> JHybridDocumentScannerCameraViewSpec::getCaptureMode() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JCaptureMode>()>("getCaptureMode");
     auto __result = method(_javaPart);

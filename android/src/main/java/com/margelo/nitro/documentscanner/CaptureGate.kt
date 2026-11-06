@@ -146,9 +146,18 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
 /** What a waiting capture is waiting for, in the order it is reported. */
 internal enum class WaitReason { DOCUMENT, FOCUS, LIGHT, STEADY }
 
+/** Why a capture's first focus scan starts; the camera view judges each. */
+internal enum class ScanTrigger { QUALITY, STALE_FOCUS, DARK, UNSEEN_PAGE }
+
+/** The capture's own focus scan as the focus controller last published it. */
+internal enum class OwnScan { NONE, SCANNING, LOCKED, FAILED }
+
 internal sealed interface CaptureDecision {
   /** Re-evaluate on the next event, and at [untilMs] at the latest, when the current deadline expires. */
   data class Wait(val reason: WaitReason, val untilMs: Long) : CaptureDecision
+  /** Start the capture's own focus scan, its [attempt]th; [trigger] is why its first one started, and [moved] whether
+   * the camera moved during the failed one before. The focus change re-evaluates. */
+  data class StartFocusScan(val trigger: ScanTrigger, val attempt: Int, val moved: Boolean) : CaptureDecision
   data object Shoot : CaptureDecision
   data class Reject(val code: ScannerErrorCode, val reason: WaitReason?) : CaptureDecision
 }
@@ -156,11 +165,17 @@ internal sealed interface CaptureDecision {
 /**
  * Inputs to the capture readiness check. [focusCheckEnabled] enables focus checking; [documentRequired] also requires
  * a confirmed page. [focused] and [documentFound] come from the focus controller and the newest frame record.
- * [zslCheckEnabled] requires eligible AF/AE/AWB states in [zslReady] unless focus is skipped.
- * [torchReady] requires no pending torch change, including when focus is skipped.
- * [motionCheckEnabled] enables [steady], the stability check's result for consecutive frames. [focusingUntilMs]: until when
- * autofocus counts as still moving, a scan pending or a recent frame searching; it extends a focus wait past its
- * deadline, and is null while autofocus is still. A pending scan's is [Long.MAX_VALUE]: its settling is a focus event.
+ * [zslCheckEnabled] requires eligible AF/AE/AWB states in [zslReady], whether or not focus is required: CameraX would
+ * otherwise return the newest frame its buffer accepted, however old. [lightReady] requires no pending torch or boost
+ * change. [motionCheckEnabled] enables [steady], the stability check's result for consecutive frames. [focusingUntilMs]:
+ * until when autofocus counts as still moving, a scan pending or a recent frame searching; it extends a focus wait past
+ * its deadline, and is null while autofocus is still. A pending scan's is [Long.MAX_VALUE]: its settling is a focus
+ * event.
+ *
+ * The capture's own scan: [scanAvailable] means one could start now (autofocus, a bound camera, focus required and no
+ * tap holding the lens); [scanTrigger] is why a first one would help now, or null. [ownScan] is its published state,
+ * [movedDuringScan] whether a frame judged in this evaluation smeared while it scanned, and [frameSinceFocusChange]
+ * whether a frame exposed after the latest focus change has been judged.
  */
 internal data class CaptureState(
   val nowMs: Long,
@@ -172,44 +187,85 @@ internal data class CaptureState(
   val focused: Boolean,
   val zslCheckEnabled: Boolean,
   val zslReady: Boolean,
-  val torchReady: Boolean,
+  val lightReady: Boolean,
   val motionCheckEnabled: Boolean,
   val steady: Boolean,
   val focusingUntilMs: Long? = null,
+  val scanAvailable: Boolean = false,
+  val scanTrigger: ScanTrigger? = null,
+  val ownScan: OwnScan = OwnScan.NONE,
+  val movedDuringScan: Boolean = false,
+  val frameSinceFocusChange: Boolean = true,
 )
 
 /**
- * The single owner of a capture's readiness and deadlines. Focus, with its page in `scanner` mode, comes first and
- * waits up to the focus timeout from its first evaluation; once it holds, everything must align within [steadyTimeoutMs].
- * Losing focus or the page after that waits within the same deadline. Autofocus still moving extends a focus wait past
- * either deadline, so a shot never fails or fires halfway through focusing. A capture that does not require focus
- * shoots without its page at either deadline, still needing light and steadiness. A skipped gate waits only for a focus
- * scan it started, which settles on its own. The first evaluation where everything holds shoots; there is no settling
- * delay. Main thread.
+ * The single owner of a capture's readiness, its own focus scans and its deadlines. Focus, with its page in `scanner`
+ * mode, comes first and waits up to the focus timeout from its first evaluation; once it holds, everything must align
+ * within [steadyTimeoutMs]. Losing focus or the page after that waits within the same deadline. Autofocus still moving
+ * extends a focus wait past either deadline, so a shot never fails or fires halfway through focusing. A capture that does
+ * not require focus shoots without its page at either deadline, still needing light and steadiness. A skipped gate waits
+ * only for a focus scan in progress, which settles on its own, and never scans. The first evaluation where everything
+ * holds shoots; there is no settling delay. Main thread.
+ *
+ * Scans: a first scan starts when its trigger holds before the focus deadline. One that settles without focus is retried
+ * from where it left the lens, whatever its trigger shows by then: once in any case, and again for as long as the camera
+ * moved during the failed scan. In dim light on the SM-G998U a scan from a background distance, with the hand moving
+ * slightly, gave up just short of the page, which then came into focus. A scan that fails while the camera holds still
+ * is the last: the scene is too dark or flat to focus. A scan in progress holds the page and focus waits past their
+ * deadline, and once it settles they wait up to [settledFrameWaitMs] for a frame exposed since, so the page it brought
+ * into focus can be seen. The focus controller's own timeout bounds a scan.
  */
-internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQualityGate: Boolean = false) {
+internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQualityGate: Boolean = false,
+  private val maxScans: Int = 2, private val settledFrameWaitMs: Long = 500) {
   private var focusDeadlineMs = 0L
   private var steadyDeadlineMs = 0L
   /** Focus stopped being required: its timeout passed on a capture that does not require it. */
   var focusSkipped = false
     private set
+  /** Scans this capture started, and why the first one did. */
+  var scans = 0
+    private set
+  private var trigger: ScanTrigger? = null
+  /** A frame smeared while the current scan scanned; its failure is then retried. */
+  private var scanMoved = false
+  private var lastOwnScan = OwnScan.NONE
+  /** When this gate first saw its latest scan settled; null while it scans or before one. */
+  private var scanSettledMs: Long? = null
 
   fun next(captureState: CaptureState): CaptureDecision {
     val now = captureState.nowMs
-    // Autofocus still moving is waited out, until it stops or its evidence goes stale; only a settled miss fails.
-    fun focusingUntil(reason: WaitReason?) = captureState.focusingUntilMs?.takeIf { reason == WaitReason.FOCUS && it > now }
+    val ownScan = captureState.ownScan
+    if (ownScan == OwnScan.SCANNING) {
+      if (captureState.movedDuringScan) scanMoved = true
+      scanSettledMs = null
+    } else if (lastOwnScan == OwnScan.SCANNING) {
+      scanSettledMs = now
+    }
+    lastOwnScan = ownScan
     // Per-shot override: lifecycle and permission checks remain in the camera before gate evaluation. Only a focus scan
     // in progress is waited for, and nothing rejects.
     if (skipQualityGate) {
-      val until = focusingUntil(WaitReason.FOCUS).takeIf { captureState.focusCheckEnabled && !captureState.focused }
+      val until = captureState.focusingUntilMs?.takeIf { captureState.focusCheckEnabled && !captureState.focused && it > now }
       return if (until != null) CaptureDecision.Wait(WaitReason.FOCUS, until) else CaptureDecision.Shoot
+    }
+    scanToStart(captureState)?.let { return it }
+    // Autofocus still moving is waited out, until it stops or its evidence goes stale; only a settled miss fails. The
+    // capture's own scan also holds a page wait: the page may be too blurred to detect until the scan settles.
+    fun focusingUntil(reason: WaitReason?): Long? {
+      if (reason != WaitReason.DOCUMENT && reason != WaitReason.FOCUS) return null
+      if (ownScan == OwnScan.SCANNING) return Long.MAX_VALUE
+      scanSettledMs?.let { settled ->
+        val until = settled + settledFrameWaitMs
+        if (!captureState.frameSinceFocusChange && until > now) return until
+      }
+      return captureState.focusingUntilMs?.takeIf { reason == WaitReason.FOCUS && it > now }
     }
     fun blocker(): WaitReason? {
       val needsFocus = captureState.focusCheckEnabled && !focusSkipped
       return when {
         needsFocus && captureState.documentRequired && !captureState.documentFound -> WaitReason.DOCUMENT
         needsFocus && !captureState.focused -> WaitReason.FOCUS
-        !captureState.torchReady || captureState.zslCheckEnabled && !focusSkipped && !captureState.zslReady -> WaitReason.LIGHT
+        !captureState.lightReady || captureState.zslCheckEnabled && !captureState.zslReady -> WaitReason.LIGHT
         captureState.motionCheckEnabled && !captureState.steady -> WaitReason.STEADY
         else -> null
       }
@@ -234,10 +290,26 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQu
     }
     return CaptureDecision.Reject(when (reason) {
       WaitReason.DOCUMENT, WaitReason.FOCUS -> ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT
-      // Exposure, white balance or the torch never settled: a capture failure, as before these checks existed.
+      // Exposure, white balance or the torch never settled: a capture failure, as before these checks existed. Zero
+      // shutter lag must not shoot anyway: CameraX then returns the newest frame its buffer accepted, however old.
       WaitReason.LIGHT -> ScannerErrorCode.CAPTURE_FAILED
       WaitReason.STEADY -> ScannerErrorCode.CAPTURE_MOTION_TIMEOUT
     }, reason)
+  }
+
+  /** The capture's next own scan, if one should start now. */
+  private fun scanToStart(captureState: CaptureState): CaptureDecision.StartFocusScan? {
+    if (!captureState.scanAvailable || focusSkipped) return null
+    val retry = captureState.ownScan == OwnScan.FAILED && (scans < maxScans || scanMoved)
+    val first = scans == 0 && captureState.scanTrigger != null &&
+      (focusDeadlineMs == 0L || captureState.nowMs < focusDeadlineMs)
+    if (first) trigger = captureState.scanTrigger
+    val why = trigger
+    if (!(first || retry) || why == null) return null
+    scans++
+    val moved = scanMoved
+    scanMoved = false
+    return CaptureDecision.StartFocusScan(why, scans, moved)
   }
 }
 

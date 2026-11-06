@@ -71,6 +71,9 @@ internal class FocusPolicy {
 
   companion object {
     const val TAP_HOLD_NS = 5_000_000_000L
-    const val SCAN_TIMEOUT_NS = 2_000_000_000L
+    /** A backstop for a scan whose result never arrives. CameraX settles every scan itself, unsuccessful after 5 s
+     * (`triggerFocusTimeout` in its log), so this lies past it: at 2 s, dim-light scans on the SM-G998U were cut off
+     * and rejected just as the page sharpened. */
+    const val SCAN_TIMEOUT_NS = 6_000_000_000L
   }
 }

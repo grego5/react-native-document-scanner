@@ -97,8 +97,8 @@ struct FocusPolicy {
 /// Once lit, that measure reflects the torch rather than the room, so the decision holds until
 /// `reset`. Kotlin implements the same policy; both pass `tests/fixtures/parity/torch.tsv`.
 struct TorchPolicy {
-  /// About 1/30 s at ISO 600, roughly 40 lux at f/1.8: dim enough for noise and motion blur.
-  static let darkIsoMs = 20_000.0
+  /// About 1/15 s at ISO 1600, as in Kotlin: 20,000 counted a lamp-lit room as dark on the SM-G998U.
+  static let darkIsoMs = 100_000.0
   static let sustainNs: Int64 = 1_000_000_000
 
   private var darkSince: Int64?

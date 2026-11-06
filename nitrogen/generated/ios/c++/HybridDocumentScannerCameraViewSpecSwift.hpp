@@ -217,6 +217,13 @@ namespace margelo::nitro::documentscanner {
     inline void setTorch(std::optional<TorchMode> torch) noexcept override {
       _swiftPart.setTorch(torch);
     }
+    inline std::optional<bool> getLowLightBoost() noexcept override {
+      auto __result = _swiftPart.getLowLightBoost();
+      return __result;
+    }
+    inline void setLowLightBoost(std::optional<bool> lowLightBoost) noexcept override {
+      _swiftPart.setLowLightBoost(lowLightBoost);
+    }
     inline std::optional<CaptureMode> getCaptureMode() noexcept override {
       auto __result = _swiftPart.getCaptureMode();
       return __result;

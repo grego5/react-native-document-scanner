@@ -124,6 +124,11 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setTorch(newProps->torch.get());
   }
   if (oldProps == nullptr
+        ? newProps->lowLightBoost.isProvided()
+        : !newProps->lowLightBoost.hasSameValue(oldProps->lowLightBoost)) {
+    hybridView->setLowLightBoost(newProps->lowLightBoost.get());
+  }
+  if (oldProps == nullptr
         ? newProps->captureMode.isProvided()
         : !newProps->captureMode.hasSameValue(oldProps->captureMode)) {
     hybridView->setCaptureMode(newProps->captureMode.get());

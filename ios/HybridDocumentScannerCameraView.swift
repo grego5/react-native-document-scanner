@@ -48,6 +48,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   var exposureCompensation: Double? = nil
   var minFrameRate: Double? = nil
   var torch: TorchMode? = nil
+  /// Android only; AVFoundation's low-light boost is not applied.
+  var lowLightBoost: Bool? = nil
   var captureMode: CaptureMode? = nil
   var jpegQuality: Double? = nil
   var guideTransitionDuration: Double? = nil

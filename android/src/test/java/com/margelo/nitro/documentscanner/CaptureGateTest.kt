@@ -8,7 +8,7 @@ import org.junit.Test
 class CaptureGateTest {
   private val ready = CaptureState(
     nowMs = 0, focusCheckEnabled = true, documentRequired = true, requireFocus = true, focusTimeoutMs = 2_000,
-    documentFound = true, focused = true, zslCheckEnabled = true, zslReady = true, torchReady = true, motionCheckEnabled = true, steady = true,
+    documentFound = true, focused = true, zslCheckEnabled = true, zslReady = true, lightReady = true, motionCheckEnabled = true, steady = true,
   )
 
   @Test
@@ -17,7 +17,7 @@ class CaptureGateTest {
     val states = listOf(
       ready.copy(documentFound = false, focused = false),
       ready.copy(nowMs = 100, focused = false),
-      ready.copy(nowMs = 200, torchReady = false),
+      ready.copy(nowMs = 200, lightReady = false),
       ready.copy(nowMs = 300, steady = false),
     )
     val reasons = states.map { (gate.next(it) as CaptureDecision.Wait).reason.toCaptureWaitReason() }
@@ -27,7 +27,7 @@ class CaptureGateTest {
 
   @Test
   fun perShotOverrideBypassesEveryWaitWithoutChangingTheNextShotsGate() {
-    val blocked = ready.copy(documentFound = false, focused = false, zslReady = false, torchReady = false, steady = false)
+    val blocked = ready.copy(documentFound = false, focused = false, zslReady = false, lightReady = false, steady = false)
     // Without a focus scan to wait for, nothing blocks the overridden shot.
     assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipQualityGate = true).next(blocked.copy(focusCheckEnabled = false)))
     assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 2_000), CaptureGate(1_500).next(blocked))
@@ -122,27 +122,84 @@ class CaptureGateTest {
   }
 
   @Test
-  fun optionalFocusTimeoutSkipsZslInTheSameEvaluation() {
+  fun optionalFocusNeverWaivesZeroShutterLagReadiness() {
     val optional = ready.copy(requireFocus = false, focused = false, zslReady = false, motionCheckEnabled = false)
     val gate = CaptureGate(1_500)
     assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_000), gate.next(optional))
-    assertEquals(CaptureDecision.Shoot, gate.next(optional.copy(nowMs = 2_000)))
+    // Focus is waived at its deadline, but the buffer would return an old frame: the shot waits for a ready one.
+    assertEquals(CaptureDecision.Wait(WaitReason.LIGHT, 3_500), gate.next(optional.copy(nowMs = 2_000)))
     assertTrue(gate.focusSkipped)
+    assertEquals(CaptureDecision.Shoot, gate.next(optional.copy(nowMs = 2_100, zslReady = true)))
 
     val later = CaptureGate(1_500)
     later.next(ready.copy(requireFocus = false, steady = false))
-    assertEquals(CaptureDecision.Shoot, later.next(optional.copy(nowMs = 1_500)))
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FAILED, WaitReason.LIGHT), later.next(optional.copy(nowMs = 1_500)))
+  }
+
+  @Test
+  fun aFailedScanRetriesAfterItsTriggerIsGoneAndAgainOnlyWhileTheCameraMoved() {
+    val gate = CaptureGate(1_500)
+    val base = ready.copy(focused = false, scanAvailable = true)
+    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.STALE_FOCUS, 1, false),
+      gate.next(base.copy(scanTrigger = ScanTrigger.STALE_FOCUS)))
+    // Owning the lens ends the stale focus that triggered the scan; the retry does not need it.
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_100), gate.next(base.copy(nowMs = 100, ownScan = OwnScan.SCANNING)))
+    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.STALE_FOCUS, 2, false),
+      gate.next(base.copy(nowMs = 600, ownScan = OwnScan.FAILED)))
+    gate.next(base.copy(nowMs = 700, ownScan = OwnScan.SCANNING, movedDuringScan = true))
+    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.STALE_FOCUS, 3, true),
+      gate.next(base.copy(nowMs = 1_200, ownScan = OwnScan.FAILED)))
+    gate.next(base.copy(nowMs = 1_300, ownScan = OwnScan.SCANNING))
+    // Failing while the camera held still is the last scan.
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_100), gate.next(base.copy(nowMs = 1_800, ownScan = OwnScan.FAILED)))
+    assertEquals(3, gate.scans)
+  }
+
+  @Test
+  fun anAdmittedRescueScanOutlastsThePageDeadlineAndGetsOneFrameAfterItSettles() {
+    val missing = ready.copy(documentFound = false, focused = false, scanAvailable = true)
+    val gate = CaptureGate(1_500)
+    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.UNSEEN_PAGE, 1, false),
+      gate.next(missing.copy(scanTrigger = ScanTrigger.UNSEEN_PAGE)))
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 2_100),
+      gate.next(missing.copy(nowMs = 100, ownScan = OwnScan.SCANNING, frameSinceFocusChange = false)))
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE),
+      gate.next(missing.copy(nowMs = 2_500, ownScan = OwnScan.SCANNING, frameSinceFocusChange = false)))
+    // Locked past the deadline: the first frame exposed after the lock decides.
+    val locked = missing.copy(nowMs = 3_000, ownScan = OwnScan.LOCKED, frameSinceFocusChange = false)
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 3_500), gate.next(locked))
+    assertEquals(CaptureDecision.Shoot, gate.next(ready.copy(nowMs = 3_100, ownScan = OwnScan.LOCKED)))
+
+    val unseen = CaptureGate(1_500)
+    unseen.next(missing.copy(scanTrigger = ScanTrigger.UNSEEN_PAGE))
+    unseen.next(missing.copy(nowMs = 100, ownScan = OwnScan.SCANNING))
+    unseen.next(missing.copy(nowMs = 2_500, ownScan = OwnScan.SCANNING))
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.DOCUMENT),
+      unseen.next(missing.copy(nowMs = 2_600, ownScan = OwnScan.LOCKED)))
+  }
+
+  @Test
+  fun aFirstScanIsAdmittedOnlyBeforeTheFocusDeadlineAndNeverWhenUnavailableOrSkipped() {
+    val gate = CaptureGate(1_500)
+    val late = ready.copy(focused = false, scanAvailable = true)
+    gate.next(late)
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.FOCUS),
+      gate.next(late.copy(nowMs = 2_000, scanTrigger = ScanTrigger.DARK)))
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_000),
+      CaptureGate(1_500).next(late.copy(scanAvailable = false, scanTrigger = ScanTrigger.DARK)))
+    assertEquals(CaptureDecision.Shoot,
+      CaptureGate(1_500, skipQualityGate = true).next(late.copy(focusCheckEnabled = false, scanTrigger = ScanTrigger.DARK)))
   }
 
   @Test
   fun skippedFocusStillWaitsForTorchAndMotion() {
-    val optional = ready.copy(requireFocus = false, focused = false, zslReady = false)
+    val optional = ready.copy(requireFocus = false, focused = false, zslReady = true)
     val torch = CaptureGate(1_500)
-    torch.next(optional.copy(torchReady = false))
+    torch.next(optional.copy(lightReady = false))
     assertEquals(CaptureDecision.Wait(WaitReason.LIGHT, 3_500),
-      torch.next(optional.copy(nowMs = 2_000, torchReady = false)))
+      torch.next(optional.copy(nowMs = 2_000, lightReady = false)))
     assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FAILED, WaitReason.LIGHT),
-      torch.next(optional.copy(nowMs = 3_500, torchReady = false)))
+      torch.next(optional.copy(nowMs = 3_500, lightReady = false)))
 
     val motion = CaptureGate(1_500)
     motion.next(optional.copy(steady = false))

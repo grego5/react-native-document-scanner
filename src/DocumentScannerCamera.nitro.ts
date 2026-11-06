@@ -91,7 +91,9 @@ export interface QualityGateConfig {
    * `takePhoto` waits for autofocus to finish and shoots only in focus. It waits up to 4 s, and longer while autofocus
    * is still moving, so a shot never fires or fails halfway through focusing; autofocus that settled without focus by
    * then rejects the shot. In `scanner` mode the shot also waits up to 4 s for a confirmed page, then rejects. Defaults
-   * to true. False does not wait for focus, and shoots after those 4 s without a page.
+   * to true. False does not wait for focus, and shoots after those 4 s without a page. On Android a `zsl` shot still
+   * waits for a frame the zero-shutter-lag buffer accepts, since the buffer would return an older one, and rejects
+   * with `capture/failed` without one.
    */
   requireFocus?: boolean
 }
@@ -130,12 +132,18 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   minCornerScore?: number
   /**
    * Capture focus and motion gating; defaults to true. Detection and tracking run independently of focus state.
-   * `captureMode` `quality` starts a focus scan at the page once one is found; `zsl` and `latency` use continuous
+   * `captureMode` `quality` starts a focus scan for each photo, at the page once one is found and otherwise at the
+   * preview's centre, since a dim, blurred page may not be detected before it; `zsl` and `latency` use continuous
    * autofocus, so they keep their shutter lag. In `scanner` mode with `guide` on, the call waits for a page, then for a
    * tap's or its own scan to lock, or for continuous autofocus to report focused, as `qualityGateConfig.requireFocus`
    * describes. Continuous autofocus may still report a focus it reached before the page came into view, on the
    * background or a hand; that focus does not count. If autofocus is not already refocusing, `zsl` and `latency` then
-   * start one focus scan at the page too. A tap's lock still counts while it holds, wherever the page appeared: the
+   * start one focus scan at the page too. They also scan before the shot, at the page or the preview's centre, in a
+   * dark scene that no lit torch or active `lowLightBoost` brightens, where continuous autofocus can report focus on a
+   * blurred page. In `latency` bound for the light, a press with no page found scans at the preview's centre too. A
+   * capture's scan that fails is retried, once and again while the camera moved during it, and a scan in progress
+   * holds the waits for the page and focus past their 4 s. A
+   * tap's lock still counts while it holds, wherever the page appeared: the
    * user chose that focus. Supported autofocus ZSL captures then wait for focused,
    * converged exposure and converged white balance, the states CameraX requires of a buffered frame. With capture
    * motion checking on, framing must also be stable: four consecutive analyzed frames, each moving under 5% of the
@@ -165,9 +173,28 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    * camera's own range. Changing it rebinds the camera, after any photo in flight settles.
    */
   minFrameRate?: number
-  /** Torch mode; defaults to `off`. It applies without rebinding the camera, after any photo in flight settles. */
+  /**
+   * Torch mode; defaults to `off`. It applies without rebinding the camera, after any pending photo settles.
+   */
   torch?: TorchMode
-  /** Still-capture mode; defaults to `zsl`. Changing it rebinds the camera, after any photo in flight settles. */
+  /**
+   * Lets the camera brighten dim scenes itself, mainly by lengthening exposures and lowering the frame rate; defaults
+   * to true. The camera engages it only in the dark, so dim pages get enough light for autofocus and detection, at the
+   * cost of more motion blur. Off while `torch` is not `off`. Android 15+ cameras that offer CameraX low-light boost;
+   * elsewhere, and on iOS, it does nothing. It applies without rebinding the camera, after any pending photo settles;
+   * a camera that refuses it, as above 30 fps, counts as unboosted for `captureMode`.
+   */
+  lowLightBoost?: boolean
+  /**
+   * Still-capture mode; defaults to `zsl`. Changing it rebinds the camera, after any photo in flight settles. On
+   * Android, `zsl` binds `latency` while the scene stays dark, the torch mode is `off` and `lowLightBoost` is off,
+   * unsupported or refused: there the zero-shutter-lag buffer can return a frame from before a focus scan or before the page
+   * came into view. It also binds `latency` after a second of white balance searching while exposure holds, as under a
+   * torch and a lamp, since the buffer then takes no new frame, and at once while the torch is lit (`on`, or `auto` once
+   * it lights), where white balance almost always searched. The switch to `latency`
+   * rebinds the camera at once. `latency` then stays, through the camera restarts between shots, until the scene is
+   * neither dark nor searching white balance; the camera's next start then binds `zsl` without a rebind of its own.
+   */
   captureMode?: CaptureMode
   /**
    * JPEG quality from 0 to 1; when omitted the capture mode chooses (1 for `quality`, 0.95 for `latency`). Changing

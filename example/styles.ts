@@ -81,6 +81,7 @@ export const styles = StyleSheet.create({
   shutterSide: {
     alignItems: 'center',
     flex: 1,
+    gap: 8,
   },
   shutter: {
     alignItems: 'center',

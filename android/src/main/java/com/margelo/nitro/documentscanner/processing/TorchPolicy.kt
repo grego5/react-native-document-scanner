@@ -28,8 +28,12 @@ internal class TorchPolicy {
   }
 
   companion object {
-    /** About 1/30 s at ISO 600, roughly 40 lux at f/1.8: dim enough for noise and motion blur. A starting setting. */
-    const val DARK_ISO_MS = 20_000.0
+    /**
+     * About 1/15 s at ISO 1600. A first setting of 20,000 (1/30 s at ISO 600) counted a lamp-lit room as dark on the
+     * SM-G998U: it read 15,000 to 50,000 there and photos came out bright. Not yet measured in a room dim enough for
+     * continuous autofocus to report focus on a blurred page.
+     */
+    const val DARK_ISO_MS = 100_000.0
     private const val SUSTAIN_NS = 1_000_000_000L
   }
 }

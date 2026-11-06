@@ -12,7 +12,7 @@ Match capture stages and frozen-preview handoff without JS frame processing.
 
 ## Non-goals
 
-Do not implement later task outcomes, redesign unrelated Android behavior, change the model/thresholds, or perform an optimization/cleanup pass. Do not hand-edit generated sources. Missing environment facts require verification, not guessed substitutions.
+Do not duplicate Task 29 gate/control state or Task 28 still/frame publication. Refactoring existing feedback integration to consume the authoritative request state is in scope; unrelated optimization and SwiftUI migration are not. Do not change model/thresholds or hand-edit generated sources.
 
 ## Read before editing
 
@@ -31,10 +31,10 @@ waiting pulses, shooting progresses, captured means movement is safe, and a late
 
 ## Implementation steps
 
-1. Implement a Swift feedback timeline preserving CaptureFeedbackTimeline's observable behavior, with UIKit drawing and platform haptics; keep colors and outline snapshots native.
-2. Publish captured after the AVFoundation exposure-complete event, never merely willCapture; preserve later failure reporting.
-3. Freeze the shutter frame/outline and hand it to the admitted session page on success. A decoded thumbnail releases the session reference; page removal/close clears it, while displayed views retain their own image references. Failure/detach invalidates obsolete camera feedback. Do not add retain/release-preview props or JS handoff state.
-4. Preserve state callback initial resend and stage-event non-resend semantics through stable Nitro callbacks.
+1. Implement the Swift feedback timeline with UIKit drawing and platform haptics, preserving the public timeline behavior. Consume Task 29's authoritative decisions/stages; feedback must not own retry counters, readiness flags, timers that trigger capture, or a second busy state.
+2. Publish captured after the AVFoundation exposure-complete event, never merely willCapture. Retrying or waiting for a post-focus frame remains waiting; StartFocusScan is an internal decision, not a new public stage. Preserve later save failure reporting and initial-state callback resend versus stage-event non-resend semantics.
+3. Reuse Task 28's bounded shutter-frame/outline snapshot and session publication. Preserve its orientation/framing checks; do not request or decode a second original for feedback. Keep the frozen preview until the current page image installs through the existing native binding. A decoded thumbnail releases session retention; removal/close clears it, while displayed views retain their own references.
+4. Detach, stop, session replacement and disposal invalidate obsolete view feedback by request/run identity without releasing a physical shot's resources early. Feedback disabled suppresses drawing/haptics without changing gate behavior or stage delivery. Do not introduce preview-release props or JS handoff state.
 
 ## Ownership and boundary rules
 
@@ -42,15 +42,14 @@ Keep platform handles out of portable C++ interfaces; borrow pixels only through
 
 ## Tests and expected results
 
-- Verify stage order, no stages for pre-admission rejection, captured→failed on write error, retention through mode=off, release prop, and disposal.
-- Check preview-to-review handoff remains covered until ImageViewer's current image installs.
+- Verify waiting through scans/retries and settled-frame allowance, ordered shooting/captured/failed stages, no stages for pre-admission rejection, and captured→failed on write error.
+- Cover feedback disabled, mode=off, detach/disposal, session replacement, late old-request events, retained-frame release after thumbnail decode/removal/close, and orientation changes around acceptance.
+- Check the preview-to-review handoff stays covered until ImageViewer installs the current image; no duplicate capture/frame owner or release prop is introduced.
 
 ## Validation commands
 
-- Run iOS feedback-timeline and preview-handoff integration tests.
-- Validate native feedback and retained-preview handoff with human-triggered device captures.
-
-Verification prerequisites: establish the exact compiler/OpenCV setup before shared builds and the exact Mac workspace/scheme/destination before Xcode commands. Replace command placeholders only with verified values and record the expanded command. Report each unavailable environment or private fixture as not run with its reason; never report missing tests or compilation as passed. When moving a pure algorithm to C++, move its assertions in the same task so removed JVM tests do not become a false validation signal. Native camera captures always require a human tap.
+- Run hardware-free timeline tests on the Mac VM where the target supports host execution; compile package/test products there. Run UIKit/retention/binding integration suites on the verified GitHub simulator route, including affected gate, camera and viewer regressions.
+- Validate haptics, exposure-stage timing and preview-to-review handoff with human-triggered physical-device captures. Report simulator, build and device results separately and keep missing physical evidence pending.
 
 ## Completion criteria
 

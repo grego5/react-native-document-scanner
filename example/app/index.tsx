@@ -9,6 +9,7 @@ import {
   type CameraRef,
   type CameraCaptureState,
   type CaptureWaitReason,
+  type TorchMode,
 } from 'react-native-document-scanner';
 import { DEFAULT_TUNING, OptionsPanel } from '../components/OptionsPanel';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -92,6 +93,9 @@ export function ScanScreen({
   const capturing =
     captureState === 'waiting' || captureState === 'shooting' || captureState === 'saving';
   const [optionsOpen, setOptionsOpen] = useState(false);
+  // A tap switches the torch on or off for this scan only; a new scan remounts this screen and returns to the default.
+  const [torchOverride, setTorchOverride] = useState<Extract<TorchMode, 'on' | 'off'>>();
+  const torch = torchOverride ?? tuning.torch;
   const [sampleFolder, setSampleFolder] = useState(() => DocumentScanner.getSampleFolder());
   const sampling = sampleFolder.collecting;
   const permission = useCameraPermission();
@@ -177,6 +181,7 @@ export function ScanScreen({
             quadTensorModel="asset:///doccornernet/model.tflite"
             ref={cameraRef}
             {...tuning}
+            torch={torch}
             mode={view === 'camera' && !optionsOpen ? tuning.mode : 'off'}
             guide={view === 'camera' && !optionsOpen}
             showStats
@@ -237,6 +242,16 @@ export function ScanScreen({
                 onPress={takePhoto}
               />
               <View style={styles.shutterSide}>
+                <ActionButton
+                  label={`Torch ${torch}`}
+                  accessibilityHint="Tap to switch the torch on or off for this scan. Long press to make auto or off the default."
+                  disabled={capturing || session.working || view !== 'camera'}
+                  onPress={() => setTorchOverride(torch === 'on' ? 'off' : 'on')}
+                  onLongPress={() => {
+                    setTorchOverride(undefined);
+                    setTuning((t) => ({ ...t, torch: t.torch === 'auto' ? 'off' : 'auto' }));
+                  }}
+                />
                 <ActionButton
                   label="Options"
                   disabled={capturing || session.working || view !== 'camera'}
