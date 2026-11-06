@@ -1,0 +1,14 @@
+{
+  "uiViewClassName": "ImageViewerView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "session": true,
+    "pageId": true,
+    "onError": true,
+    "onLoad": true,
+    "onZoomChange": true,
+    "hybridRef": true
+  }
+}

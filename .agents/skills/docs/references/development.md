@@ -1,0 +1,106 @@
+# Development
+
+## Environment
+
+Parse generated JSON reports with Python `json.load()` and print only the fields needed for the current question.
+Write edited text files with LF line endings; in Python use `open(..., newline="\n")` or `Path.write_text(..., newline="\n")` to keep Windows writes consistent with Git.
+
+## Routine checks
+
+- `npm run check`: library and example typechecks, then the JS contract tests, stopping at the first failure. It runs no Gradle, generation, APK, install or device command. `npm run check -- --list` prints the plan; `npm run typecheck`, `typecheck:example` and `test:contracts` run one step.
+- `npm run test:native -- -Test '*LiveDetectionStateTest'` runs JVM tests through `tools/test-native.ps1`, which sets the JDK, ABI and Gradle cache. It may compile Kotlin, resources and Gradle plugins, so never run it, or any compile-only Gradle target, under a no-build instruction. It never builds or installs an APK.
+  - Pass several filters as one comma-separated `-Test` list.
+  - `-RecompilePlugins` works around stale Expo Gradle plugin output ("Could not find implementation class ..."). Concurrent Gradle runs on this checkout cause the same failure.
+  - Guide replay now runs through JNI instrumentation; JVM tests retain format/report checks only.
+
+## Build and run
+
+Use Android Studio's JDK and the installed SDK; set `JAVA_HOME` for the command only. Gradle runs from `example/android`, which is prebuild output.
+
+- App: from `example/`, `npm run start` (Metro on 8088), then `npm run android` (arm64) or `npm run android:emulator` (x86_64). Both install only to a matching online target. `npm run android:release` builds a standalone APK signed with the development keystore.
+- After changing a spec in `src/`, run `npm run nitrogen`; never edit `nitrogen/generated/`.
+- Lifecycle check: `npm run android:lifecycle -- -Device <adb-id>`. It clears that device's Logcat.
+- Library tasks (with `-PreactNativeArchitectures=<abi>`): `:react-native-document-scanner:assembleDebug`, `testDebugUnitTest`, `assembleDebugAndroidTest`.
+- Instrumented tests: `npm run test:device -- -Device <adb-id> [-Class <Class or Class#method>,...] [-Measure] [-Argument name=value]` builds the androidTest APK, installs it only if the build succeeded, runs the tests and fails unless the runner reports OK. Run it from PowerShell, not Git Bash, so paths are not rewritten; grant CAMERA once for the camera tests.
+- Render timings, private model parity and scene recordings (`RenderTimingTest`, `DocCornerNetRuntimeTest.privatePhotosMeetNativeParityBudgetAndRecordWarmTimings`, `LiveQuadTraceRecordingTest`) are skipped unless the run passes `-e measure true`, so a plain run checks behaviour only.
+- Tests cover dynamic behaviour, lifecycle and concurrency, non-trivial algorithms, security boundaries and the example's session rules. Do not add a test that only pins a single wiring fix, a passthrough or a basic guarantee the code states plainly.
+- Unattended runs exclude `LiveCameraRuntimeTest`: it needs the phone awake and unlocked, and a human to tap every shutter in `CameraValidationActivity`.
+- Focus policy tests: `FocusPolicyTest` and `CaptureGateTest` are JVM unit tests. `com.margelo.nitro.documentscanner.FocusControllerTest` runs with `test:device`; it uses a fake CameraX control, clock and futures, checks that a scan's owner is published before its request, and never opens a camera or takes a photo.
+- Confirm targets with `adb devices`. Report build and device results separately; a build is not a device result.
+
+## Hand checks
+
+Compare one switch at a time in the example's Options panel, with the scene, lighting and other settings unchanged. The adaptive status line shows the last reason inference woke (`reset: …`).
+
+- Camera: permission grant and denial, capture, rotation, background and foreground. `LiveCameraRuntimeTest#inactiveCameraStaysSuspendedAcrossForegroundAndSettingsThenResumesWithoutRemounting` checks `active={false}` without a shutter.
+### Session UI
+
+- Capture and saved pages share one pager; test thumbnails and the filter modal.
+- Check that awaited capture/settings changes are visible in snapshots immediately, and that native placeholders show before the first decode.
+- Check Crop, Shadow and the shadow default for new captures. Saved filter/shadow edits survive Back.
+- Crop actions: No crop, Auto crop, Cancel and Submit.
+- Navigation: Add page, Done/Save, Delete, New scan, Back confirmation and the 50-page limit.
+- Camera stays mounted and inactive beneath preview/crop.
+
+### Session lifetime
+
+- New scan/unmount closes the old owner without blocking the UI; late captures/events cannot affect its replacement.
+- Published host exports survive close. No JS image janitor or URI processing calls.
+
+### Native views
+
+- Check auto/LTR/RTL direction and selected-page retention after host ID reordering/deletion.
+- Check thumbnail updates during processing, detach/reattach, and empty tiles after deletion/close.
+- Test dragging in a host fixture that supplies a complete pager order and verifies session publication/export order; the example strip supports selection only.
+
+### Exports
+
+- Controlled fixture: edit/delete/close during queued or running exports. Verify frozen order/settings, cancellation before publication and source leases.
+- Human example: PDF sharing, gallery saving, permission denial and unlock after share/gallery failures.
+- Check PDF/image format preservation and seven-day host export retention outside active sessions.
+
+### Camera guidance
+
+- Shutter focus: with the quality gate on, press while focus is scanning; no photo fires until focus is reported, and the 2 s timeout rejects rather than shoots.
+- Guide validation: a stationary page near competing table edges, then real changes in tilt, rotation, framing and distance, occlusion and focus loss. Replay alone cannot show which visible boundary was the paper.
+- Document focus: an initially defocused page, approach and retreat, pans, target loss and reacquisition, taps on the background before a page arrives, a tap while continuous autofocus is still scanning, a `quality` capture's scan, `zsl` capture as a page arrives and while autofocus scans, background and resume.
+- Adaptive detection: hold a text page with normal hand tremor, then pan slowly; the guide follows, and inference runs once to reconfirm about every 5% of frame width of travel. Move nearer or farther (focus rescans without inference), tilt slightly (the outline reshapes and stays on the edges) and strongly (`scene changed`), cover part of the page (`revalidating`), then remove it. The guide must not survive prolonged target loss. Battery and CPU savings need live measurement.
+- Torch: `auto` in a dim room lights within about a second and stays lit through captures; in an ordinary room it stays off. The stats line shows the exposure × ISO product next to the torch state, for tuning the dark threshold.
+- Low-light boost: in the same dim room the stats strip should read `boost active` with the torch off; `unsupported` means the camera lacks it.
+- Dim light: with the torch off on a camera without low-light boost, the stats strip's `capture` should turn from `zsl` to `latency` about a second after the room goes dim, and back at the camera's next restart, such as after a shot, once it is lit; a capture there scans before the shot and comes out sharp, never the background from before the page.
+- Torch: lighting the torch in `zsl` should turn `capture` to `latency` at once, with one restart, and shots pass the gate; after turning it off, the next restart (after a shot) shows `zsl` again. Without a torch, white balance that keeps searching (`ae/awb 2/1`) turns it to `latency` after a second.
+- The stats line's `checks X ms/frame` sums flow, stabilizer and tracked-retention time over every delivered frame. It excludes inference and is not a process-wide CPU measure.
+
+## Live quad traces
+
+`LiveQuadTraceRecordingTest` records pixel-free TSV from the instrumentation harness: raw and accepted quads, decisions, timings, gyroscope, camera optics, and the flow estimate with its fitted transform. The user follows the on-screen instructions and taps Stop recording; recording also ends at 2,048 rows or 60 s.
+
+```powershell
+adb -s <serial> shell "am instrument -w -e class com.margelo.nitro.documentscanner.LiveQuadTraceRecordingTest -e measure true -e liveQuadScene close-range -e liveQuadCapture true -e liveQuadInstructions 'Fill most of the screen with the page, tap the green button once, then Stop recording.' com.margelo.nitro.documentscanner.test/androidx.test.runner.AndroidJUnitRunner"
+adb -s <serial> pull /sdcard/Android/data/com.margelo.nitro.documentscanner.test/files/live-quad-traces/. .local/live-quad-traces/
+```
+
+Options: `liveQuadCaptures <n>` (user-tapped shutters), `liveQuadKeepPhotos true`, `liveQuadAnalysisWidth <px>`, `liveQuadQualityGate true`, `liveQuadFlow false` (cadence baseline). The trace config stores the acceptance settings.
+
+Replay: `npm run test:device -- -Device <verified-adb-id> -Class com.margelo.nitro.documentscanner.processing.LiveQuadTraceReplayTest -Argument liveQuadTrace=<device-file-or-directory>` exercises the shared native guide. It writes `live-quad-trace-reports/summary.txt` under the test application external files directory. Without that optional argument, deterministic synthetic replay tests run and external replay is skipped.
+
+Replay limits:
+
+- Traces are unversioned and must match the current columns and config; older layouts are rejected. Strict guide row equality applies only when the recorded config equals the current one. Gyro reports still use the named historical math oracle; guide replay runs through JNI.
+- Pixel-free replay cannot regenerate feature tracks. Recorded transforms belong to the recorded feature regions. Evaluating a different tracking policy needs live recordings.
+- Analysis frames are about 6x smaller than the photo, so only capture rows can test the 0.2% capture blur limit. Record rotation, sideways motion and approach separately.
+
+## Evidence (Samsung SM-G998U, arm64)
+
+- Capture negotiates 4000x3000, with 960x720 preview and 640x480 analysis.
+- `takePhoto` resolves in about 0.35 s with `zsl`, 0.9 s with `latency`, and 1.0 to 1.2 s with `quality`.
+- Native photo preprocessing takes a median 9.5 ms against 53 ms for the Kotlin oracle, with bitwise-equal tensors.
+- Live guidance runs at a median 14.6 Hz, with 27 ms from analysis to overlay.
+- Six recorded scenes (3,562 frames): of 491 raw-candidate disagreements, 28 reached the guide. The held guide shows on 4% of accepted frames when steady, 16% in quick pans and 24% with a hand in the way.
+- A triggered focus scan costs 450–650 ms.
+
+## Android engine profiling
+
+Use `npm run test:device -- -Device <verified-id> -BuildType Release -Measure -Class com.margelo.nitro.documentscanner.processing.RenderBoundaryTimingTest` for opt-in paired render/filter and native-Mat PNG measurements. `EngineParityTimingTest` measures complete production renders and exports synthetic unencoded filters for a historical checkout comparison. Neither test opens a camera or takes a photo. Without -Measure, measurement tests skip; ordinary device checks still default to Debug.
+
+Full-render comparisons need sustained warm-up, actual worker affinity, frequency and thermal/order evidence. FastCores affinity alone does not hold frequency fixed. EngineParityTimingTest keeps the scope active, warms each case for at least two seconds, and records eleven samples. External profiling may be needed to verify actual scheduling and frequency. Record idle-start latency separately from sustained throughput. Historical source may contain the already-fixed sharpening alias bug; use corrected Kotlin for equal-output comparisons and label historical measurements explicitly. Artifacts and the isolated-checkout Gradle override are under .local/engine-optimization/.

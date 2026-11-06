@@ -1,0 +1,6 @@
+# v1; 400x300 RGB JPEG left half black; page 600x800 points PDF bottom-left; EXIF and fit supplied; matrix a,b,c,d,e,f maps stored unit square; clip page; absolute matrix tolerance 0.0001
+id	exif	fit	matrix
+contain	1	CONTAIN	600,0,0,450,0,175
+cover	1	COVER	1066.6667,0,0,800,-233.3333,0
+fill	1	FILL	600,0,0,800,0,0
+rotated-contain	6	CONTAIN	0,-800,600,0,0,800

@@ -1,0 +1,10 @@
+# v1; encoded RGB JPEG 80x60 quadrant markers R,G,Y,B in TL/TR/BR/BL; upright pixel coordinates; dimensions exact, RGB L1 distance <140; transform roundtrip 1e-8
+id	exif	width	height	corners
+exif-1	1	80	60	RED,GREEN,YELLOW,BLUE
+exif-2	2	80	60	GREEN,RED,BLUE,YELLOW
+exif-3	3	80	60	YELLOW,BLUE,RED,GREEN
+exif-4	4	80	60	BLUE,YELLOW,GREEN,RED
+exif-5	5	60	80	RED,BLUE,YELLOW,GREEN
+exif-6	6	60	80	BLUE,RED,GREEN,YELLOW
+exif-7	7	60	80	YELLOW,GREEN,RED,BLUE
+exif-8	8	60	80	GREEN,YELLOW,BLUE,RED
