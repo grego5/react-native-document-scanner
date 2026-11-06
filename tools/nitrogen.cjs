@@ -1,4 +1,4 @@
-// Nitro 0.37.1 / Swift importer compatibility. See margelo/nitro#1186 and #1376.
+// Nitro 0.37.1–0.37.2 / Swift importer compatibility. See margelo/nitro#1186 and #1376.
 // Patch an isolated generator copy; never change installed packages or generated output.
 const fs = require('node:fs')
 const path = require('node:path')
@@ -6,8 +6,8 @@ const { spawnSync } = require('node:child_process')
 const root = path.resolve(__dirname, '..')
 const installed = path.dirname(require.resolve('nitrogen/package.json'))
 const metadata = JSON.parse(fs.readFileSync(path.join(installed, 'package.json'), 'utf8'))
-if (metadata.version !== '0.37.1') throw new Error('Revalidate the Swift importer workaround before changing Nitrogen')
-const isolated = path.join(root, '.local', 'nitrogen-0.37.1')
+if (!['0.37.1', '0.37.2'].includes(metadata.version)) throw new Error('Revalidate the Swift importer workaround before changing Nitrogen')
+const isolated = path.join(root, '.local', `nitrogen-${metadata.version}`)
 fs.mkdirSync(isolated, { recursive: true })
 fs.copyFileSync(path.join(installed, 'package.json'), path.join(isolated, 'package.json'))
 fs.cpSync(path.join(installed, 'lib'), path.join(isolated, 'lib'), { recursive: true })
