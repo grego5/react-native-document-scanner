@@ -2,7 +2,7 @@
 package com.margelo.nitro.documentscanner.processing
 
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot

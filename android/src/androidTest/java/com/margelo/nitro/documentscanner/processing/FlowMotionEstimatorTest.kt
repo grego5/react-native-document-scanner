@@ -2,7 +2,7 @@ package com.margelo.nitro.documentscanner.processing
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import java.nio.ByteBuffer
 import kotlin.random.Random
 import androidx.test.platform.app.InstrumentationRegistry
@@ -134,27 +134,27 @@ class FlowMotionEstimatorTest {
   }
 
   @Test
-  fun pageQuadSelectsFeaturesInRotatedFrames() {
-    val quad = DocumentQuad(DocumentPoint(0.1, 0.1), DocumentPoint(0.9, 0.1), DocumentPoint(0.9, 0.9), DocumentPoint(0.1, 0.9))
-    update(frame(), BASE_NS, rotation = 90, region = quad)
-    val estimate = update(frame(dx = 6.0), BASE_NS + FRAME_NS, rotation = 90, region = quad)
+  fun pageCornersSelectsFeaturesInRotatedFrames() {
+    val corners = DocumentCorners(DocumentPoint(0.1, 0.1), DocumentPoint(0.9, 0.1), DocumentPoint(0.9, 0.9), DocumentPoint(0.1, 0.9))
+    update(frame(), BASE_NS, rotation = 90, region = corners)
+    val estimate = update(frame(dx = 6.0), BASE_NS + FRAME_NS, rotation = 90, region = corners)
     assertEquals(FlowMotionStatus.MEASURED, estimate.status)
     assertEquals(180.0, estimate.speedPxPerSecond!!, 18.0)
   }
 
   @Test
   fun optionalTransformUsesTheExistingTracksAndHonorsRotation() {
-    val quad = DocumentQuad(DocumentPoint(.2, .2), DocumentPoint(.8, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
+    val corners = DocumentCorners(DocumentPoint(.2, .2), DocumentPoint(.8, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
     for (rotation in listOf(0, 90, 180, 270)) {
       estimator.reset()
       update(frame(), BASE_NS, rotation = rotation, fitTransform = true)
       val estimate = update(frame(dx = 6.0), BASE_NS + FRAME_NS, rotation = rotation, fitTransform = true)
       assertEquals(FlowMotionStatus.MEASURED, estimate.status)
-      val moved = estimate.transform!!.warp(quad)!!
+      val moved = estimate.transform!!.warp(corners)!!
       val expectedX = when (rotation) { 0 -> 6.0 / WIDTH; 180 -> -6.0 / WIDTH; else -> 0.0 }
       val expectedY = when (rotation) { 90 -> 6.0 / WIDTH; 270 -> -6.0 / WIDTH; else -> 0.0 }
-      assertEquals(quad.topLeft.x + expectedX, moved.topLeft.x, .005)
-      assertEquals(quad.topLeft.y + expectedY, moved.topLeft.y, .005)
+      assertEquals(corners.topLeft.x + expectedX, moved.topLeft.x, .005)
+      assertEquals(corners.topLeft.y + expectedY, moved.topLeft.y, .005)
       assertTrue(estimate.transformProcessingNs!! > 0)
     }
     estimator.reset()
@@ -239,7 +239,7 @@ class FlowMotionEstimatorTest {
   }
 
   private fun update(
-    pixels: ByteBuffer, sensorNs: Long, rotation: Int = 0, region: DocumentQuad? = null, cropLeft: Int = 0,
+    pixels: ByteBuffer, sensorNs: Long, rotation: Int = 0, region: DocumentCorners? = null, cropLeft: Int = 0,
     cropRight: Int = WIDTH, fitTransform: Boolean = false,
   ) = estimator.update(pixels, WIDTH * 4, 4, WIDTH, HEIGHT, cropLeft, 0, cropRight, HEIGHT, rotation, sensorNs, region, fitTransform)
 

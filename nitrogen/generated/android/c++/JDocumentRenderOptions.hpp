@@ -49,8 +49,8 @@ namespace margelo::nitro::documentscanner {
       jni::local_ref<JPaperSize> paperSize = this->getFieldValue(fieldPaperSize);
       static const auto fieldDpi = clazz->getField<jni::JDouble>("dpi");
       jni::local_ref<jni::JDouble> dpi = this->getFieldValue(fieldDpi);
-      static const auto fieldFollowPageEdges = clazz->getField<jni::JBoolean>("followPageEdges");
-      jni::local_ref<jni::JBoolean> followPageEdges = this->getFieldValue(fieldFollowPageEdges);
+      static const auto fieldSimpleDewarp = clazz->getField<jni::JBoolean>("simpleDewarp");
+      jni::local_ref<jni::JBoolean> simpleDewarp = this->getFieldValue(fieldSimpleDewarp);
       return DocumentRenderOptions(
         removeShadows != nullptr ? std::make_optional(static_cast<bool>(removeShadows->value())) : std::nullopt,
         jpegQuality != nullptr ? std::make_optional(jpegQuality->value()) : std::nullopt,
@@ -58,7 +58,7 @@ namespace margelo::nitro::documentscanner {
         format != nullptr ? std::make_optional(format->toCpp()) : std::nullopt,
         paperSize != nullptr ? std::make_optional(paperSize->toCpp()) : std::nullopt,
         dpi != nullptr ? std::make_optional(dpi->value()) : std::nullopt,
-        followPageEdges != nullptr ? std::make_optional(static_cast<bool>(followPageEdges->value())) : std::nullopt
+        simpleDewarp != nullptr ? std::make_optional(static_cast<bool>(simpleDewarp->value())) : std::nullopt
       );
     }
 
@@ -79,7 +79,7 @@ namespace margelo::nitro::documentscanner {
         value.format.has_value() ? JDocumentImageFormat::fromCpp(value.format.value()) : nullptr,
         value.paperSize.has_value() ? JPaperSize::fromCpp(value.paperSize.value()) : nullptr,
         value.dpi.has_value() ? jni::JDouble::valueOf(value.dpi.value()) : nullptr,
-        value.followPageEdges.has_value() ? jni::JBoolean::valueOf(value.followPageEdges.value()) : nullptr
+        value.simpleDewarp.has_value() ? jni::JBoolean::valueOf(value.simpleDewarp.value()) : nullptr
       );
     }
   };

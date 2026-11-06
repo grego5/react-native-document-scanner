@@ -51,10 +51,10 @@ target_sources(
   ../nitrogen/generated/android/c++/JVariant_CameraPermissionValue_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JHybridDocumentCropEditorViewSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_Boolean_ScannerFailure.cpp
-  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_DocumentQuad.cpp
+  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_DocumentCorners.cpp
   ../nitrogen/generated/android/c++/views/JHybridDocumentCropEditorViewStateUpdater.cpp
   ../nitrogen/generated/android/c++/JHybridDocumentScannerCameraViewSpec.cpp
-  ../nitrogen/generated/android/c++/JVariant_String_ScannerFailure.cpp
+  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_CameraCaptureResult.cpp
   ../nitrogen/generated/android/c++/views/JHybridDocumentScannerCameraViewStateUpdater.cpp
   ../nitrogen/generated/android/c++/JHybridDocumentScannerProcessorSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_HybridScanSessionSpec_ScannerFailure.cpp
@@ -66,6 +66,7 @@ target_sources(
   ../nitrogen/generated/android/c++/JHybridPageThumbnailViewSpec.cpp
   ../nitrogen/generated/android/c++/views/JHybridPageThumbnailViewStateUpdater.cpp
   ../nitrogen/generated/android/c++/JHybridScanSessionSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_String_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_Array_String__ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_ScanSessionObservation_ScannerFailure.cpp
 )

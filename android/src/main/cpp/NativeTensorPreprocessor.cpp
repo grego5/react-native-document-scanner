@@ -43,7 +43,7 @@ local_ref<JArrayDouble> decodeOutputNative(alias_ref<jclass>, alias_ref<JArrayFl
     const auto result = document_scanner::decodeCornerOutput({array.get(), values->size()});
     if (!result)
       return nullptr;
-    const auto &q = result->quad;
+    const auto &q = result->corners;
     const double data[]{q[0].x, q[0].y, q[1].x, q[1].y, q[2].x, q[2].y, q[3].x, q[3].y, result->score};
     auto output = JArrayDouble::newArray(9);
     output->setRegion(0, 9, data);

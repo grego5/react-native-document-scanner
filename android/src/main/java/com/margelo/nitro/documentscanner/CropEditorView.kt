@@ -25,8 +25,8 @@ import kotlin.math.min
  * screen. Main thread only.
  */
 internal class CropEditorView(context: Context) : View(context) {
-  /** Called with the edited quad when a drag that changed it ends. */
-  var onQuadEdited: ((DoubleArray) -> Unit)? = null
+  /** Called with the edited corners when a drag that changed it ends. */
+  var onCornersEdited: ((DoubleArray) -> Unit)? = null
 
   /**
    * The upright photo; the caller owns it and must clear it before recycling. A replacement keeps the zoom, so a
@@ -46,19 +46,35 @@ internal class CropEditorView(context: Context) : View(context) {
     invalidate()
   }
 
+  /**
+   * Keeps the crop an upright rectangle: only its corners move, the opposite corner fixed, with no edge handles and no
+   * pinch, pan or double-tap zoom. Turning it on fits the photo and squares the crop to its bounding rectangle.
+   */
+  var rectangle = false
+    set(value) {
+      if (field == value) return
+      field = value
+      drag = null
+      if (value) {
+        corners = CropCornerEditing.boundingRectangle(corners)
+        resetZoom()
+      }
+      invalidate()
+    }
+
   /** The crop in normalized upright coordinates. */
-  var quad: DoubleArray = CropQuadEditing.FULL_FRAME
+  var corners: DoubleArray = CropCornerEditing.FULL_FRAME
     private set
 
   /** Replaces a validated in-frame crop and cancels a drag in progress. */
-  fun replaceQuad(value: DoubleArray) {
-    requireInput(NativeQuadGeometry.editor(value)) { "Crop corners must form a valid in-frame quadrilateral." }
-    quad = value.copyOf()
+  fun replaceCorners(value: DoubleArray) {
+    requireInput(NativeCornerGeometry.editor(value)) { "Crop corners must form a valid in-frame document outline." }
+    corners = if (rectangle) CropCornerEditing.boundingRectangle(value) else value.copyOf()
     drag = null
     invalidate()
   }
 
-  /** [start] is the quad before the touch, [base] the quad after snapping the handle under the finger. */
+  /** [start] is the corners before the touch, [base] the corners after snapping the handle under the finger. */
   private class Drag(
     val corner: Boolean,
     val index: Int,
@@ -152,7 +168,7 @@ internal class CropEditorView(context: Context) : View(context) {
     buildPath()
     linePaint.strokeWidth = 2 * density
     canvas.drawPath(path, linePaint)
-    for (index in 0 until 4) drawEdgeGrip(canvas, index)
+    if (!rectangle) for (index in 0 until 4) drawEdgeGrip(canvas, index)
     for (index in 0 until 4) canvas.drawCircle(viewX(index), viewY(index), CORNER_RADIUS * density, handlePaint)
     drag?.takeIf { it.corner }?.let { drawMagnifier(canvas, source, it.index) }
   }
@@ -163,6 +179,8 @@ internal class CropEditorView(context: Context) : View(context) {
       if (!fitContent(source)) return false
       gesture = if (handleAt(event.x, event.y) == null) Gesture.VIEW else Gesture.HANDLE
     }
+    // A rectangle crop never zooms; a touch away from its corners does nothing.
+    if (gesture == Gesture.VIEW && rectangle) return false
     if (gesture == Gesture.VIEW) {
       pan(event)
       scaleDetector.onTouchEvent(event)
@@ -176,19 +194,20 @@ internal class CropEditorView(context: Context) : View(context) {
         val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
         tapDetector.onTouchEvent(cancel)
         cancel.recycle()
-        val start = quad.copyOf()
+        val start = corners.copyOf()
         // The grabbed corner, or the middle of the grabbed edge, jumps under the finger at once.
         val (corner, index) = handle
-        val snapped = if (corner) {
-          CropQuadEditing.moveCorner(start, index, normalizedX(event.x), normalizedY(event.y))
-        } else {
-          CropQuadEditing.moveEdge(
+        val snapped = when {
+          corner && rectangle ->
+            CropCornerEditing.moveRectangleCorner(start, index, normalizedX(event.x), normalizedY(event.y))
+          corner -> CropCornerEditing.moveCorner(start, index, normalizedX(event.x), normalizedY(event.y))
+          else -> CropCornerEditing.moveEdge(
             start, index,
             (event.x - midX(index)) / content.width().toDouble(),
             (event.y - midY(index)) / content.height().toDouble(),
           )
         } ?: start
-        quad = snapped
+        corners = snapped
         drag = Drag(corner, index, event.getPointerId(0), event.x, event.y, start, snapped)
         fingerX = event.x
         fingerY = event.y
@@ -206,13 +225,17 @@ internal class CropEditorView(context: Context) : View(context) {
         val dx = (fingerX - current.downX) / content.width().toDouble()
         val dy = (fingerY - current.downY) / content.height().toDouble()
         val start = current.base
-        val next = if (current.corner) {
-          CropQuadEditing.moveCorner(start, current.index, start[current.index * 2] + dx, start[current.index * 2 + 1] + dy)
+        val x = start[current.index * 2] + dx
+        val y = start[current.index * 2 + 1] + dy
+        val next = if (current.corner && rectangle) {
+          CropCornerEditing.moveRectangleCorner(start, current.index, x, y)
+        } else if (current.corner) {
+          CropCornerEditing.moveCorner(start, current.index, x, y)
         } else {
-          CropQuadEditing.moveEdge(start, current.index, dx, dy)
+          CropCornerEditing.moveEdge(start, current.index, dx, dy)
         }
-        // An invalid move keeps the last valid quad.
-        if (next != null) quad = next
+        // An invalid move keeps the last valid corners.
+        if (next != null) corners = next
         invalidate()
         return true
       }
@@ -264,7 +287,7 @@ internal class CropEditorView(context: Context) : View(context) {
   private fun endDrag(current: Drag) {
     drag = null
     invalidate()
-    if (!current.start.contentEquals(quad)) onQuadEdited?.invoke(quad.copyOf())
+    if (!current.start.contentEquals(corners)) onCornersEdited?.invoke(corners.copyOf())
   }
 
   /** The corner within reach of the touch, nearest first, otherwise the nearest edge midpoint within reach. */
@@ -272,6 +295,7 @@ internal class CropEditorView(context: Context) : View(context) {
     val reach = TOUCH_RADIUS * density
     val corner = (0 until 4).minBy { hypot(viewX(it) - x, viewY(it) - y) }
     if (hypot(viewX(corner) - x, viewY(corner) - y) <= reach) return true to corner
+    if (rectangle) return null
     val edge = (0 until 4).minBy { hypot(midX(it) - x, midY(it) - y) }
     if (hypot(midX(edge) - x, midY(edge) - y) <= reach) return false to edge
     return null
@@ -360,8 +384,8 @@ internal class CropEditorView(context: Context) : View(context) {
 
   private fun normalizedX(x: Float) = ((x - content.left) / content.width()).toDouble()
   private fun normalizedY(y: Float) = ((y - content.top) / content.height()).toDouble()
-  private fun viewX(index: Int) = content.left + quad[index * 2].toFloat() * content.width()
-  private fun viewY(index: Int) = content.top + quad[index * 2 + 1].toFloat() * content.height()
+  private fun viewX(index: Int) = content.left + corners[index * 2].toFloat() * content.width()
+  private fun viewY(index: Int) = content.top + corners[index * 2 + 1].toFloat() * content.height()
   private fun midX(index: Int) = (viewX(index) + viewX((index + 1) % 4)) / 2
   private fun midY(index: Int) = (viewY(index) + viewY((index + 1) % 4)) / 2
 

@@ -69,6 +69,11 @@ void JHybridDocumentCropEditorViewStateUpdater::updateViewProps(jni::alias_ref<j
     hybridView->setFilter(newProps->filter.get());
   }
   if (oldProps == nullptr
+        ? newProps->rectangle.isProvided()
+        : !newProps->rectangle.hasSameValue(oldProps->rectangle)) {
+    hybridView->setRectangle(newProps->rectangle.get());
+  }
+  if (oldProps == nullptr
         ? newProps->onPresetChange.isProvided()
         : !newProps->onPresetChange.hasSameValue(oldProps->onPresetChange)) {
     hybridView->setOnPresetChange(newProps->onPresetChange.get());

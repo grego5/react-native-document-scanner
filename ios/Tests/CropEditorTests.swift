@@ -5,11 +5,11 @@ import NitroModules
 import UniformTypeIdentifiers
 @testable import ReactNativeDocumentScanner
 
-private let inset: QuadCoordinates = [0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9]
+private let inset: CornerCoordinates = [0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9]
 
-private func assertQuad(_ actual: QuadCoordinates?, _ expected: QuadCoordinates, file: StaticString = #filePath,
+private func assertCorners(_ actual: CornerCoordinates?, _ expected: CornerCoordinates, file: StaticString = #filePath,
                         line: UInt = #line) {
-  guard let actual, actual.count == 8 else { return XCTFail("Missing quad", file: file, line: line) }
+  guard let actual, actual.count == 8 else { return XCTFail("Missing corners", file: file, line: line) }
   for (a, b) in zip(actual, expected) { XCTAssertEqual(a, b, accuracy: 1e-9, "\(actual)", file: file, line: line) }
 }
 
@@ -79,10 +79,10 @@ final class CropEditorTests: XCTestCase {
 
   @discardableResult
   private func admit(_ state: ScanSessionState, _ id: String, width: Int = 300, height: Int = 200,
-                     crop: QuadCoordinates? = nil) throws -> URL {
+                     crop: CornerCoordinates? = nil) throws -> URL {
     let source = try store.publish(image: picture(width: width, height: height))
     try state.admitSource(id: id, source: source, selection: nil)
-    if let crop { try state.setDocumentCrop(id, quad: SessionQuad.quad(crop)) }
+    if let crop { try state.setDocumentCrop(id, corners: SessionCorners.corners(crop)) }
     return source
   }
 
@@ -171,9 +171,9 @@ final class CropEditorTests: XCTestCase {
 
   private func editorView(_ hybrid: HybridDocumentCropEditorView) -> CropEditorView { hybrid.view as! CropEditorView }
 
-  private func draft(_ hybrid: HybridDocumentCropEditorView) -> QuadCoordinates? {
-    guard case .second(let quad) = value(try! hybrid.getQuadResult()) else { return nil }
-    return SessionQuad.coordinates(quad)
+  private func draft(_ hybrid: HybridDocumentCropEditorView) -> CornerCoordinates? {
+    guard case .second(let corners) = value(try! hybrid.getCornersResult()) else { return nil }
+    return SessionCorners.coordinates(corners)
   }
 
   private func failure(_ result: Variant_Bool_ScannerFailure?) -> ScannerErrorCode? {
@@ -181,8 +181,8 @@ final class CropEditorTests: XCTestCase {
     return nil
   }
 
-  private func savedQuad(_ state: ScanSessionState, _ id: String) -> QuadCoordinates? {
-    state.snapshot().pages[id].map { SessionQuad.coordinates($0.quad) }
+  private func savedCorners(_ state: ScanSessionState, _ id: String) -> CornerCoordinates? {
+    state.snapshot().pages[id].map { SessionCorners.coordinates($0.corners) }
   }
 
   private func pixel(_ image: CGImage, _ x: Int, _ y: Int) -> [UInt8] {
@@ -199,21 +199,21 @@ final class CropEditorTests: XCTestCase {
   @MainActor
   func testCornerDragSnapsUnderTheFingerClampsToThePhotoAndPublishesOnRelease() {
     editor { editor, fingers in
-      var published: [QuadCoordinates] = []
-      editor.onQuadEdited = { published.append($0) }
+      var published: [CornerCoordinates] = []
+      editor.onCornersEdited = { published.append($0) }
       XCTAssertEqual(editor.content, CGRect(x: 0, y: 0, width: 400, height: 400))
       fingers.down(1, 10, 10)
-      assertQuad(editor.quad, [0.025, 0.025, 1, 0, 1, 1, 0, 1])
+      assertCorners(editor.corners, [0.025, 0.025, 1, 0, 1, 1, 0, 1])
       fingers.move([1: (-50, -50)])
-      assertQuad(editor.quad, CropQuadEditing.fullFrame)
+      assertCorners(editor.corners, CropCornerEditing.fullFrame)
       fingers.move([1: (50, 30)])
-      assertQuad(editor.quad, [0.125, 0.075, 1, 0, 1, 1, 0, 1])
+      assertCorners(editor.corners, [0.125, 0.075, 1, 0, 1, 1, 0, 1])
       XCTAssertTrue(published.isEmpty)
       fingers.up(1, 50, 30)
       XCTAssertEqual(published.count, 1)
-      assertQuad(published.first, [0.125, 0.075, 1, 0, 1, 1, 0, 1])
+      assertCorners(published.first, [0.125, 0.075, 1, 0, 1, 1, 0, 1])
 
-      // A press and release that leaves the quad unchanged publishes nothing.
+      // A press and release that leaves the corners unchanged publishes nothing.
       fingers.down(1, 400, 0)
       fingers.up(1, 400, 0)
       XCTAssertEqual(published.count, 1)
@@ -221,60 +221,86 @@ final class CropEditorTests: XCTestCase {
   }
 
   @MainActor
-  func testEdgeDragKeepsTheLastValidQuadAndShortensAtThePhotoBounds() throws {
+  func testRectangleCropMovesCornersOnlyKeepsItUprightAndNeverZooms() throws {
     try editor { editor, fingers in
-      try editor.replaceQuad(inset)
-      var published: [QuadCoordinates] = []
-      editor.onQuadEdited = { published.append($0) }
+      try editor.replaceCorners([0.1, 0.05, 0.9, 0.1, 0.95, 0.9, 0.05, 0.85])
+      editor.rectangle = true
+      assertCorners(editor.corners, [0.05, 0.05, 0.95, 0.05, 0.95, 0.9, 0.05, 0.9])
+      // The top-left corner drags its neighbours along; the bottom-right stays.
+      fingers.down(1, 20, 20)
+      fingers.move([1: (80, 120)])
+      fingers.up(1, 80, 120)
+      assertCorners(editor.corners, [0.2, 0.3, 0.95, 0.3, 0.95, 0.9, 0.2, 0.9])
+      // An edge middle is no handle, and two fingers away from the corners do not zoom.
+      let before = editor.corners
+      fingers.down(1, 230, 120)
+      fingers.move([1: (230, 200)])
+      fingers.up(1, 230, 200)
+      assertCorners(editor.corners, before)
+      fingers.down(1, 150, 200)
+      fingers.down(2, 250, 200)
+      fingers.move([1: (100, 200), 2: (300, 200)])
+      XCTAssertEqual(editor.zoom, 1)
+    }
+    XCTAssertEqual(CropCornerEditing.moveRectangleCorner([0.2, 0.1, 0.8, 0.1, 0.8, 0.9, 0.2, 0.9], 0, x: 0.9, y: 0.3), nil,
+                   "a corner past the opposite one turns the rectangle inside out")
+  }
+
+  @MainActor
+  func testEdgeDragKeepsTheLastValidCornersAndShortensAtThePhotoBounds() throws {
+    try editor { editor, fingers in
+      try editor.replaceCorners(inset)
+      var published: [CornerCoordinates] = []
+      editor.onCornersEdited = { published.append($0) }
       fingers.down(1, 200, 40)
       fingers.move([1: (200, 80)])
-      let valid: QuadCoordinates = [0.1, 0.2, 0.9, 0.2, 0.9, 0.9, 0.1, 0.9]
-      assertQuad(editor.quad, valid)
-      // Past the bottom edge the quad would cross, so the last valid one stays.
+      let valid: CornerCoordinates = [0.1, 0.2, 0.9, 0.2, 0.9, 0.9, 0.1, 0.9]
+      assertCorners(editor.corners, valid)
+      // Past the bottom edge the corners would cross, so the last valid one stays.
       fingers.move([1: (200, 380)])
-      assertQuad(editor.quad, valid)
+      assertCorners(editor.corners, valid)
       fingers.up(1, 200, 380)
       XCTAssertEqual(published.count, 1)
-      assertQuad(published.last, valid)
+      assertCorners(published.last, valid)
 
       // The left edge (bottom-left to top-left) stops at the photo's edge.
       fingers.down(1, 40, 220)
       fingers.move([1: (-100, 220)])
-      assertQuad(editor.quad, [0, 0.2, 0.9, 0.2, 0.9, 0.9, 0, 0.9])
+      assertCorners(editor.corners, [0, 0.2, 0.9, 0.2, 0.9, 0.9, 0, 0.9])
       fingers.up(1, -100, 220, cancelled: true)
       XCTAssertEqual(published.count, 2)
     }
   }
 
   @MainActor
-  func testInvalidMovesAndQuadsAreRejectedAndReplacementCancelsADrag() throws {
+  func testInvalidMovesAndCornerSetsAreRejectedAndReplacementCancelsADrag() throws {
     try editor { editor, fingers in
-      try editor.replaceQuad(inset)
+      try editor.replaceCorners(inset)
       var published = 0
-      editor.onQuadEdited = { _ in published += 1 }
-      // The top-left corner past the bottom-right one would cross the quad.
+      editor.onCornersEdited = { _ in published += 1 }
+      // The top-left corner past the bottom-right one would cross the corners.
       fingers.down(1, 40, 40)
       fingers.move([1: (380, 380)])
-      assertQuad(editor.quad, inset)
+      assertCorners(editor.corners, inset)
       fingers.up(1, 380, 380)
       XCTAssertEqual(published, 0)
 
-      for invalid: QuadCoordinates in [[-0.1, 0, 1, 0, 1, 1, 0, 1], [0, 0, 1, 1, 1, 0, 0, 1],
+      for invalid: CornerCoordinates in [[-0.1, 0, 1, 0, 1, 1, 0, 1], [0, 0, 1, 1, 1, 0, 0, 1],
                                         [0.5, 0.5, 0.501, 0.5, 0.501, 0.501, 0.5, 0.501], [0, 0, 1, 0, 1, 1],
                                         [Double.nan, 0, 1, 0, 1, 1, 0, 1]] {
-        XCTAssertThrowsError(try editor.replaceQuad(invalid))
+        XCTAssertThrowsError(try editor.replaceCorners(invalid))
       }
-      assertQuad(editor.quad, inset)
+      assertCorners(editor.corners, inset)
 
       fingers.down(1, 40, 40)
       fingers.move([1: (60, 60)])
       XCTAssertTrue(editor.isDragging)
-      try editor.replaceQuad(CropQuadEditing.fullFrame)
+      try editor.replaceCorners(CropCornerEditing.fullFrame)
       XCTAssertFalse(editor.isDragging)
       XCTAssertTrue(editor.magnifier.isHidden)
       fingers.move([1: (80, 80)])
       fingers.up(1, 80, 80)
-      assertQuad(editor.quad, CropQuadEditing.fullFrame)
+      assertCorners(editor.corners, CropCornerEditing.fullFrame)
       XCTAssertEqual(published, 0)
     }
   }
@@ -284,12 +310,12 @@ final class CropEditorTests: XCTestCase {
     let editor = CropEditorView(frame: CGRect(x: 0, y: 0, width: 400, height: 400))
     let fingers = Fingers(editor)
     var published = 0
-    editor.onQuadEdited = { _ in published += 1 }
+    editor.onCornersEdited = { _ in published += 1 }
     fingers.down(1, 0, 0)
     editor.image = picture(width: 100, height: 100)
     fingers.move([1: (100, 100)])
     fingers.up(1, 100, 100)
-    assertQuad(editor.quad, CropQuadEditing.fullFrame)
+    assertCorners(editor.corners, CropCornerEditing.fullFrame)
     XCTAssertEqual(published, 0)
   }
 
@@ -299,7 +325,7 @@ final class CropEditorTests: XCTestCase {
   func testTwoFingerPanWorksWithoutPinchingAndStopsWhenOneFingerLifts() {
     editor { editor, fingers in
       var published = 0
-      editor.onQuadEdited = { _ in published += 1 }
+      editor.onCornersEdited = { _ in published += 1 }
       fingers.zoomIn()
       XCTAssertEqual(editor.zoom, 2)
       XCTAssertEqual(editor.content, CGRect(x: -200, y: -200, width: 800, height: 800))
@@ -318,7 +344,7 @@ final class CropEditorTests: XCTestCase {
       fingers.move([1: (750, 200), 2: (850, 200)])
       XCTAssertEqual(editor.content.minX, 0)
       fingers.up(1, 750, 200); fingers.up(2, 850, 200)
-      assertQuad(editor.quad, CropQuadEditing.fullFrame)
+      assertCorners(editor.corners, CropCornerEditing.fullFrame)
       XCTAssertEqual(published, 0, "Viewport gestures do not edit the crop")
     }
   }
@@ -337,14 +363,14 @@ final class CropEditorTests: XCTestCase {
       fingers.move([1: (-1000, 200), 2: (1600, 200)])
       XCTAssertEqual(editor.zoom, CropEditorView.maxZoom)
       fingers.up(1, -1000, 200, cancelled: true); fingers.up(2, 1600, 200, cancelled: true)
-      assertQuad(editor.quad, CropQuadEditing.fullFrame)
+      assertCorners(editor.corners, CropCornerEditing.fullFrame)
     }
   }
 
   @MainActor
   func testDoubleTapFitsThePhotoAndAHandlePressBreaksTheTapSequence() throws {
     try editor { editor, fingers in
-      try editor.replaceQuad([0.3, 0.3, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7])
+      try editor.replaceCorners([0.3, 0.3, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7])
       fingers.zoomIn()
       XCTAssertEqual(editor.corner(0), CGPoint(x: 40, y: 40))
       fingers.tap(200, 300, after: 5)
@@ -375,7 +401,7 @@ final class CropEditorTests: XCTestCase {
   @MainActor
   func testHandlesKeepTheirScreenSizeAndZoomedEditsStayInPhotoCoordinates() throws {
     try editor { editor, fingers in
-      try editor.replaceQuad([0.3, 0.3, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7])
+      try editor.replaceCorners([0.3, 0.3, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7])
       let radius = CropEditorView.cornerRadius
       XCTAssertEqual(editor.handles.path!.boundingBox, CGRect(x: 120 - radius, y: 120 - radius,
                                                                width: 160 + radius * 2, height: 160 + radius * 2))
@@ -383,20 +409,20 @@ final class CropEditorTests: XCTestCase {
       XCTAssertEqual(editor.handles.path!.boundingBox, CGRect(x: 40 - radius, y: 40 - radius,
                                                                width: 320 + radius * 2, height: 320 + radius * 2))
       XCTAssertEqual(editor.outline.lineWidth, 2)
-      var published: [QuadCoordinates] = []
-      editor.onQuadEdited = { published.append($0) }
+      var published: [CornerCoordinates] = []
+      editor.onCornersEdited = { published.append($0) }
       fingers.time += 5
       fingers.down(1, 40, 40)
       fingers.move([1: (80, 60)])
       fingers.up(1, 80, 60)
-      assertQuad(published.last, [0.35, 0.325, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7])
+      assertCorners(published.last, [0.35, 0.325, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7])
     }
   }
 
   @MainActor
   func testMagnifierFollowsCornerDragsBesideOrAboveTheFingerAndCompensatesForZoom() throws {
     try editor { editor, fingers in
-      try editor.replaceQuad(inset)
+      try editor.replaceCorners(inset)
       XCTAssertTrue(editor.magnifier.isHidden)
       // No room above the top-left corner: level with the finger, on the side away from the left edge.
       fingers.down(1, 40, 40)
@@ -440,32 +466,32 @@ final class CropEditorTests: XCTestCase {
     let hybrid = makeHybrid(state, "page", reports: reports)
     let revision = state.snapshot().pages["page"]?.revision
     XCTAssertEqual(reports.presets, [.custom])
-    assertQuad(draft(hybrid), inset)
+    assertCorners(draft(hybrid), inset)
 
     if case .first(true) = value(try hybrid.setPresetResult(preset: .none)) {} else { XCTFail("none preset") }
-    assertQuad(draft(hybrid), CropQuadEditing.fullFrame)
+    assertCorners(draft(hybrid), CropCornerEditing.fullFrame)
     if case .first(true) = value(try hybrid.setPresetResult(preset: .auto)) {} else { XCTFail("auto preset") }
-    assertQuad(draft(hybrid), [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
+    assertCorners(draft(hybrid), [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
     let editor = editorView(hybrid)
-    try editor.replaceQuad([0.25, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
-    editor.onQuadEdited?(editor.quad)
+    try editor.replaceCorners([0.25, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
+    editor.onCornersEdited?(editor.corners)
     XCTAssertEqual(reports.presets, [.custom, .none, .auto, .custom])
     // Nothing reached the page yet.
-    assertQuad(savedQuad(state, "page"), inset)
+    assertCorners(savedCorners(state, "page"), inset)
     XCTAssertEqual(state.snapshot().pages["page"]?.revision, revision)
 
     if case .first(true) = value(try hybrid.setPresetResult(preset: .none)) {} else { XCTFail("reset") }
     if case .first(true) = value(try hybrid.submitResult()) {} else { XCTFail("submit") }
-    assertQuad(savedQuad(state, "page"), CropQuadEditing.fullFrame)
+    assertCorners(savedCorners(state, "page"), CropCornerEditing.fullFrame)
 
     // Unmounting with an unsaved draft sends nothing; afterwards every method rejects.
-    try editor.replaceQuad(inset)
+    try editor.replaceCorners(inset)
     let submitted = state.snapshot().pages["page"]?.revision
     hybrid.onDropView()
     XCTAssertEqual(state.snapshot().pages["page"]?.revision, submitted)
-    if case .first(let failure) = value(try hybrid.getQuadResult()) {
+    if case .first(let failure) = value(try hybrid.getCornersResult()) {
       XCTAssertEqual(failure.code, .inputInvalid)
-    } else { XCTFail("getQuad after drop") }
+    } else { XCTFail("getCorners after drop") }
     XCTAssertEqual(failure(value(try hybrid.submitResult())), .inputInvalid)
     XCTAssertEqual(failure(value(try hybrid.setPresetResult(preset: .none))), .inputInvalid)
     XCTAssertTrue(reports.errors.isEmpty)
@@ -480,8 +506,23 @@ final class CropEditorTests: XCTestCase {
     let reports = Reports()
     let hybrid = makeHybrid(state, "page", reports: reports)
     XCTAssertEqual(failure(value(try hybrid.setPresetResult(preset: .auto))), .inputInvalid)
-    assertQuad(draft(hybrid), CropQuadEditing.fullFrame)
+    assertCorners(draft(hybrid), CropCornerEditing.fullFrame)
     XCTAssertEqual(reports.presets, [.none])
+  }
+
+  @MainActor
+  func testANewPageWithANewModeKeepsItsSavedPerspectiveCrop() throws {
+    let state = try session()
+    let perspective: CornerCoordinates = [0.1, 0.05, 0.9, 0.1, 0.95, 0.9, 0.05, 0.85]
+    try admit(state, "photo", crop: inset)
+    try admit(state, "page", crop: perspective)
+    let hybrid = makeHybrid(state, "photo", reports: Reports())
+    hybrid.rectangle = true
+    hybrid.afterUpdate()
+    hybrid.pageId = "page"
+    hybrid.rectangle = false
+    hybrid.afterUpdate()
+    assertCorners(draft(hybrid), perspective)
   }
 
   @MainActor
@@ -495,40 +536,40 @@ final class CropEditorTests: XCTestCase {
     _ = value(try hybrid.setPresetResult(preset: .none))
     // The same props keep the draft.
     hybrid.afterUpdate()
-    assertQuad(draft(hybrid), CropQuadEditing.fullFrame)
+    assertCorners(draft(hybrid), CropCornerEditing.fullFrame)
     hybrid.pageId = "b"
     hybrid.afterUpdate()
-    assertQuad(draft(hybrid), [0.3, 0.3, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7])
+    assertCorners(draft(hybrid), [0.3, 0.3, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7])
     // Back on "a", the draft starts again from its saved crop.
     hybrid.pageId = "a"
     hybrid.afterUpdate()
-    assertQuad(draft(hybrid), inset)
+    assertCorners(draft(hybrid), inset)
     XCTAssertEqual(reports.presets, [.custom, .none, .custom, .custom])
 
     // A saved crop outside the photo, which renders allow, is invalid input. The editor shows
     // its clamp as a suggestion, but nothing reads or submits it until the user chooses.
     let other = try session()
-    let outside: QuadCoordinates = [-0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9]
+    let outside: CornerCoordinates = [-0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9]
     try admit(other, "a", crop: outside)
     try admit(other, "b", crop: outside)
     hybrid.session = HybridScanSession(state: other)
     hybrid.afterUpdate()
     XCTAssertEqual(reports.errors, [.inputInvalid])
-    assertQuad(editorView(hybrid).quad, [0, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9])
+    assertCorners(editorView(hybrid).corners, [0, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9])
     XCTAssertNil(draft(hybrid))
     XCTAssertEqual(failure(value(try hybrid.submitResult())), .inputInvalid)
-    assertQuad(savedQuad(other, "a"), outside)
+    assertCorners(savedCorners(other, "a"), outside)
     XCTAssertEqual(reports.presets, [.custom, .none, .custom, .custom])
     // A preset is a choice.
     if case .first(true) = value(try hybrid.setPresetResult(preset: .none)) {} else { XCTFail("none preset") }
-    assertQuad(draft(hybrid), CropQuadEditing.fullFrame)
+    assertCorners(draft(hybrid), CropCornerEditing.fullFrame)
     XCTAssertEqual(reports.presets, [.custom, .none, .custom, .custom, .none])
     // So is an edit.
     hybrid.pageId = "b"
     hybrid.afterUpdate()
     XCTAssertEqual(reports.errors, [.inputInvalid, .inputInvalid])
     XCTAssertNil(draft(hybrid))
-    let edited: QuadCoordinates = [0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9]
+    let edited: CornerCoordinates = [0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9]
     let editor = editorView(hybrid)
     host(editor)
     waitUntil("suggestion photo") { editor.image != nil }
@@ -538,22 +579,22 @@ final class CropEditorTests: XCTestCase {
     let presetCount = reports.presets.count
     fingers.down(1, start.x, start.y)
     fingers.move([1: (target.x, target.y)])
-    assertQuad(editor.quad, edited)
+    assertCorners(editor.corners, edited)
     XCTAssertNil(draft(hybrid))
-    assertQuad(savedQuad(other, "b"), outside)
+    assertCorners(savedCorners(other, "b"), outside)
     XCTAssertEqual(reports.presets.count, presetCount)
     fingers.up(1, target.x, target.y)
-    assertQuad(draft(hybrid), edited)
+    assertCorners(draft(hybrid), edited)
     XCTAssertEqual(reports.presets.count, presetCount + 1)
-    assertQuad(savedQuad(other, "b"), outside)
+    assertCorners(savedCorners(other, "b"), outside)
     if case .first(true) = value(try hybrid.submitResult()) {} else { XCTFail("submit") }
-    assertQuad(savedQuad(other, "b"), edited)
+    assertCorners(savedCorners(other, "b"), edited)
 
     hybrid.session = HybridScanSession.placeholder()
     hybrid.afterUpdate()
     XCTAssertEqual(reports.errors, [.inputInvalid, .inputInvalid, .inputInvalid])
-    if case .first(let failure) = value(try hybrid.getQuadResult()) { XCTAssertEqual(failure.code, .inputInvalid) }
-    else { XCTFail("getQuad without a native session") }
+    if case .first(let failure) = value(try hybrid.getCornersResult()) { XCTAssertEqual(failure.code, .inputInvalid) }
+    else { XCTFail("getCorners without a native session") }
 
     // An unknown page is invalid input.
     hybrid.session = HybridScanSession(state: state)
@@ -598,7 +639,7 @@ final class CropEditorTests: XCTestCase {
     XCTAssertTrue(reports.loads.isEmpty)
     XCTAssertNil(editorView(hybrid).image)
     // The draft is still the page's saved crop and can be read.
-    assertQuad(draft(hybrid), savedQuad(state, "page")!)
+    assertCorners(draft(hybrid), savedCorners(state, "page")!)
   }
 
   @MainActor
@@ -640,7 +681,7 @@ final class CropEditorTests: XCTestCase {
     let after = state.snapshot().pages["page"]
     XCTAssertEqual(after?.revision, before?.revision)
     XCTAssertEqual(after?.options.filter, before?.options.filter)
-    assertQuad(savedQuad(state, "page"), inset)
+    assertCorners(savedCorners(state, "page"), inset)
     XCTAssertEqual(SHA256.hash(data: try Data(contentsOf: url)), original)
     XCTAssertTrue(reports.errors.isEmpty)
   }
@@ -703,7 +744,7 @@ final class CropEditorTests: XCTestCase {
     waitUntil("reload") { reports.loads.count == 2 }
 
     // Removal during a corner drag abandons it: the rest of the touch sequence changes nothing.
-    let before = editor.quad
+    let before = editor.corners
     let presets = reports.presets
     let start = editor.corner(0)
     let fingers = Fingers(editor)
@@ -715,13 +756,13 @@ final class CropEditorTests: XCTestCase {
     waitUntil("cleared") { editor.image == nil }
     XCTAssertFalse(editor.isDragging)
     XCTAssertTrue(editor.magnifier.isHidden)
-    assertQuad(editor.quad, before)
+    assertCorners(editor.corners, before)
     fingers.move([1: (start.x + 40, start.y + 40)])
     fingers.up(1, start.x + 40, start.y + 40)
-    assertQuad(editor.quad, before)
+    assertCorners(editor.corners, before)
     XCTAssertEqual(reports.presets, presets)
-    if case .first(let failure) = value(try hybrid.getQuadResult()) { XCTAssertEqual(failure.code, .inputInvalid) }
-    else { XCTFail("getQuad after removal") }
+    if case .first(let failure) = value(try hybrid.getCornersResult()) { XCTAssertEqual(failure.code, .inputInvalid) }
+    else { XCTFail("getCorners after removal") }
     XCTAssertEqual(failure(value(try hybrid.submitResult())), .inputInvalid)
     XCTAssertTrue(reports.errors.isEmpty)
     // No pin outlives the removal.
@@ -732,7 +773,7 @@ final class CropEditorTests: XCTestCase {
 
 /// Analysis finds no page.
 private final class NoCandidateActions: ScanSessionActions, @unchecked Sendable {
-  func prepareAnalysis(_ source: SessionResources.Lease, liveQuad: QuadCoordinates?,
+  func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
     { AnalysisValue(width: 480, height: 360, duration: 1, candidate: nil, score: 0) }
   }

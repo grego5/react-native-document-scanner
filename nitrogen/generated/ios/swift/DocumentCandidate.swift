@@ -18,13 +18,13 @@ public extension DocumentCandidate {
   /**
    * Create a new instance of `DocumentCandidate`.
    */
-  init(quad: DocumentQuad, score: Double) {
-    self.init(quad, score)
+  init(corners: DocumentCorners, score: Double) {
+    self.init(corners, score)
   }
 
   @inline(__always)
-  var quad: DocumentQuad {
-    return self.__quad
+  var corners: DocumentCorners {
+    return self.__corners
   }
   
   @inline(__always)

@@ -139,22 +139,33 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
   }
   
-  public final var renderOptions: DocumentRenderOptions {
+  public final var imageCorrection: ImageCorrectionOptions {
     @inline(__always)
     get {
-      return self.__implementation.renderOptions
+      return self.__implementation.imageCorrection
     }
     @inline(__always)
     set {
-      self.__implementation.renderOptions = newValue
+      self.__implementation.imageCorrection = newValue
     }
   }
   
-  public final var quadTensorModel: bridge.std__optional_std__string_ {
+  public final var outputOptions: ImageOutputOptions {
+    @inline(__always)
+    get {
+      return self.__implementation.outputOptions
+    }
+    @inline(__always)
+    set {
+      self.__implementation.outputOptions = newValue
+    }
+  }
+  
+  public final var cornerDetectionModel: bridge.std__optional_std__string_ {
     @inline(__always)
     get {
       return { () -> bridge.std__optional_std__string_ in
-        if let __unwrappedValue = self.__implementation.quadTensorModel {
+        if let __unwrappedValue = self.__implementation.cornerDetectionModel {
           return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
         } else {
           return .init()
@@ -163,7 +174,7 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.quadTensorModel = { () -> String? in
+      self.__implementation.cornerDetectionModel = { () -> String? in
         if bridge.has_value_std__optional_std__string_(newValue) {
           let __unwrapped = bridge.get_std__optional_std__string_(newValue)
           return String(__unwrapped)
@@ -206,28 +217,11 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
   }
   
-  public final var mode: bridge.std__optional_CameraMode_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_CameraMode_ in
-        if let __unwrappedValue = self.__implementation.mode {
-          return bridge.create_std__optional_CameraMode_(__unwrappedValue)
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.mode = newValue.value
-    }
-  }
-  
-  public final var guide: bridge.std__optional_bool_ {
+  public final var active: bridge.std__optional_bool_ {
     @inline(__always)
     get {
       return { () -> bridge.std__optional_bool_ in
-        if let __unwrappedValue = self.__implementation.guide {
+        if let __unwrappedValue = self.__implementation.active {
           return bridge.create_std__optional_bool_(__unwrappedValue)
         } else {
           return .init()
@@ -236,7 +230,7 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.guide = { () -> Bool? in
+      self.__implementation.active = { () -> Bool? in
         if bridge.has_value_std__optional_bool_(newValue) {
           let __unwrapped = bridge.get_std__optional_bool_(newValue)
           return __unwrapped
@@ -247,11 +241,11 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
   }
   
-  public final var adaptiveDetection: bridge.std__optional_bool_ {
+  public final var guideLiveCorners: bridge.std__optional_bool_ {
     @inline(__always)
     get {
       return { () -> bridge.std__optional_bool_ in
-        if let __unwrappedValue = self.__implementation.adaptiveDetection {
+        if let __unwrappedValue = self.__implementation.guideLiveCorners {
           return bridge.create_std__optional_bool_(__unwrappedValue)
         } else {
           return .init()
@@ -260,7 +254,55 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.adaptiveDetection = { () -> Bool? in
+      self.__implementation.guideLiveCorners = { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(newValue) {
+          let __unwrapped = bridge.get_std__optional_bool_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var autoCrop: bridge.std__optional_bool_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_bool_ in
+        if let __unwrappedValue = self.__implementation.autoCrop {
+          return bridge.create_std__optional_bool_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.autoCrop = { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(newValue) {
+          let __unwrapped = bridge.get_std__optional_bool_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var inferenceThrottling: bridge.std__optional_bool_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_bool_ in
+        if let __unwrappedValue = self.__implementation.inferenceThrottling {
+          return bridge.create_std__optional_bool_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.inferenceThrottling = { () -> Bool? in
         if bridge.has_value_std__optional_bool_(newValue) {
           let __unwrapped = bridge.get_std__optional_bool_(newValue)
           return __unwrapped
@@ -295,44 +337,14 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
   }
   
-  public final var qualityGate: bridge.std__optional_bool_ {
+  public final var lowQualityControl: LowQualityControl {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_bool_ in
-        if let __unwrappedValue = self.__implementation.qualityGate {
-          return bridge.create_std__optional_bool_(__unwrappedValue)
-        } else {
-          return .init()
-        }
-      }()
+      return self.__implementation.lowQualityControl
     }
     @inline(__always)
     set {
-      self.__implementation.qualityGate = { () -> Bool? in
-        if bridge.has_value_std__optional_bool_(newValue) {
-          let __unwrapped = bridge.get_std__optional_bool_(newValue)
-          return __unwrapped
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
-  public final var qualityGateConfig: bridge.std__optional_QualityGateConfig_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_QualityGateConfig_ in
-        if let __unwrappedValue = self.__implementation.qualityGateConfig {
-          return bridge.create_std__optional_QualityGateConfig_(__unwrappedValue)
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.qualityGateConfig = newValue.value
+      self.__implementation.lowQualityControl = newValue
     }
   }
   
@@ -466,12 +478,12 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
   }
   
-  public final var jpegQuality: bridge.std__optional_double_ {
+  public final var highResolutionPhoto: bridge.std__optional_bool_ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_double_ in
-        if let __unwrappedValue = self.__implementation.jpegQuality {
-          return bridge.create_std__optional_double_(__unwrappedValue)
+      return { () -> bridge.std__optional_bool_ in
+        if let __unwrappedValue = self.__implementation.highResolutionPhoto {
+          return bridge.create_std__optional_bool_(__unwrappedValue)
         } else {
           return .init()
         }
@@ -479,9 +491,9 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.jpegQuality = { () -> Double? in
-        if bridge.has_value_std__optional_double_(newValue) {
-          let __unwrapped = bridge.get_std__optional_double_(newValue)
+      self.__implementation.highResolutionPhoto = { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(newValue) {
+          let __unwrapped = bridge.get_std__optional_bool_(newValue)
           return __unwrapped
         } else {
           return nil
@@ -514,11 +526,11 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
   }
   
-  public final var analysisWidth: bridge.std__optional_double_ {
+  public final var analysisFrameWidth: bridge.std__optional_double_ {
     @inline(__always)
     get {
       return { () -> bridge.std__optional_double_ in
-        if let __unwrappedValue = self.__implementation.analysisWidth {
+        if let __unwrappedValue = self.__implementation.analysisFrameWidth {
           return bridge.create_std__optional_double_(__unwrappedValue)
         } else {
           return .init()
@@ -527,7 +539,7 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.analysisWidth = { () -> Double? in
+      self.__implementation.analysisFrameWidth = { () -> Double? in
         if bridge.has_value_std__optional_double_(newValue) {
           let __unwrapped = bridge.get_std__optional_double_(newValue)
           return __unwrapped
@@ -538,11 +550,11 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
   }
   
-  public final var squareFrame: bridge.std__optional_bool_ {
+  public final var squareAspectRatio: bridge.std__optional_bool_ {
     @inline(__always)
     get {
       return { () -> bridge.std__optional_bool_ in
-        if let __unwrappedValue = self.__implementation.squareFrame {
+        if let __unwrappedValue = self.__implementation.squareAspectRatio {
           return bridge.create_std__optional_bool_(__unwrappedValue)
         } else {
           return .init()
@@ -551,7 +563,7 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.squareFrame = { () -> Bool? in
+      self.__implementation.squareAspectRatio = { () -> Bool? in
         if bridge.has_value_std__optional_bool_(newValue) {
           let __unwrapped = bridge.get_std__optional_bool_(newValue)
           return __unwrapped
@@ -826,28 +838,28 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
 
   // Methods
   @inline(__always)
-  public final func takePhotoResult(options: bridge.std__optional_TakePhotoOptions_) -> bridge.Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____ {
+  public final func takePhotoResult(options: bridge.std__optional_TakePhotoOptions_) -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____ {
     do {
       let __result = try self.__implementation.takePhotoResult(options: options.value)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___ in
-        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___(__promise)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult___(__promise)
         __result
-          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_std__string__ScannerFailure_ in
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_ScannerFailure__CameraCaptureResult_ in
               switch __result {
                 case .first(let __value):
-                  return bridge.create_std__variant_std__string__ScannerFailure_(std.string(__value))
+                  return bridge.create_std__variant_ScannerFailure__CameraCaptureResult_(__value)
                 case .second(let __value):
-                  return bridge.create_std__variant_std__string__ScannerFailure_(__value)
+                  return bridge.create_std__variant_ScannerFailure__CameraCaptureResult_(__value)
               }
             }().variant) })
           .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
         return __promise
       }()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____(__resultCpp)
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____(__exceptionPtr)
     }
   }
   

@@ -20,8 +20,8 @@ namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
 namespace margelo::nitro::documentscanner { struct SessionPdfOptions; }
 // Forward declaration of `ImageFit` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ImageFit; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentPoint` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentPoint; }
 // Forward declaration of `DocumentFilter` to properly resolve imports.
@@ -54,7 +54,7 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include <optional>
 #include "SessionPdfOptions.hpp"
 #include "ImageFit.hpp"
-#include "DocumentQuad.hpp"
+#include "DocumentCorners.hpp"
 #include "DocumentPoint.hpp"
 #include "DocumentFilter.hpp"
 #include "ScanSessionSnapshot.hpp"
@@ -143,8 +143,8 @@ namespace margelo::nitro::documentscanner {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setDocumentCropResult(const std::string& pageId, const DocumentQuad& quad) override {
-      auto __result = _swiftPart.setDocumentCropResult(pageId, std::forward<decltype(quad)>(quad));
+    inline std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setDocumentCropResult(const std::string& pageId, const DocumentCorners& corners) override {
+      auto __result = _swiftPart.setDocumentCropResult(pageId, std::forward<decltype(corners)>(corners));
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

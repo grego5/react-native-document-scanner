@@ -35,13 +35,13 @@ One explicitly owned native scan session supplies ordered page metadata through 
 1. Verify and reuse the iOS bundle identity and camera usage text already added by Task 25; complete only missing deployment, photo-library add permission and supported Expo development/test configuration. Do not overwrite existing app settings with an older scaffold.
 2. Keep the existing scan-session owner, reducer, metadata subscription, crop submit/cancel workflow and export retention. React owns navigation/defaults and the operation UX lock; native code owns readiness, scan retries, physical busy state, pixels and file retirement. Use session/page IDs throughout, with no alternate iOS flow or JS image janitor.
 3. Integrate Task 29/30 state and wait reasons into the existing shutter/error/feedback UI. Keep the camera mounted but inactive under review/crop/options; block conflicting operations until the authoritative capture settles. Do not mirror native scan attempts or light acknowledgements in React.
-4. Preserve the current torch UX: parent-owned auto/off default, scan-local on/off override, long press changes the default, and New scan resets the override. Keep squareFrame and jpegQuality functional. Hide deferred sample controls and hide or clearly disable Android-only lowLightBoost on iOS; never imply that a no-op prop enables an iOS capability.
+4. Preserve the current torch UX: parent-owned auto/off default, scan-local on/off override, long press changes the default, and New scan resets the override. Keep squareAspectRatio functional. Hide deferred sample controls and hide or clearly disable Android-only lowLightBoost on iOS; never imply that a no-op prop enables an iOS capability.
 5. Verify native share-sheet/iPad presentation and photo-library saving through existing dependencies. Export rendered JPEG/PNG/PDF to host-owned locations outside session/source resources; internal source encoding remains private.
 6. Update public platform documentation and maintainer guidance to match implemented behavior, including the iOS focus-evidence rule and physical checks still outstanding.
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 

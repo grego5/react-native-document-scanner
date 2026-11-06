@@ -21,7 +21,7 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/LiveDocumentDetector.kt
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/LiveDetectionState.kt
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/LatestFrameCapture.kt
-- src/DocumentScannerCamera.nitro.ts — guide, adaptiveDetection, document callbacks
+- src/DocumentScannerCamera.nitro.ts — guide, inferenceThrottling, document callbacks
 
 ## Current behavior and invariants
 
@@ -37,7 +37,7 @@ Live pixels stay native; guidance never captures; valid inference publishes imme
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 
@@ -68,12 +68,12 @@ Changed files:
 - `cpp/src/FlowEstimator.cpp`, `cpp/tests/MotionTest.cpp`: the flow estimator accepts BGRA8 leases with the same luma weights; a new contract checks that red/blue-swapped BGRA measures exactly what RGBA does (rotated, tinted frames).
 - `ios/ScannerLiveTracking.h/.mm` (new, public header): ObjC++ adapters for the shared guide stabilizer, score rules, flow estimator and its transform history. The flow adapter locks the CVPixelBuffer read-only and unlocks before returning.
 - `ios/AdaptiveDetectionPolicy.swift` (new): Swift port of Android's pacing policy.
-- `ios/LiveDocumentDetector.swift` (new): the detector, its generation/pacing state, immutable `LiveGuideResult` snapshots (status, quad, framing, acceptance ID, deadline, detector and model generations, frame sequence, sensor time, score), main delivery with expiry, and a single-slot framed-region frame request.
+- `ios/LiveDocumentDetector.swift` (new): the detector, its generation/pacing state, immutable `LiveGuideResult` snapshots (status, corners, framing, acceptance ID, deadline, detector and model generations, frame sequence, sensor time, score), main delivery with expiry, and a single-slot framed-region frame request.
 - `ios/LiveGuideOverlay.swift` (new): the guide overlay, with easing, colour, held dimming and searching brackets.
-- `ios/QuadModelLoader.swift` (new): prepares `quadTensorModel` (absolute path, file URL or bundle resource); the newest request wins.
+- `ios/CornerModelLoader.swift` (new): prepares `cornerDetectionModel` (absolute path, file URL or bundle resource); the newest request wins.
 - `ios/CameraSession.swift`: a `frameSink` receives each armed-run buffer and its nanosecond presentation time on the frame queue.
 - `ios/CornerInference.swift`: `Lease.prepare()` opens and warms the interpreter ahead of the first frame.
-- `ios/CameraPreviewView.swift`, `ios/HybridDocumentScannerCameraView.swift`: the overlay is hosted over the preview. The camera waits for the model; a model failure reports `onError` and keeps the camera suspended. Wired props: `guide` (toggles without restarting the camera), `adaptiveDetection`, `minCornerScore`, `guideColor` and `guideTransitionDuration`. The document state is reported from the results.
+- `ios/CameraPreviewView.swift`, `ios/HybridDocumentScannerCameraView.swift`: the overlay is hosted over the preview. The camera waits for the model; a model failure reports `onError` and keeps the camera suspended. Wired props: `guide` (toggles without restarting the camera), `inferenceThrottling`, `minCornerScore`, `guideColor` and `guideTransitionDuration`. The document state is reported from the results.
 - `ReactNativeDocumentScanner.podspec`: public tracking header; the `adaptive.tsv` test resource.
 - Tests: `ios/Tests/LiveGuidanceTests.swift` (new, 15 tests); `ios/Tests/CameraSessionTests.swift` harness (model seam, frame sink, a started camera reports `searching`).
 - Docs: `ios/README.md` (Live guidance), `.agents/skills/docs/references/architecture.md`, `cpp/README.md`, `tests/fixtures/README.md`.
@@ -95,7 +95,7 @@ Test coverage:
 - A low score clears the guide and pauses inference on a still scene; a threshold change resumes it.
 - A missing page clears the guide; hold expiry on main returns to `searching`.
 - A runtime failure reports `unavailable` until the next start.
-- With `adaptiveDetection`, reliable flow keeps inference paused while it carries and refreshes the guide (score nil), and losing texture wakes inference.
+- With `inferenceThrottling`, reliable flow keeps inference paused while it carries and refreshes the guide (score nil), and losing texture wakes inference.
 - The frame request copies only the framed region, unpadded, once.
 - Easing and snapping, overlay mapping and held dimming are covered.
 - The camera waits for the model, a model failure keeps it suspended, guide results drive the document state, and the toggle keeps the camera running.
@@ -116,8 +116,8 @@ Limitations:
 
 Three review findings were confirmed in source and fixed:
 
-- Guide orientation: the overlay mapped detection quads straight into the capture framing's presentation rectangle, while the preview layer is placed with the preview rotation angle, and AVFoundation lets the two angles differ. `LiveGuideOverlay` now maps each corner back to normalized buffer coordinates through the detection framing, then into `previewFraming`, which `CameraPreviewView` sets whenever it places the preview layer. A change of preview framing clears the drawn guide.
-- Superseded model activation: `QuadModelLoader` checked its request before reading the file and then published unconditionally. `CornerInference.replace` now takes an `admit` closure that runs on the inference queue with the validated selection immediately before it is published. The loader checks request ownership and records the active source under its own lock there, and a refused admission throws `staleSelection`, which the loader reports as `model/superseded`.
+- Guide orientation: the overlay mapped detection corners straight into the capture framing's presentation rectangle, while the preview layer is placed with the preview rotation angle, and AVFoundation lets the two angles differ. `LiveGuideOverlay` now maps each corner back to normalized buffer coordinates through the detection framing, then into `previewFraming`, which `CameraPreviewView` sets whenever it places the preview layer. A change of preview framing clears the drawn guide.
+- Superseded model activation: `CornerModelLoader` checked its request before reading the file and then published unconditionally. `CornerInference.replace` now takes an `admit` closure that runs on the inference queue with the validated selection immediately before it is published. The loader checks request ownership and records the active source under its own lock there, and a refused admission throws `staleSelection`, which the loader reports as `model/superseded`.
 - Lease acquisition: `currentLease()` held the detector lock while `CornerInference.acquire()` waited on the shared inference queue, so a main-thread settings update or stop could stall behind other inference. A stop between the preload's generation check and acquisition could also store a new lease after the previous one was released. Acquisition now happens outside the lock, and the lease is kept only while the detector runs (between `begin` and `stop`) and no other caller kept one first. Otherwise it is closed, and the frame that raced the stop returns.
 
 Tests added to `LiveGuidanceTests`:

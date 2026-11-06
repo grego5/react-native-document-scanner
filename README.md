@@ -20,11 +20,11 @@ A session holds the scanned pages, their processing and their files. Create it i
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Alert, Button, Linking, View } from 'react-native'
 import {
-  Camera, DocumentScanner, ImagePager, useCameraPermission,
+  DocumentScanner, Camera, ImagePager, useCameraPermission,
   type CameraCaptureState, type CameraRef, type ScanSession,
 } from 'react-native-document-scanner'
 
-export function Scanner() {
+export function ScanScreen() {
   const [session, setSession] = useState<ScanSession | null>(null)
   useEffect(() => {
     const owner = DocumentScanner.createSession()
@@ -56,8 +56,8 @@ function Scan({ session }: { session: ScanSession }) {
   }
   return (
     <View style={{ flex: 1 }}>
-      <Camera renderOptions={{ paperSize: { width: 21, height: 29.7 }, dpi: 200, filter: 'none', removeShadows: true }}
-        session={session} ref={camera} quadTensorModel="asset:///doccornernet/model.tflite"
+      <Camera imageCorrection={{ filter: 'none', removeShadows: true }} outputOptions={{ width: 21, height: 29.7, dpi: 200 }}
+        session={session} ref={camera} cornerDetectionModel="asset:///doccornernet/model.tflite"
         onCaptureStateChange={setCaptureState} onError={report} style={{ flex: 1 }} />
       <Button title="Capture" disabled={captureState !== 'ready' || closed}
         onPress={() => { void capture() }} />
@@ -69,7 +69,7 @@ function Scan({ session }: { session: ScanSession }) {
 ```
 
 - `takePhoto()` waits for focus and steady framing, then resolves with the new page's ID. Detection and rendering continue in the background; page metadata reports `analyzing`, `rendering`, `ready` and failures. A page without a detected outline uses the whole photo.
-- `Camera.renderOptions` sets the defaults for future captures. Edit saved pages with session methods.
+- `Camera.imageCorrection` and `Camera.outputOptions` set defaults for future captures. Output dimensions are in centimeters. Edit saved pages with session methods.
 - `pageIds` is the session's page order. `ImagePager` follows it unless you pass `pageIds`, which reorders the session; `session.setPageOrder(ids)` does the same without a view.
 - `session.close()` cancels pending work and deletes the session's files; exported files are kept. A closed session can't be reused. To keep a scan across screens, hold the session in a longer-lived owner.
 
@@ -141,7 +141,7 @@ await session.setShadowRemoval(selectedId, false)
 await session.removePage(selectedId)
 ```
 
-`onPresetChange` reports whether the draft is `none`, `auto` or `custom`, for toggle buttons. Custom controls can read `cropEditor.current.getQuad()` or set corners with `session.setDocumentCrop(pageId, corners)`. Edits apply immediately; the page keeps showing its previous image until the new render is ready.
+`onPresetChange` reports whether the draft is `none`, `auto` or `custom`, for toggle buttons. Custom controls can read `cropEditor.current.getCorners()` or set corners with `session.setDocumentCrop(pageId, corners)`. Edits apply immediately; the page keeps showing its previous image until the new render is ready.
 
 Export to an existing writable location:
 
@@ -159,39 +159,48 @@ Sharing, saving, navigation and layout are up to your app. See [`example/`](exam
 
 ## Advanced features
 
+### Camera profiles
+
+`Camera` defaults to `mode="document"`: live detection with a guide, document focus, cropped captures and a high-resolution photo for text. Each capability can override its default.
+
+`mode="photo"` uses the same native view with detection, auto-crop and inference throttling off, and forces the filter, shadow removal and simple dewarp off. Guide settings and document-state callbacks are ignored. It defaults to a 1440x1080-class photo; `highResolutionPhoto` overrides that. Photos are still analyzed, so the crop editor's `auto` preset works; pass `rectangle` to `CropEditor` for an upright rectangle crop. Switching modes retains the view, although changing resolution can rebind the camera.
+
 ### Camera options
 
 | Option | Purpose |
 | --- | --- |
-| `mode="off"` | Release the camera while keeping the view mounted, e.g. when the screen is inactive. |
-| `mode="camera"` | Use the general camera profile instead of the default scanner profile. |
-| `guide={false}` | Disable live document guidance. |
-| `adaptiveDetection` | Pause inference while tracking a detected page. Default: off. |
-| `squareFrame` | Crop preview, analysis and capture to 1:1. |
+| `active={false}` | Release the camera while keeping the view mounted, e.g. when the screen is inactive. |
+| `guideLiveCorners={false}` | Document mode: no live detection, guide or document focus. |
+| `autoCrop={false}` | Document mode: keep the whole frame instead of cropping to the detected page. |
+| `highResolutionPhoto` | Request the high-resolution photo (document default); photo mode defaults to a 1440x1080-class image. |
+| `inferenceThrottling` | Document mode: pause inference while tracking a detected page. Default: off. |
+| `squareAspectRatio` | Crop preview, analysis and capture to 1:1. |
 | `torch="auto"` | Automatically light dark scenes. Also accepts `on` or `off`. |
-| `qualityGate={false}` | Capture without waiting for focus and stability. |
+| `lowQualityControl={{ enabled: false }}` | Capture without waiting for focus and stability. Pass `{}` for default checks, or configure `requireFocus` and `captureBlurPercent`. |
 | `captureFeedback={false}` | Disable the built-in capture animation and haptic feedback. |
-| `minCornerScore` | Lowest live detection score accepted; default `0.95`, `0` accepts all. |
+| `minCornerScore` | Document mode: lowest live detection score accepted; default `0.95`, `0` accepts all. |
 | `showStats` | Show status, model score and timings above the preview. |
 
-To skip the quality gate once (for example, on a long press), call `camera.current.takePhoto({ skipQualityGate: true })`.
+To skip the quality gate once (for example, on a long press), call `camera.current.takePhoto({ skipLowQualityControl: true })`.
+
+Capture quality checks are implemented on Android; iOS currently accepts a ready shot without them.
 
 `onCaptureStage(stage, waitReason)` reports why capture is waiting (`document`, `focus`, `light`, `steady`), so you can show your own instructions; the camera draws no text. `onCaptureStateChange`, `onCameraStateChange`, `onDocumentStateChange` and `onError` cover the rest of the UI.
 
 ### Rendering options
 
-- `filter`: `none` (default), `enhance`, `grayscale` or `blackWhite`. `blackWhite` is high-contrast grayscale, not binary.
-- `removeShadows`: enabled by default.
-- `followPageEdges`: enabled by default; follows curved page edges. Disable it for a straight crop.
-- `paperSize`: width and height in centimetres; `dpi` defaults to 200. The page keeps its proportions and is never enlarged past the photo's pixels.
-- `format`: `jpeg` (default), `png` or `auto`. `auto` uses 4-bit grayscale PNG for `blackWhite` and JPEG otherwise. `png` quantizes to 16 gray levels. `jpegQuality` accepts 0–1.
+- `imageCorrection.filter`: `none` (default), `enhance`, `grayscale` or `blackWhite`. `blackWhite` is high-contrast grayscale, not binary.
+- `imageCorrection.removeShadows`: enabled by default.
+- `imageCorrection.simpleDewarp`: enabled by default; follows curved page edges. Disable it for a straight crop.
+- `outputOptions.width` and `height`: paper dimensions in centimetres; `dpi` defaults to 200. The page keeps its proportions and is never enlarged past the photo's pixels.
+- `outputOptions.format`: `jpeg` (default), `png` or `auto`. `auto` uses 4-bit grayscale PNG for `blackWhite` and JPEG otherwise. `png` quantizes to 16 gray levels. `outputOptions.jpegQuality` accepts 0–1.
 
 ### Custom corner models
 
 Pass a local model to the camera:
 
 ```tsx
-<Camera session={session} quadTensorModel={localModelUri} style={{ flex: 1 }} />
+<Camera session={session} cornerDetectionModel={localModelUri} style={{ flex: 1 }} />
 ```
 
 Download and verify the model in your app first. The camera stays off until the model loads; a missing or invalid model emits `onError` and keeps it off, with no fallback. All mounted cameras share one model, so use the same source. The bundled model is `'asset:///doccornernet/model.tflite'`.

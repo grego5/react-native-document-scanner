@@ -21,14 +21,14 @@ Size validateCornerTensors(int inputs, int outputs, bool inputFloat, bool output
   if (inputs != 1 || outputs != 1)
     throw std::invalid_argument("Unexpected DocCornerNet tensor count.");
   if (!inputFloat || in.size() != 4 || in[0] != 1 || in[3] != 3 || in[1] <= 0 || in[2] <= 0)
-    throw std::invalid_argument("Expected a float32 [1, height, width, 3] quad-model input.");
+    throw std::invalid_argument("Expected a float32 [1, height, width, 3] corners-model input.");
   if (!outputFloat || out.size() != 2 || out[0] != 1 || out[1] != 9)
     throw std::invalid_argument("Unexpected DocCornerNet output.");
   const Size result{static_cast<uint32_t>(in[2]), static_cast<uint32_t>(in[1])};
   cornerInputBytes(result);
   return result;
 }
-bool validPredictionQuad(const Quad &q) {
+bool validPredictionCorners(const Corners &q) {
   for (Point p : q)
     if (!std::isfinite(p.x) || !std::isfinite(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1)
       return false;
@@ -45,9 +45,9 @@ std::optional<CornerPrediction> decodeCornerOutput(std::span<const float> values
   for (float v : values)
     if (!std::isfinite(v))
       throw std::invalid_argument("DocCornerNet returned non-finite output.");
-  const Quad q{Point{values[0], values[1]}, Point{values[2], values[3]}, Point{values[4], values[5]},
+  const Corners q{Point{values[0], values[1]}, Point{values[2], values[3]}, Point{values[4], values[5]},
                Point{values[6], values[7]}};
-  if (!validPredictionQuad(q))
+  if (!validPredictionCorners(q))
     return std::nullopt;
   return CornerPrediction{q, values[8]};
 }

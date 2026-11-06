@@ -11,25 +11,26 @@ import NitroModules
 public protocol HybridDocumentScannerCameraViewSpec_protocol: HybridObject, HybridView {
   // Properties
   var session: (any HybridScanSessionSpec) { get set }
-  var renderOptions: DocumentRenderOptions { get set }
-  var quadTensorModel: String? { get set }
+  var imageCorrection: ImageCorrectionOptions { get set }
+  var outputOptions: ImageOutputOptions { get set }
+  var cornerDetectionModel: String? { get set }
   var onError: ((_ error: ScannerFailure) -> Void)? { get set }
-  var mode: CameraMode? { get set }
-  var guide: Bool? { get set }
-  var adaptiveDetection: Bool? { get set }
+  var active: Bool? { get set }
+  var guideLiveCorners: Bool? { get set }
+  var autoCrop: Bool? { get set }
+  var inferenceThrottling: Bool? { get set }
   var minCornerScore: Double? { get set }
-  var qualityGate: Bool? { get set }
-  var qualityGateConfig: QualityGateConfig? { get set }
+  var lowQualityControl: LowQualityControl { get set }
   var tapToFocus: Bool? { get set }
   var exposureCompensation: Double? { get set }
   var minFrameRate: Double? { get set }
   var torch: TorchMode? { get set }
   var lowLightBoost: Bool? { get set }
   var captureMode: CaptureMode? { get set }
-  var jpegQuality: Double? { get set }
+  var highResolutionPhoto: Bool? { get set }
   var guideTransitionDuration: Double? { get set }
-  var analysisWidth: Double? { get set }
-  var squareFrame: Bool? { get set }
+  var analysisFrameWidth: Double? { get set }
+  var squareAspectRatio: Bool? { get set }
   var showStats: Bool? { get set }
   var guideColor: Double? { get set }
   var captureFeedback: Bool? { get set }
@@ -41,7 +42,7 @@ public protocol HybridDocumentScannerCameraViewSpec_protocol: HybridObject, Hybr
   var onCaptureStage: ((_ stage: CaptureStage, _ waitReason: CaptureWaitReason?) -> Void)? { get set }
 
   // Methods
-  func takePhotoResult(options: TakePhotoOptions?) throws -> Promise<Variant_String_ScannerFailure>
+  func takePhotoResult(options: TakePhotoOptions?) throws -> Promise<Variant_ScannerFailure_CameraCaptureResult>
 }
 
 public extension HybridDocumentScannerCameraViewSpec_protocol {

@@ -45,8 +45,8 @@ class LiveCameraRuntimeTest {
         it.camera.onCameraStateChange = { next -> state = next }
         it.camera.onDocumentStateChange = { next -> document = next }
         it.camera.onCaptureStateChange = { next -> captureState = next }
-        it.camera.analysisWidth = 640.0
-        it.camera.guide = false
+        it.camera.analysisFrameWidth = 640.0
+        it.camera.guideLiveCorners = false
         it.camera.afterUpdate()
       }
       await(scenario, "Initially inactive camera") { state == CameraState.SUSPENDED && document == DocumentState.OFF && captureState == CameraCaptureState.UNAVAILABLE }
@@ -55,9 +55,9 @@ class LiveCameraRuntimeTest {
       scenario.onActivity {
         assertEquals(CameraState.SUSPENDED, state)
         assertFalse(it.camera.gyroscopeRunning)
-        it.camera.mode = CameraMode.SCANNER
+        it.camera.active = true
         it.camera.afterUpdate()
-        it.camera.mode = CameraMode.OFF
+        it.camera.active = false
         it.camera.afterUpdate() // A pending provider completion must not reactivate it.
       }
       await(scenario, "Deactivated provider request") { state == CameraState.SUSPENDED }
@@ -65,14 +65,14 @@ class LiveCameraRuntimeTest {
       scenario.onActivity {
         assertEquals(CameraState.SUSPENDED, state)
         assertFalse(it.camera.gyroscopeRunning)
-        it.camera.mode = CameraMode.SCANNER
+        it.camera.active = true
         it.camera.afterUpdate()
       }
       awaitStreaming(scenario)
       await(scenario, "Capture becomes ready after streaming") { captureState == CameraCaptureState.READY }
       scenario.onActivity {
         assertSame(original, it.camera)
-        it.camera.mode = CameraMode.OFF
+        it.camera.active = false
         it.camera.afterUpdate()
         assertEquals(CameraCaptureState.UNAVAILABLE, captureState)
       }
@@ -89,12 +89,12 @@ class LiveCameraRuntimeTest {
       var state: CameraState? = null
       scenario.onActivity {
         it.camera.onCameraStateChange = { next -> state = next }
-        it.camera.qualityGate = true
+        it.camera.lowQualityControl = LowQualityControl(true, null, null)
         it.camera.afterUpdate()
       }
       awaitStreaming(scenario)
       capture(scenario, label = "Take a photo to test pausing during capture") { activity ->
-        activity.camera.mode = CameraMode.OFF
+        activity.camera.active = false
         activity.camera.afterUpdate()
         assertEquals(CameraState.CAPTURING, state)
       }
@@ -102,7 +102,7 @@ class LiveCameraRuntimeTest {
       scenario.onActivity {
         assertFalse(it.camera.gyroscopeRunning)
         assertFalse(overlay(it).hasOutline)
-        it.camera.mode = CameraMode.SCANNER
+        it.camera.active = true
         it.camera.afterUpdate()
       }
       awaitStreaming(scenario)
@@ -121,15 +121,15 @@ class LiveCameraRuntimeTest {
       await(scenario, "First live outline") { overlay(it).hasOutline }
       scenario.onActivity { assertTrue("Back-camera guidance samples the gyroscope", it.camera.gyroscopeRunning) }
       Thread.sleep(20_000) // Four native cadence/latency windows; no shutter is requested.
-      scenario.onActivity { it.camera.qualityGate = true; it.camera.guide = false; it.camera.afterUpdate() }
+      scenario.onActivity { it.camera.lowQualityControl = LowQualityControl(true, null, null); it.camera.guideLiveCorners = false; it.camera.afterUpdate() }
       await(scenario, "Pause cancels outline") { !overlay(it).hasOutline }
       scenario.onActivity { assertTrue("The quality gate keeps the gyroscope", it.camera.gyroscopeRunning) }
-      scenario.onActivity { it.camera.qualityGate = false; it.camera.afterUpdate() }
+      scenario.onActivity { it.camera.lowQualityControl = LowQualityControl(false, null, null); it.camera.afterUpdate() }
       await(scenario, "Pause without a quality gate stops the gyroscope") { !it.camera.gyroscopeRunning }
-      Thread.sleep(200) // Previously scheduled animation must not redraw a stale quad.
+      Thread.sleep(200) // Previously scheduled animation must not redraw a stale corners.
       scenario.onActivity { assertFalse(overlay(it).hasOutline) }
       assertStreaming(scenario)
-      scenario.onActivity { it.camera.guide = true; it.camera.afterUpdate() }
+      scenario.onActivity { it.camera.guideLiveCorners = true; it.camera.afterUpdate() }
       await(scenario, "Resumed outline") { overlay(it).hasOutline }
       scenario.onActivity { assertTrue("Resume restarts the gyroscope", it.camera.gyroscopeRunning) }
       scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
@@ -161,7 +161,7 @@ class LiveCameraRuntimeTest {
       // One update, while the photo is in flight, that both rebinds and pauses; the photo must still succeed.
       capture(scenario, label = "Capture while settings change") { activity ->
         activity.camera.captureMode = CaptureMode.LATENCY
-        activity.camera.guide = false
+        activity.camera.guideLiveCorners = false
         activity.camera.afterUpdate()
         outlineAfterPause = overlay(activity).hasOutline
       }
@@ -169,7 +169,7 @@ class LiveCameraRuntimeTest {
       awaitStreaming(scenario)
       Thread.sleep(1_000) // The deferred rebind must keep detection paused.
       scenario.onActivity { assertFalse(overlay(it).hasOutline) }
-      scenario.onActivity { it.camera.guide = true; it.camera.afterUpdate() }
+      scenario.onActivity { it.camera.guideLiveCorners = true; it.camera.afterUpdate() }
       await(scenario, "Resumed outline after the deferred rebind") { overlay(it).hasOutline }
     }
   }
@@ -193,11 +193,11 @@ class LiveCameraRuntimeTest {
       record(scenario, directory, records, "back-portrait")
       capture(scenario)
 
-      scenario.onActivity { it.camera.guide = false; it.camera.afterUpdate() }
+      scenario.onActivity { it.camera.guideLiveCorners = false; it.camera.afterUpdate() }
       await(scenario, "Paused outline cleared") { !overlay(it).hasOutline }
       assertStreaming(scenario) // Pause does not unbind Preview/ImageCapture.
       capture(scenario)
-      scenario.onActivity { it.camera.guide = true; it.camera.afterUpdate() }
+      scenario.onActivity { it.camera.guideLiveCorners = true; it.camera.afterUpdate() }
       await(scenario, "Resumed live outline") { overlay(it).hasOutline }
 
       scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
@@ -249,7 +249,7 @@ class LiveCameraRuntimeTest {
     var error: Throwable? = null
     scenario.onActivity { activity ->
       activity.requestManualCapture(label) {
-        activity.camera.takePhoto().then { pageId = it; session = activity.session; callbacks.incrementAndGet(); completed.countDown() }
+        activity.camera.takePhoto().then { pageId = it.pageId; session = activity.session; callbacks.incrementAndGet(); completed.countDown() }
           .catch { error = it; callbacks.incrementAndGet(); completed.countDown() }
         // takePhoto posts its request to the main thread, so a later post runs once the capture is pending.
         if (whilePending != null) activity.camera.view.post { whilePending(activity) }
@@ -284,5 +284,5 @@ class LiveCameraRuntimeTest {
   }
 
   private fun preview(activity: CameraValidationActivity) = (activity.camera.view as FrameLayout).getChildAt(0) as PreviewView
-  private fun overlay(activity: CameraValidationActivity) = (activity.camera.view as FrameLayout).getChildAt(1) as LiveQuadOverlay
+  private fun overlay(activity: CameraValidationActivity) = (activity.camera.view as FrameLayout).getChildAt(1) as LiveGuideOverlay
 }

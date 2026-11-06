@@ -29,14 +29,14 @@ struct Config {
   int64_t holdNs = 400000000;
 };
 struct Input {
-  std::optional<Quad> quad;
+  std::optional<Corners> corners;
   int width, height;
   int64_t sensorNs, arrivalNs;
 };
 struct Output {
   Status status;
   Decision decision;
-  std::optional<Quad> accepted;
+  std::optional<Corners> accepted;
   int64_t acceptanceId, deadlineNs;
   int chainLength;
   bool expired;
@@ -53,11 +53,11 @@ public:
   std::optional<Output> retain(const Input &input);
 
 private:
-  std::optional<Decision> shape(const Quad &, const Input &) const;
+  std::optional<Decision> shape(const Corners &, const Input &) const;
   Output output(Decision, bool tracking, bool expired) const;
-  void accept(const Quad &, const Input &);
+  void accept(const Corners &, const Input &);
   Config config_;
-  std::optional<Quad> accepted_;
+  std::optional<Corners> accepted_;
   int64_t acceptedSensorNs_ = 0, acceptanceId_ = 0, deadlineNs_ = 0;
   std::optional<int64_t> lastTimestamp_;
 };

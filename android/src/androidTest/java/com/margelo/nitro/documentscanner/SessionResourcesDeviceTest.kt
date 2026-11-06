@@ -166,7 +166,7 @@ class SessionResourcesDeviceTest {
     }
     val destination = session.renderDestination("jpg")
     val rendered = DocumentRenderer.render(original,
-      DocumentQuad(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0),
+      DocumentCorners(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0),
         DocumentPoint(1.0, 1.0), DocumentPoint(0.0, 1.0)),
       DocumentRenderOptions(false, null, DocumentFilter.NONE, DocumentImageFormat.JPEG, null, null, null),
       destination)
@@ -193,7 +193,7 @@ class SessionResourcesDeviceTest {
     val session = open()
     val original = session.output(SessionResources.Kind.ORIGINAL).use { it.file.writeText("source"); it.commit() }
     session.lease(original).use { source ->
-      val fullFrame = DocumentQuad(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0),
+      val fullFrame = DocumentCorners(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0),
         DocumentPoint(1.0, 1.0), DocumentPoint(0.0, 1.0))
       assertThrows(InvalidInputException::class.java) {
         DocumentRenderer.render(Uri.fromFile(source.file).toString(), fullFrame, null)
@@ -209,7 +209,7 @@ class SessionResourcesDeviceTest {
     val session = open()
     val original = session.output(SessionResources.Kind.ORIGINAL).use { it.file.writeText("source"); it.commit() }
     val destination = session.renderDestination("jpg")
-    val crossed = DocumentQuad(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 1.0),
+    val crossed = DocumentCorners(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 1.0),
       DocumentPoint(1.0, 0.0), DocumentPoint(0.0, 1.0))
     assertThrows(InvalidInputException::class.java) {
       DocumentRenderer.render(original, crossed, null, destination)

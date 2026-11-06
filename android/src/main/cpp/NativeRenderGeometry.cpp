@@ -17,14 +17,14 @@ local_ref<JArrayDouble> renderNative(alias_ref<jclass>, jlong sourceAddress, jlo
   if (!sourceAddress || !intoAddress || sourceAddress == intoAddress || !values || values->size() != 8 || filter < -1 ||
       filter > 3)
     throwNewJavaException("java/lang/IllegalArgumentException",
-                          "Expected distinct source/output matrices and eight quad coordinates.");
+                          "Expected distinct source/output matrices and eight corners coordinates.");
   auto owner = std::make_shared<cv::Mat>(*reinterpret_cast<const cv::Mat *>(sourceAddress));
   if (owner->empty() || owner->type() != CV_8UC4)
     throwNewJavaException("java/lang/IllegalArgumentException", "Expected an upright RGBA8 source matrix.");
   auto &into = *reinterpret_cast<cv::Mat *>(intoAddress);
   try {
     const auto a = values->getRegion(0, 8);
-    const Quad quad{Point{a[0], a[1]}, Point{a[2], a[3]}, Point{a[4], a[5]}, Point{a[6], a[7]}};
+    const Corners corners{Point{a[0], a[1]}, Point{a[2], a[3]}, Point{a[4], a[5]}, Point{a[6], a[7]}};
     const Size size{static_cast<uint32_t>(owner->cols), static_cast<uint32_t>(owner->rows)};
     PixelLease source(
         owner,
@@ -43,8 +43,8 @@ local_ref<JArrayDouble> renderNative(alias_ref<jclass>, jlong sourceAddress, jlo
     // filter, which then writes BGR/gray into the output Mat: no intermediate Java Mat or copy.
     const auto info = [&]() -> GeometricRenderInfo {
       if (filter < 0)
-        return renderGeometry(source, quad, scale, paperEdge, follow, matAllocator(into), region);
-      const auto result = renderGeometry(source, quad, scale, paperEdge, follow, region);
+        return renderGeometry(source, corners, scale, paperEdge, follow, matAllocator(into), region);
+      const auto result = renderGeometry(source, corners, scale, paperEdge, follow, region);
       filterDocument(result.pixels.lease(), static_cast<DocumentFilter>(filter), shadows, PixelFormat::bgr8,
                      matAllocator(into));
       return {result.validContentPolygon, result.curved};

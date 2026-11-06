@@ -8,7 +8,7 @@ import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
-import com.margelo.nitro.documentscanner.processing.QuadModelStore
+import com.margelo.nitro.documentscanner.processing.CornerModelStore
 
 /** Synthetic sources and controllable image work; no model or camera. Main thread only. */
 internal class SessionViewFixture(context: Context) : AutoCloseable {
@@ -24,7 +24,7 @@ internal class SessionViewFixture(context: Context) : AutoCloseable {
   val resources = registry.open(cache)
   var failRender = false
   val state = ScanSessionState(resources, object : ScanSessionState.Actions {
-    override fun prepareAnalysis(original: SessionResources.Resource, liveQuad: DocumentQuad?, selection: QuadModelStore.Selection?) =
+    override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: CornerModelStore.Selection?) =
       { DocumentAnalysis(40.0, 40.0, 0.0, null) }
     override fun render(original: SessionResources.Resource, key: ScanPage.RenderKey): ScanPage.Artifact {
       check(!failRender) { "synthetic render failure" }

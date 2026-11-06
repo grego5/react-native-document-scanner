@@ -22,7 +22,7 @@ Use Android Studio's JDK and the installed SDK; set `JAVA_HOME` for the command 
 - Lifecycle check: `npm run android:lifecycle -- -Device <adb-id>`. It clears that device's Logcat.
 - Library tasks (with `-PreactNativeArchitectures=<abi>`): `:react-native-document-scanner:assembleDebug`, `testDebugUnitTest`, `assembleDebugAndroidTest`.
 - Instrumented tests: `npm run test:device -- -Device <adb-id> [-Class <Class or Class#method>,...] [-Measure] [-Argument name=value]` builds the androidTest APK, installs it only if the build succeeded, runs the tests and fails unless the runner reports OK. Run it from PowerShell, not Git Bash, so paths are not rewritten; grant CAMERA once for the camera tests.
-- Render timings, private model parity and scene recordings (`RenderTimingTest`, `DocCornerNetRuntimeTest.privatePhotosMeetNativeParityBudgetAndRecordWarmTimings`, `LiveQuadTraceRecordingTest`) are skipped unless the run passes `-e measure true`, so a plain run checks behaviour only.
+- Render timings, private model parity and scene recordings (`RenderTimingTest`, `DocCornerNetRuntimeTest.privatePhotosMeetNativeParityBudgetAndRecordWarmTimings`, `LiveGuideTraceRecordingTest`) are skipped unless the run passes `-e measure true`, so a plain run checks behaviour only.
 - Tests cover dynamic behaviour, lifecycle and concurrency, non-trivial algorithms, security boundaries and the example's session rules. Do not add a test that only pins a single wiring fix, a passthrough or a basic guarantee the code states plainly.
 - Unattended runs exclude `LiveCameraRuntimeTest`: it needs the phone awake and unlocked, and a human to tap every shutter in `CameraValidationActivity`.
 - Focus policy tests: `FocusPolicyTest` and `CaptureGateTest` are JVM unit tests. `com.margelo.nitro.documentscanner.FocusControllerTest` runs with `test:device`; it uses a fake CameraX control, clock and futures, checks that a scan's owner is published before its request, and never opens a camera or takes a photo.
@@ -32,7 +32,7 @@ Use Android Studio's JDK and the installed SDK; set `JAVA_HOME` for the command 
 
 Compare one switch at a time in the example's Options panel, with the scene, lighting and other settings unchanged. The adaptive status line shows the last reason inference woke (`reset: …`).
 
-- Camera: permission grant and denial, capture, rotation, background and foreground. `LiveCameraRuntimeTest#inactiveCameraStaysSuspendedAcrossForegroundAndSettingsThenResumesWithoutRemounting` checks `mode` `off` without a shutter.
+- Camera: permission grant and denial, capture, rotation, background and foreground. `LiveCameraRuntimeTest#inactiveCameraStaysSuspendedAcrossForegroundAndSettingsThenResumesWithoutRemounting` checks `active={false}` without a shutter.
 ### Session UI
 
 - Capture and saved pages share one pager; test thumbnails and the filter modal.
@@ -71,18 +71,18 @@ Compare one switch at a time in the example's Options panel, with the scene, lig
 - Torch: lighting the torch in `zsl` should turn `capture` to `latency` at once, with one restart, and shots pass the gate; after turning it off, the next restart (after a shot) shows `zsl` again. Without a torch, white balance that keeps searching (`ae/awb 2/1`) turns it to `latency` after a second.
 - The stats line's `checks X ms/frame` sums flow, stabilizer and tracked-retention time over every delivered frame. It excludes inference and is not a process-wide CPU measure.
 
-## Live quad traces
+## Live guide traces
 
-`LiveQuadTraceRecordingTest` records pixel-free TSV from the instrumentation harness: raw and accepted quads, decisions, timings, gyroscope, camera optics, and the flow estimate with its fitted transform. The user follows the on-screen instructions and taps Stop recording; recording also ends at 2,048 rows or 60 s.
+`LiveGuideTraceRecordingTest` records pixel-free TSV from the instrumentation harness: raw and accepted corners, decisions, timings, gyroscope, camera optics, and the flow estimate with its fitted transform. The user follows the on-screen instructions and taps Stop recording; recording also ends at 2,048 rows or 60 s.
 
 ```powershell
-adb -s <serial> shell "am instrument -w -e class com.margelo.nitro.documentscanner.LiveQuadTraceRecordingTest -e measure true -e liveQuadScene close-range -e liveQuadCapture true -e liveQuadInstructions 'Fill most of the screen with the page, tap the green button once, then Stop recording.' com.margelo.nitro.documentscanner.test/androidx.test.runner.AndroidJUnitRunner"
-adb -s <serial> pull /sdcard/Android/data/com.margelo.nitro.documentscanner.test/files/live-quad-traces/. .local/live-quad-traces/
+adb -s <serial> shell "am instrument -w -e class com.margelo.nitro.documentscanner.LiveGuideTraceRecordingTest -e measure true -e liveGuideScene close-range -e liveGuideCapture true -e liveGuideInstructions 'Fill most of the screen with the page, tap the green button once, then Stop recording.' com.margelo.nitro.documentscanner.test/androidx.test.runner.AndroidJUnitRunner"
+adb -s <serial> pull /sdcard/Android/data/com.margelo.nitro.documentscanner.test/files/live-guide-traces/. .local/live-guide-traces/
 ```
 
-Options: `liveQuadCaptures <n>` (user-tapped shutters), `liveQuadKeepPhotos true`, `liveQuadAnalysisWidth <px>`, `liveQuadQualityGate true`, `liveQuadFlow false` (cadence baseline). The trace config stores the acceptance settings.
+Options: `liveGuideCaptures <n>` (user-tapped shutters), `liveGuideKeepPhotos true`, `liveGuideAnalysisWidth <px>`, `liveGuideLowQualityControl true`, `liveGuideFlow false` (cadence baseline). The trace config stores the acceptance settings.
 
-Replay: `npm run test:device -- -Device <verified-adb-id> -Class com.margelo.nitro.documentscanner.processing.LiveQuadTraceReplayTest -Argument liveQuadTrace=<device-file-or-directory>` exercises the shared native guide. It writes `live-quad-trace-reports/summary.txt` under the test application external files directory. Without that optional argument, deterministic synthetic replay tests run and external replay is skipped.
+Replay: `npm run test:device -- -Device <verified-adb-id> -Class com.margelo.nitro.documentscanner.processing.LiveGuideTraceReplayTest -Argument liveGuideTrace=<device-file-or-directory>` exercises the shared native guide. It writes `live-guide-trace-reports/summary.txt` under the test application external files directory. Without that optional argument, deterministic synthetic replay tests run and external replay is skipped.
 
 Replay limits:
 

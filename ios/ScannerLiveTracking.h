@@ -4,7 +4,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Quads cross this boundary as eight numbers: normalized upright TL, TR, BR, BL x/y pairs.
+/// Corners cross this boundary as eight numbers: normalized upright TL, TR, BR, BL x/y pairs.
 
 /// One shared-guide decision. Status: 0 searching, 1 tracking, 2 held. Decision
 /// follows the portable `guide::Decision` order.
@@ -24,13 +24,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithMinArea:(double)minArea holdNs:(int64_t)holdNs;
 - (instancetype)init NS_UNAVAILABLE;
 - (void)reset;
-- (ScannerGuideOutput *)updateQuad:(nullable NSArray<NSNumber *> *)quad
+- (ScannerGuideOutput *)updateCorners:(nullable NSArray<NSNumber *> *)corners
                              width:(NSInteger)width
                             height:(NSInteger)height
                           sensorNs:(int64_t)sensorNs
                          arrivalNs:(int64_t)arrivalNs NS_SWIFT_NAME(update(_:width:height:sensorNs:arrivalNs:));
 /// A flow-carried outline keeps the accepted guide; nil when it cannot.
-- (nullable ScannerGuideOutput *)retainQuad:(nullable NSArray<NSNumber *> *)quad
+- (nullable ScannerGuideOutput *)retainCorners:(nullable NSArray<NSNumber *> *)corners
                                       width:(NSInteger)width
                                      height:(NSInteger)height
                                    sensorNs:(int64_t)sensorNs
@@ -70,8 +70,8 @@ NS_ASSUME_NONNULL_BEGIN
                                        fitTransform:(BOOL)fitTransform
                                               error:(NSError **)error
     NS_SWIFT_NAME(update(_:orientation:crop:sensorNs:region:fitTransform:));
-/// Carries a quad across recorded intervals; nil when any interval is missing.
-- (nullable NSArray<NSNumber *> *)warpQuad:(NSArray<NSNumber *> *)quad
+/// Carries a set of corners across recorded intervals; nil when any interval is missing.
+- (nullable NSArray<NSNumber *> *)warpCorners:(NSArray<NSNumber *> *)corners
                                     fromNs:(int64_t)fromNs
                                       toNs:(int64_t)toNs NS_SWIFT_NAME(warp(_:fromNs:toNs:));
 - (void)reset;

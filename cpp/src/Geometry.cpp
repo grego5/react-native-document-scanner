@@ -16,20 +16,20 @@ void finite(Point p) {
     throw std::invalid_argument("Image coordinates must be finite.");
 }
 double cross(Point a, Point b, Point c) { return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); }
-double area(const Quad &q) {
+double area(const Corners &q) {
   double doubled = 0;
   for (size_t i = 0; i < 4; ++i)
     doubled += q[i].x * q[(i + 1) % 4].y - q[(i + 1) % 4].x * q[i].y;
   return std::abs(doubled) / 2;
 }
-bool clockwise(const Quad &q, double minTurn) {
+bool clockwise(const Corners &q, double minTurn) {
   for (size_t i = 0; i < 4; ++i) {
     if (!std::isfinite(q[i].x) || !std::isfinite(q[i].y) || !(cross(q[i], q[(i + 1) % 4], q[(i + 2) % 4]) > minTurn))
       return false;
   }
   return true;
 }
-template <typename F> Quad mapQuad(const Quad &q, F f) { return {f(q[0]), f(q[1]), f(q[2]), f(q[3])}; }
+template <typename F> Corners mapCorners(const Corners &q, F f) { return {f(q[0]), f(q[1]), f(q[2]), f(q[3])}; }
 Point apply(const Matrix &m, Point p) { return {m[0] * p.x + m[1] * p.y + m[2], m[3] * p.x + m[4] * p.y + m[5]}; }
 std::optional<Point> intersection(Point a, Point b, Point c, Point d) {
   const double ax = b.x - a.x, ay = b.y - a.y, cx = d.x - c.x, cy = d.y - c.y;
@@ -97,11 +97,11 @@ Point toImage(Point p, Size image) {
   finite(p);
   return {p.x * image.width, p.y * image.height};
 }
-Quad toNormalized(const Quad &q, Size image) {
-  return mapQuad(q, [&](Point p) { return toNormalized(p, image); });
+Corners toNormalized(const Corners &q, Size image) {
+  return mapCorners(q, [&](Point p) { return toNormalized(p, image); });
 }
-Quad toImage(const Quad &q, Size image) {
-  return mapQuad(q, [&](Point p) { return toImage(p, image); });
+Corners toImage(const Corners &q, Size image) {
+  return mapCorners(q, [&](Point p) { return toImage(p, image); });
 }
 
 RegionTransform::RegionTransform(Size source, Region region) : source_(source), region_(region) {
@@ -119,20 +119,20 @@ Point RegionTransform::fromSource(Point p) const {
   finite(p);
   return {(p.x * source_.width - region_.left) / region_.width, (p.y * source_.height - region_.top) / region_.height};
 }
-Quad RegionTransform::toSource(const Quad &q) const {
-  return mapQuad(q, [&](Point p) { return toSource(p); });
+Corners RegionTransform::toSource(const Corners &q) const {
+  return mapCorners(q, [&](Point p) { return toSource(p); });
 }
-Quad RegionTransform::fromSource(const Quad &q) const {
-  return mapQuad(q, [&](Point p) { return fromSource(p); });
+Corners RegionTransform::fromSource(const Corners &q) const {
+  return mapCorners(q, [&](Point p) { return fromSource(p); });
 }
 RegionTransform centeredSquare(Size source) {
   dimensions(source);
   const double side = std::min(source.width, source.height);
   return {source, {(source.width - side) / 2, (source.height - side) / 2, side, side}};
 }
-std::optional<Crop> photoInferenceCrop(const Quad &q, Size photo) {
+std::optional<Crop> photoInferenceCrop(const Corners &q, Size photo) {
   dimensions(photo);
-  if (!validPredictionQuad(q))
+  if (!validPredictionCorners(q))
     return std::nullopt;
   const auto [lx, rx] = std::minmax_element(q.begin(), q.end(), [](Point a, Point b) { return a.x < b.x; });
   const auto [ty, by] = std::minmax_element(q.begin(), q.end(), [](Point a, Point b) { return a.y < b.y; });
@@ -149,32 +149,32 @@ std::optional<Crop> photoInferenceCrop(const Quad &q, Size photo) {
   return Crop{left, top, std::clamp(static_cast<uint32_t>(std::ceil(x + w)) - left, 1u, photo.width - left),
               std::clamp(static_cast<uint32_t>(std::ceil(y + h)) - top, 1u, photo.height - top)};
 }
-Quad clampToFrame(const Quad &q) {
-  return mapQuad(q, [](Point p) { return Point{std::clamp(p.x, 0.0, 1.0), std::clamp(p.y, 0.0, 1.0)}; });
+Corners clampToFrame(const Corners &q) {
+  return mapCorners(q, [](Point p) { return Point{std::clamp(p.x, 0.0, 1.0), std::clamp(p.y, 0.0, 1.0)}; });
 }
-bool validCropQuad(const Quad &q) { return clockwise(q, 1e-8) && area(q) >= 1e-4; }
-std::optional<Quad> moveCorner(const Quad &q, size_t index, Point target) {
+bool validCropCorners(const Corners &q) { return clockwise(q, 1e-8) && area(q) >= 1e-4; }
+std::optional<Corners> moveCorner(const Corners &q, size_t index, Point target) {
   if (index >= 4)
     throw std::invalid_argument("Corner index must be between 0 and 3.");
-  const auto next = mapQuad(q, [&, i = size_t{0}](Point p) mutable {
+  const auto next = mapCorners(q, [&, i = size_t{0}](Point p) mutable {
     return i++ == index ? Point{std::clamp(target.x, 0.0, 1.0), std::clamp(target.y, 0.0, 1.0)} : p;
   });
-  return validCropQuad(next) ? std::optional<Quad>(next) : std::nullopt;
+  return validCropCorners(next) ? std::optional<Corners>(next) : std::nullopt;
 }
-std::optional<Quad> moveEdge(const Quad &q, size_t index, Point d) {
+std::optional<Corners> moveEdge(const Corners &q, size_t index, Point d) {
   if (index >= 4)
     throw std::invalid_argument("Edge index must be between 0 and 3.");
   const auto b = (index + 1) % 4;
   const double x = std::clamp(d.x, -std::min(q[index].x, q[b].x), 1 - std::max(q[index].x, q[b].x));
   const double y = std::clamp(d.y, -std::min(q[index].y, q[b].y), 1 - std::max(q[index].y, q[b].y));
-  const auto next = mapQuad(q, [&, i = size_t{0}](Point p) mutable {
+  const auto next = mapCorners(q, [&, i = size_t{0}](Point p) mutable {
     const bool moves = i == index || i == b;
     ++i;
     return moves ? Point{p.x + x, p.y + y} : p;
   });
-  return validCropQuad(next) ? std::optional<Quad>(next) : std::nullopt;
+  return validCropCorners(next) ? std::optional<Corners>(next) : std::nullopt;
 }
-void validateRenderQuad(const Quad &q) {
+void validateRenderCorners(const Corners &q) {
   for (Point p : q)
     if (!std::isfinite(p.x) || !std::isfinite(p.y))
       throw std::invalid_argument("Document corners must be finite.");
@@ -182,12 +182,12 @@ void validateRenderQuad(const Quad &q) {
     if (p.x < -.8 || p.x > 1.8 || p.y < -.8 || p.y > 1.8)
       throw std::invalid_argument("Document corners exceed the supported extrapolation range.");
   if (!clockwise(q, 1e-8))
-    throw std::invalid_argument("Document corners must form a convex clockwise quadrilateral.");
+    throw std::invalid_argument("Document corners must form a convex clockwise document outline.");
   const double a = area(q);
   if (a < 1e-4 || a > 4)
-    throw std::invalid_argument("Document quadrilateral area is outside the supported range.");
+    throw std::invalid_argument("Document document outline area is outside the supported range.");
 }
-TargetCanvas targetCanvas(const Quad &q, double originalScale, std::optional<double> paperLongEdge) {
+TargetCanvas targetCanvas(const Corners &q, double originalScale, std::optional<double> paperLongEdge) {
   const auto distance = [](Point a, Point b) { return std::hypot(a.x - b.x, a.y - b.y); };
   const double w = (distance(q[0], q[1]) + distance(q[2], q[3])) / 2;
   const double h = (distance(q[1], q[2]) + distance(q[3], q[0])) / 2;
@@ -207,7 +207,7 @@ TargetCanvas targetCanvas(const Quad &q, double originalScale, std::optional<dou
   return {{width, height},
           {Point{0, 0}, Point{double(width), 0}, Point{double(width), double(height)}, Point{0, double(height)}}};
 }
-std::vector<Point> clipImageToQuad(const Quad &q, Size image) {
+std::vector<Point> clipImageToCorners(const Corners &q, Size image) {
   dimensions(image);
   std::vector<Point> clipped{
       {0, 0}, {double(image.width), 0}, {double(image.width), double(image.height)}, {0, double(image.height)}};

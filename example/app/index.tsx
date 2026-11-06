@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Linking, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Linking,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Camera,
@@ -9,6 +17,7 @@ import {
   type CameraRef,
   type CameraCaptureState,
   type CaptureWaitReason,
+  type CaptureStage,
   type TorchMode,
 } from 'react-native-document-scanner';
 import { DEFAULT_TUNING, OptionsPanel } from '../components/OptionsPanel';
@@ -20,17 +29,23 @@ import { ActionButton } from '../components/ActionButton';
 import { useScanReview } from '../hooks/useScanReview';
 import { errorMessage } from '../lib/errorMessage';
 import { removeOldPdfExports } from '../lib/pdfExports';
+import { loadSettings, saveSettings } from '../lib/settings';
 import { CAPTURE_PAPER, MAX_PAGES } from '../lib/scanSession';
 import { styles } from '../styles';
 import { captureWaitLabels } from '../lib/labels';
 
 /** One headless owner. Attached camera and review views borrow it. */
-export default function Scanner() {
+export default function App() {
   const [native, setNative] = useState<NativeScanSession | null>(null);
   const [scanKey, setScanKey] = useState(0);
   const owner = useRef<NativeScanSession | null>(null);
-  const [tuning, setTuning] = useState(DEFAULT_TUNING);
-  const [removeShadows, setRemoveShadows] = useState(true);
+  // Options persist across launches; a per-scan torch override does not.
+  const [saved] = useState(() => loadSettings({ ...DEFAULT_TUNING, removeShadows: true }));
+  const [tuning, setTuning] = useState<typeof DEFAULT_TUNING>(() => {
+    const { removeShadows: _, ...rest } = saved;
+    return rest;
+  });
+  const [removeShadows, setRemoveShadows] = useState(saved.removeShadows);
   const close = (session: NativeScanSession | null) => {
     if (session)
       void session.close().catch((error) => console.warn('Could not close scan.', error));
@@ -56,6 +71,7 @@ export default function Scanner() {
       console.warn('Could not delete expired exports.', error);
     }
   }, []);
+  useEffect(() => saveSettings({ ...tuning, removeShadows }), [tuning, removeShadows]);
   if (!native) return <View style={styles.screen} />;
   return (
     <ScanScreen
@@ -93,8 +109,7 @@ export function ScanScreen({
   const capturing =
     captureState === 'waiting' || captureState === 'shooting' || captureState === 'saving';
   const [optionsOpen, setOptionsOpen] = useState(false);
-  // A tap switches the torch on or off for this scan only; a new scan remounts this screen and returns to the default.
-  const [torchOverride, setTorchOverride] = useState<Extract<TorchMode, 'on' | 'off'>>();
+  const [torchOverride, setTorchOverride] = useState<Extract<TorchMode, 'on'>>();
   const torch = torchOverride ?? tuning.torch;
   const [sampleFolder, setSampleFolder] = useState(() => DocumentScanner.getSampleFolder());
   const sampling = sampleFolder.collecting;
@@ -157,38 +172,51 @@ export function ScanScreen({
     }
   };
 
-  const takePhoto = () => session.run(async () => {
-    setMessage('');
-    const pressedAt = performance.now();
-    try {
-      const photo = await cameraRef.current?.takePhoto();
-      if (!photo) throw new Error('The Camera view is not ready.');
-      console.log(`takePhoto resolved in ${Math.round(performance.now() - pressedAt)} ms`);
-      session.reviewCapture(photo);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return;
-      setMessage(errorMessage(error, 'Could not capture a photo.'));
-    }
-  });
+  const takePhoto = () =>
+    session.run(async () => {
+      setMessage('');
+      const pressedAt = performance.now();
+      try {
+        const photo = await cameraRef.current?.takePhoto();
+        if (!photo) throw new Error('The Camera view is not ready.');
+        console.log(`takePhoto resolved in ${Math.round(performance.now() - pressedAt)} ms`);
+        session.reviewCapture(photo);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return;
+        setMessage(errorMessage(error, 'Could not capture a photo.'));
+      }
+    });
+
+  const showing = view === 'camera' && !optionsOpen;
+  // The saved Hi-res camera option applies only to photos; documents use their default.
+  const { mode, highResolutionPhoto, ...shared } = tuning;
+  const cameraProps = {
+    ...shared,
+    lowQualityControl: { enabled: shared.lowQualityControl },
+    session: session.native,
+    cornerDetectionModel: 'asset:///doccornernet/model.tflite',
+    ref: cameraRef,
+    torch,
+    active: showing,
+    showStats: true,
+    onCaptureStateChange: setCaptureState,
+    onCaptureStage: (stage: CaptureStage, reason?: CaptureWaitReason) =>
+      setWaitReason(stage === 'waiting' ? reason : undefined),
+    onError: (error: Error) => setMessage(errorMessage(error, 'Could not prepare the camera.')),
+    style: StyleSheet.absoluteFill,
+  };
 
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.screen}>
         <View style={styles.cameraStage}>
           <Camera
-            session={session.native}
-            renderOptions={{ ...CAPTURE_PAPER, format: 'auto', filter: 'none', removeShadows }}
-            quadTensorModel="asset:///doccornernet/model.tflite"
-            ref={cameraRef}
-            {...tuning}
-            torch={torch}
-            mode={view === 'camera' && !optionsOpen ? tuning.mode : 'off'}
-            guide={view === 'camera' && !optionsOpen}
-            showStats
-            onCaptureStateChange={setCaptureState}
-            onCaptureStage={(stage, reason) => setWaitReason(stage === 'waiting' ? reason : undefined)}
-            onError={(error) => setMessage(errorMessage(error, 'Could not prepare the camera.'))}
-            style={StyleSheet.absoluteFill}
+            {...cameraProps}
+            mode={mode}
+            {...(mode === 'photo' ? { highResolutionPhoto } : {})}
+            imageCorrection={{ filter: 'none', removeShadows }}
+            outputOptions={{ ...CAPTURE_PAPER, format: 'auto' }}
+            guideLiveCorners={showing}
           />
           <View style={styles.cameraNotices} pointerEvents="box-none">
             {!granted && (
@@ -205,7 +233,7 @@ export function ScanScreen({
             )}
             {full && (
               <Text style={styles.notice}>
-                This scan has {MAX_PAGES} pages, the most it can hold. Tap Done.
+                This scan has {MAX_PAGES} pages, the most it can hold. Tap Pages.
               </Text>
             )}
             {captureState === 'waiting' && waitReason && (
@@ -222,9 +250,18 @@ export function ScanScreen({
           <View style={styles.controls}>
             <View style={styles.shutterRow}>
               <View style={styles.shutterSide}>
+                <ActionButton
+                  label={tuning.mode === 'document' ? 'Document' : 'Photo'}
+                  accessibilityHint="Switches between document scanning and plain photos."
+                  disabled={capturing || session.working || view !== 'camera'}
+                  onPress={() => confirmDiscard(() => {
+                    setTuning((t) => ({ ...t, mode: t.mode === 'document' ? 'photo' : 'document' }));
+                    session.reset();
+                  })}
+                />
                 {pageIds.length > 0 && (
                   <ActionButton
-                    label={`Done · ${pageIds.length}`}
+                    label={`Pages · ${pageIds.length}`}
                     disabled={capturing || session.working || view !== 'camera'}
                     onPress={() => session.navigate('summary')}
                   />
@@ -244,9 +281,9 @@ export function ScanScreen({
               <View style={styles.shutterSide}>
                 <ActionButton
                   label={`Torch ${torch}`}
-                  accessibilityHint="Tap to switch the torch on or off for this scan. Long press to make auto or off the default."
+                  accessibilityHint="Tap to switch between on and the default for this scan. Long press to make auto or off the default."
                   disabled={capturing || session.working || view !== 'camera'}
-                  onPress={() => setTorchOverride(torch === 'on' ? 'off' : 'on')}
+                  onPress={() => setTorchOverride(torchOverride ? undefined : 'on')}
                   onLongPress={() => {
                     setTorchOverride(undefined);
                     setTuning((t) => ({ ...t, torch: t.torch === 'auto' ? 'off' : 'auto' }));
@@ -262,12 +299,11 @@ export function ScanScreen({
           </View>
         </View>
       </SafeAreaView>
-      {/* Capture, saved pages, and export share one pager overlay. Crop is its separate editor screen. */}
       <ReviewPanel
         visible={view !== 'camera'}
         session={session}
         sampling={sampling}
-        onOptions={() => setOptionsOpen(true)}
+        rectangle={mode === 'photo'}
         onNewScan={() => confirmDiscard(session.reset)}
       />
       <SheetModal visible={optionsOpen} onClose={() => setOptionsOpen(false)}>
@@ -282,9 +318,15 @@ export function ScanScreen({
           onClose={() => setOptionsOpen(false)}
         />
       </SheetModal>
-      {session.working && <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#0006' }]}>
-        <ActivityIndicator size="large" color="white" accessibilityLabel="Working" />
-      </View>}
+      {session.working && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            { alignItems: 'center', justifyContent: 'center', backgroundColor: '#0006' },
+          ]}>
+          <ActivityIndicator size="large" color="white" accessibilityLabel="Working" />
+        </View>
+      )}
     </View>
   );
 }

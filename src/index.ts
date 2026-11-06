@@ -9,7 +9,7 @@ export type { ScanSession, ScanSessionSnapshot, ScanPageMetadata } from './ScanS
 export { ScannerError, ScannerCancellation } from './ScannerError';
 export type { ScannerErrorCode } from './ScannerFailure';
 
-export { Camera } from './DocumentScannerCamera';
+export { Camera } from './DocumentScanner';
 export { CameraPermission, useCameraPermission } from './CameraPermission';
 export type { CameraPermissionStatus } from './CameraPermission.nitro';
 export { CropEditor } from './DocumentCropEditor';
@@ -23,7 +23,8 @@ export type { PageThumbnailResizeMode } from './PageThumbnail.nitro';
 export { ImagePager } from './ImagePager';
 export type { ImagePagerProps } from './ImagePager';
 export type { ImagePagerDirection } from './ImagePager.nitro';
-export type { CameraProps, CameraRef } from './DocumentScannerCamera';
+export type { CameraMode, CameraProps, CameraRef } from './DocumentScanner';
+export type { ImageCorrectionOptions, ImageOutputOptions } from './DocumentScannerCamera.nitro';
 export type {
   AutofocusState,
   CameraState,
@@ -31,9 +32,8 @@ export type {
   DocumentState,
   CameraCaptureState,
   TakePhotoOptions,
-  QualityGateConfig,
+  LowQualityControl,
   TorchMode,
-  CameraMode,
   CaptureStage,
   CaptureWaitReason,
 } from './DocumentScannerCamera.nitro';
@@ -43,7 +43,7 @@ export type {
   DocumentFilter,
   DocumentImageFormat,
   DocumentPoint,
-  DocumentQuad,
+  DocumentCorners,
   DocumentRenderOptions,
   PaperSize,
   ImageFit,

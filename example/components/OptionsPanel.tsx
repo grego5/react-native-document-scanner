@@ -1,23 +1,22 @@
-import { Alert, ScrollView, Text, View } from 'react-native'
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
 import {
   DocumentScanner,
   type CaptureMode,
-  type CameraMode,
   type SampleFolder,
   type TorchMode,
 } from 'react-native-document-scanner'
 import { errorMessage } from '../lib/errorMessage'
 import { styles } from '../styles'
 import { PrimaryButton } from './PrimaryButton'
-import { ActionButton } from './ActionButton'
 
 export interface LiveTuning {
-  guideTransitionDuration: number
-  squareFrame: boolean
-  qualityGate: boolean
-  /** The camera's profile while it is shown. */
-  mode: Exclude<CameraMode, 'off'>
-  adaptiveDetection: boolean
+  squareAspectRatio: boolean
+  lowQualityControl: boolean
+  /** Profile selected by the camera screen's mode button. */
+  mode: 'document' | 'photo'
+  /** Photo mode's full size instead of the standard 1440x1080 one. */
+  highResolutionPhoto: boolean
+  inferenceThrottling: boolean
   exposureCompensation: number
   minFrameRate: number
   /** The torch for each new scan, `off` or `auto`; the camera screen's torch button sets it with a long press. */
@@ -25,66 +24,73 @@ export interface LiveTuning {
   lowLightBoost: boolean
   captureFeedback: boolean
   captureMode: CaptureMode
-  jpegQuality: number | undefined
 }
 
 // Each switch cycles through its values; the first is the library default.
-const GUIDE_TRANSITIONS_MS = [50, 16, 0]
 const EXPOSURE_EV = [0, -0.3, -0.7, -1]
 const MIN_FRAME_RATES = [0, 24, 30]
-const CAMERA_MODES: Exclude<CameraMode, 'off'>[] = ['scanner', 'camera']
 const CAPTURE_MODES: CaptureMode[] = ['zsl', 'latency', 'quality']
-const JPEG_QUALITIES = [undefined, 0.95, 0.85]
 
 export const DEFAULT_TUNING: LiveTuning = {
-  guideTransitionDuration: GUIDE_TRANSITIONS_MS[0],
-  squareFrame: false,
-  qualityGate: true,
-  mode: CAMERA_MODES[0],
-  adaptiveDetection: true,
+  squareAspectRatio: false,
+  lowQualityControl: true,
+  mode: 'document',
+  highResolutionPhoto: false,
+  inferenceThrottling: true,
   exposureCompensation: EXPOSURE_EV[0],
   minFrameRate: MIN_FRAME_RATES[0],
   torch: 'off',
   lowLightBoost: true,
   captureFeedback: true,
   captureMode: CAPTURE_MODES[0],
-  jpegQuality: JPEG_QUALITIES[0],
 }
 
 function nextValue<T>(values: readonly T[], current: T) {
   return values[(values.indexOf(current) + 1) % values.length]
 }
 
-const onOff = (on: boolean) => (on ? 'on' : 'off')
+type Option = { label: string; wide?: boolean } & (
+  | { on: boolean; toggle: () => void }
+  | { value: string; next: () => void; changed: boolean }
+)
 
-const OPTIONS: { label: (tuning: LiveTuning) => string; next: (tuning: LiveTuning) => Partial<LiveTuning> }[] = [
-  {
-    label: (t) => `Guide ${t.guideTransitionDuration} ms`,
-    next: (t) => ({ guideTransitionDuration: nextValue(GUIDE_TRANSITIONS_MS, t.guideTransitionDuration) }),
-  },
-  { label: (t) => `Square ${onOff(t.squareFrame)}`, next: (t) => ({ squareFrame: !t.squareFrame }) },
-  { label: (t) => `Quality gate ${onOff(t.qualityGate)}`, next: (t) => ({ qualityGate: !t.qualityGate }) },
-  { label: (t) => `Mode ${t.mode}`, next: (t) => ({ mode: nextValue(CAMERA_MODES, t.mode) }) },
-  { label: (t) => `Adaptive detection ${onOff(t.adaptiveDetection)}`, next: (t) => ({ adaptiveDetection: !t.adaptiveDetection }) },
-  {
-    label: (t) => `Exposure ${t.exposureCompensation} EV`,
-    next: (t) => ({ exposureCompensation: nextValue(EXPOSURE_EV, t.exposureCompensation) }),
-  },
-  {
-    label: (t) => `Min fps ${t.minFrameRate || 'auto'}`,
-    next: (t) => ({ minFrameRate: nextValue(MIN_FRAME_RATES, t.minFrameRate) }),
-  },
-  { label: (t) => `Low light boost ${onOff(t.lowLightBoost)}`, next: (t) => ({ lowLightBoost: !t.lowLightBoost }) },
-  { label: (t) => `Shutter feedback ${onOff(t.captureFeedback)}`, next: (t) => ({ captureFeedback: !t.captureFeedback }) },
-  {
-    label: (t) => `Capture ${t.captureMode}`,
-    next: (t) => ({ captureMode: nextValue(CAPTURE_MODES, t.captureMode) }),
-  },
-  {
-    label: (t) => `JPEG ${t.jpegQuality ?? 'auto'}`,
-    next: (t) => ({ jpegQuality: nextValue(JPEG_QUALITIES, t.jpegQuality) }),
-  },
-]
+/** Same-size cells, two per row and a wide option alone: a label, highlighted while a flag is on or a value is not its
+ * default, with the value a tap cycles to its next. Rows are fixed pairs, so a cell's size never depends on its text or on the cells around it. */
+function OptionGrid({ options, disabled }: { options: Option[]; disabled?: boolean }) {
+  const rows: Option[][] = []
+  for (const option of options) {
+    const last = rows[rows.length - 1]
+    if (option.wide || !last || last.length === 2 || last[0].wide) rows.push([option])
+    else last.push(option)
+  }
+  return (
+    <View style={styles.optionGrid}>
+      {rows.map((row) => (
+        <View key={row[0].label} style={styles.optionRow}>
+          {row.map((option) => <OptionCell key={option.label} option={option} disabled={disabled} />)}
+          {row.length === 1 && !row[0].wide && <View style={styles.optionSpacer} />}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+function OptionCell({ option, disabled }: { option: Option; disabled?: boolean }) {
+  return (
+        <Pressable
+          key={option.label}
+          accessibilityRole={'on' in option ? 'switch' : 'button'}
+          accessibilityState={{ disabled, checked: 'on' in option ? option.on : undefined }}
+          accessibilityLabel={'on' in option ? option.label : `${option.label} ${option.value}`}
+          disabled={disabled}
+          onPress={'on' in option ? option.toggle : option.next}
+          style={({ pressed }) => [styles.optionCell, ('on' in option ? option.on : option.changed) && styles.activeTool,
+            pressed && styles.buttonPressed, disabled && styles.buttonDisabled]}>
+          <Text style={styles.optionLabel} numberOfLines={1}>{option.label}</Text>
+          {'value' in option && <Text style={styles.optionValue} numberOfLines={1}>{option.value}</Text>}
+        </Pressable>
+  )
+}
 
 export function OptionsPanel({
   tuning,
@@ -106,23 +112,29 @@ export function OptionsPanel({
   sampleFolder: SampleFolder
   onSampleFolderChange: (folder: SampleFolder) => void
 }) {
+  const set = (update: Partial<LiveTuning>) => onChange((t) => ({ ...t, ...update }))
+  const flag = (label: string, key: keyof LiveTuning & ('squareAspectRatio' | 'lowQualityControl' | 'inferenceThrottling' |
+    'lowLightBoost' | 'captureFeedback' | 'highResolutionPhoto')): Option =>
+    ({ label, on: tuning[key], toggle: () => set({ [key]: !tuning[key] }) })
+  const cycle = <T,>(label: string, values: readonly T[], current: T, key: keyof LiveTuning, show: (value: T) => string): Option =>
+    ({ label, value: show(current), changed: current !== values[0], next: () => set({ [key]: nextValue(values, current) }) })
+  const options: Option[] = [
+    { label: 'Shadow removal', on: removeShadows, toggle: () => onRemoveShadowsChange(!removeShadows) },
+    flag('Quality check', 'lowQualityControl'),
+    cycle('Capture', CAPTURE_MODES, tuning.captureMode, 'captureMode', String),
+    flag('Square', 'squareAspectRatio'),
+    flag('Throttle detection', 'inferenceThrottling'),
+    flag('Feedback', 'captureFeedback'),
+    cycle('Exposure', EXPOSURE_EV, tuning.exposureCompensation, 'exposureCompensation', (ev) => `${ev} EV`),
+    cycle('Min fps', MIN_FRAME_RATES, tuning.minFrameRate, 'minFrameRate', (fps) => (fps ? String(fps) : 'auto')),
+    flag('Low light boost', 'lowLightBoost'),
+    flag('Hi-res camera', 'highResolutionPhoto'),
+  ]
   return (
     <View style={styles.optionsPanel}>
       <ScrollView>
-        <Text style={styles.diagnostics}>Shadow is the default for new pages.</Text>
-        <View style={styles.tuningRow}>
-          <ActionButton label={`Shadow · ${onOff(removeShadows)}`} disabled={disabled}
-            onPress={() => onRemoveShadowsChange(!removeShadows)} />
-          {OPTIONS.map(({ label, next }, index) => (
-            <ActionButton
-              key={index}
-              label={label(tuning)}
-              disabled={disabled}
-              onPress={() => onChange((t) => ({ ...t, ...next(t) }))}
-            />
-          ))}
-          <SampleFolderSwitches folder={sampleFolder} onChange={onSampleFolderChange} />
-        </View>
+        <OptionGrid options={options} disabled={disabled} />
+        <SampleFolderSwitches folder={sampleFolder} onChange={onSampleFolderChange} />
       </ScrollView>
       <PrimaryButton label="Close" onPress={onClose} />
     </View>
@@ -131,7 +143,7 @@ export function OptionsPanel({
 
 /**
  * Where collected samples go: a folder the library keeps across launches. While collection is on, a Sample button shows
- * in live and photo review; stopping keeps the folder, and forgetting it releases the folder too.
+ * in photo review; turning collection off releases the folder, so turning it on again asks for one.
  */
 function SampleFolderSwitches({ folder, onChange }: {
   folder: SampleFolder
@@ -145,13 +157,13 @@ function SampleFolderSwitches({ folder, onChange }: {
     change()
     onChange(DocumentScanner.getSampleFolder())
   }
-  if (folder.uri == null) return <ActionButton label="Sample collection off" onPress={pick} />
-  return (
-    <>
-      <ActionButton label={`Sample collection ${folder.collecting ? 'on' : 'off'}`}
-        onPress={() => update(() => DocumentScanner.setSampleCollection(!folder.collecting))} />
-      <ActionButton label={`Sample folder ${folder.name ?? 'picked'}`} onPress={pick} />
-      <ActionButton label="Forget sample folder" onPress={() => update(DocumentScanner.clearSampleFolder)} />
-    </>
-  )
+  // Turning samples off releases the folder; turning them on picks one, which turns collection on.
+  const toggle = () => {
+    if (folder.collecting) update(DocumentScanner.clearSampleFolder)
+    else if (folder.uri != null) update(() => DocumentScanner.setSampleCollection(true))
+    else pick()
+  }
+  const options: Option[] = [{ label: 'Samples', on: folder.collecting, toggle }]
+  if (folder.collecting) options.push({ label: 'Folder', value: folder.name ?? 'picked', next: pick, changed: false })
+  return <OptionGrid options={options} />
 }

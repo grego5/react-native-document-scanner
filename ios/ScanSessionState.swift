@@ -3,7 +3,7 @@ import Foundation
 /// Engine work for one session; every call runs on the session's serial image worker.
 protocol ScanSessionActions: AnyObject {
   /// Called at admission to freeze the model selection, without decoding or acquiring an interpreter.
-  func prepareAnalysis(_ source: SessionResources.Lease, liveQuad: QuadCoordinates?,
+  func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue
   func render(_ source: SessionResources.Lease, key: ScanPage.RenderKey) throws -> ScanPage.Artifact
   /// After the session's queue drains; releases the model lease.
@@ -61,9 +61,10 @@ final class ScanSessionState: @unchecked Sendable {
   /// The internal handoff used by captures and native fixtures. Takes a SourceStore-
   /// published original (and an optional committed session frame); a failed or
   /// obsolete admission retires them, so no unadmitted source outlives the attempt.
-  func admitSource(id: String, source: URL, frame: SessionResources.Resource? = nil, liveQuad: DocumentQuad? = nil,
+  func admitSource(id: String, source: URL, frame: SessionResources.Resource? = nil, liveCorners: DocumentCorners? = nil,
                    options: DocumentRenderOptions? = nil,
-                   selection: CornerInference.Selection? = try? CornerInference.shared.selection()) throws {
+                   selection: CornerInference.Selection? = try? CornerInference.shared.selection(),
+                   autoCrop: Bool = true) throws {
     let original: SessionResources.Resource
     do { original = try resources.adoptSource(source) }
     catch {
@@ -75,8 +76,8 @@ final class ScanSessionState: @unchecked Sendable {
       throw error
     }
     do {
-      try admit(id: id, original: original, frame: frame, liveQuad: liveQuad.map(SessionQuad.coordinates),
-                options: options, selection: selection)
+      try admit(id: id, original: original, frame: frame, liveCorners: liveCorners.map(SessionCorners.coordinates),
+                options: options, selection: selection, autoCrop: autoCrop)
     } catch {
       resources.remove(original)
       if let frame { resources.remove(frame) }
@@ -84,14 +85,17 @@ final class ScanSessionState: @unchecked Sendable {
     }
   }
 
-  /// Takes ownership of already published session resources only on success.
+  /// Takes ownership of already published session resources only on success. Without `autoCrop` the page keeps the
+  /// full frame: it is still analyzed, so the editor's automatic preset and samples have the candidate, but the
+  /// candidate is never applied by itself.
   func admit(id: String, original: SessionResources.Resource, frame: SessionResources.Resource?,
-             liveQuad: QuadCoordinates?, options: DocumentRenderOptions?, selection: CornerInference.Selection?) throws {
+             liveCorners: CornerCoordinates?, options: DocumentRenderOptions?, selection: CornerInference.Selection?,
+             autoCrop: Bool = true) throws {
     try transition {
       try requireOpen()
       guard !id.isEmpty, pages[id] == nil, original.owner === resources, original.kind == .original,
             frame.map({ $0.owner === resources && $0.kind == .frame }) ?? true,
-            liveQuad.map(SessionQuad.renderable) ?? true,
+            liveCorners.map(SessionCorners.renderable) ?? true,
             !pages.values.contains(where: { $0.original === original || (frame != nil && $0.frame === frame) })
       else { throw ScannerCodeError.inputInvalid }
       let settings = try RenderSettings(options)
@@ -99,10 +103,11 @@ final class ScanSessionState: @unchecked Sendable {
       if let frame { try resources.lease(frame).close() }
       let analysisSource = try resources.lease(original)
       let analyze: () throws -> AnalysisValue
-      do { analyze = try actions.prepareAnalysis(analysisSource, liveQuad: liveQuad, selection: selection) }
+      do { analyze = try actions.prepareAnalysis(analysisSource, liveCorners: liveCorners, selection: selection) }
       catch { analysisSource.close(); throw error }
       let page = ScanPage(id: id, original: original, frame: frame, settings: settings,
-                          selection: selection, liveQuad: liveQuad)
+                          selection: selection, liveCorners: liveCorners)
+      page.explicitGeometry = !autoCrop
       pages[id] = page
       changed(page)
       queue.submit(resources.workOwner, kind: .analysis, pageId: id,
@@ -123,27 +128,27 @@ final class ScanSessionState: @unchecked Sendable {
 
   // MARK: Commands
 
-  func setDocumentCrop(_ id: String, quad: DocumentQuad) throws {
+  func setDocumentCrop(_ id: String, corners: DocumentCorners) throws {
     try transition {
       let page = try page(id)
-      try DocumentRenderService.validate(quad)
+      try DocumentRenderService.validate(corners)
       // Even an explicit full-frame edit during analysis protects that choice from its candidate.
       page.explicitGeometry = true
-      edit(page, quad: SessionQuad.coordinates(quad), settings: page.settings)
+      edit(page, corners: SessionCorners.coordinates(corners), settings: page.settings)
     }
   }
 
   func setFilter(_ id: String, filter: DocumentFilter) throws {
     try transition {
       let page = try page(id)
-      edit(page, quad: page.quad, settings: try page.settings.with(filter: filter))
+      edit(page, corners: page.corners, settings: try page.settings.with(filter: filter))
     }
   }
 
   func setShadowRemoval(_ id: String, enabled: Bool) throws {
     try transition {
       let page = try page(id)
-      edit(page, quad: page.quad, settings: try page.settings.with(removeShadows: enabled))
+      edit(page, corners: page.corners, settings: try page.settings.with(removeShadows: enabled))
     }
   }
 
@@ -169,9 +174,9 @@ final class ScanSessionState: @unchecked Sendable {
 
   // MARK: Revisions and publication
 
-  private func edit(_ page: ScanPage, quad: QuadCoordinates, settings: RenderSettings) {
-    if page.quad == quad && page.settings == settings && page.renderFailure == nil { return }
-    page.quad = quad
+  private func edit(_ page: ScanPage, corners: CornerCoordinates, settings: RenderSettings) {
+    if page.corners == corners && page.settings == settings && page.renderFailure == nil { return }
+    page.corners = corners
     page.settings = settings
     page.requestedRevision += 1
     page.renderFailure = nil
@@ -193,9 +198,9 @@ final class ScanSessionState: @unchecked Sendable {
         page.analysis = nil
         page.analysisFailure = ScannerCodeError.code(error, fallback: .analysisFailed)
       }
-      if !page.explicitGeometry, let candidate = page.analysis?.candidate, SessionQuad.renderable(candidate),
-         page.quad != candidate {
-        page.quad = candidate
+      if !page.explicitGeometry, let candidate = page.analysis?.candidate, SessionCorners.renderable(candidate),
+         page.corners != candidate {
+        page.corners = candidate
         page.requestedRevision += 1
         invalidate(page)
       }
@@ -242,7 +247,7 @@ final class ScanSessionState: @unchecked Sendable {
 
   /// Geometry/output configuration determines compatibility; filters and shadows each have a slot.
   private func compatible(_ a: ScanPage.RenderKey, _ b: ScanPage.RenderKey) -> Bool {
-    a.quad == b.quad && (try? a.settings.with(filter: b.settings.filter, removeShadows: b.settings.removeShadows)) == b.settings
+    a.corners == b.corners && (try? a.settings.with(filter: b.settings.filter, removeShadows: b.settings.removeShadows)) == b.settings
   }
 
   private func invalidate(_ page: ScanPage) {

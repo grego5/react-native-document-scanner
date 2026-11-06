@@ -38,9 +38,9 @@ The example uses a reducer/useReducer, not Zustand. It owns draft renders and UR
 
 4. Wire native viewer/pager with session and IDs. Keep the JS PageStrip and replace each Image/thumbnail URI tile with PageThumbnail(session, pageId), using resizeMode="cover". Remove thumbnailUri/pageThumbnailUri plumbing. Preserve movePage/selectIndex, offset-based dragging, orderVersion and count shared-value behavior wherever present at implementation time; order and selection remain in the store. Image render updates flow directly to the native tile; React tile updates are limited to actual presentation/interaction changes. This checkout currently has selection-only tiles: do not invent or move dragging into the library.
 
-5. Keep No crop and Auto crop as draft updates; Submit calls setQuad once, Cancel calls no page command. Filters/shadow commands update native pages immediately; Back no longer discards edits to existing pages.
+5. Keep No crop and Auto crop as draft updates; Submit calls setCorners once, Cancel calls no page command. Filters/shadow commands update native pages immediately; Back no longer discards edits to existing pages.
 
-6. Switch PDF/gallery/sample actions to Task 11 APIs. Delete CachedImageJanitor and referencedUris/render-cache/URI-derivation helpers and JS quad-validation/clamping logic once no callers remain; retain FULL_FRAME and only genuinely necessary UI equality logic. Exported gallery copies are host-owned artifacts: extend example/lib/pdfExports.ts with unique image-export names and the existing seven-day startup retention policy, excluding active native sessions.
+6. Switch PDF/gallery/sample actions to Task 11 APIs. Delete CachedImageJanitor and referencedUris/render-cache/URI-derivation helpers and JS corners-validation/clamping logic once no callers remain; retain FULL_FRAME and only genuinely necessary UI equality logic. Exported gallery copies are host-owned artifacts: extend example/lib/pdfExports.ts with unique image-export names and the existing seven-day startup retention policy, excluding active native sessions.
 
 7. Remove capture busy/readiness copies and any preview subscriptions/promise chains. Update real reducer/store tests with a mocked session including subscription and close behavior.
 
@@ -76,16 +76,16 @@ refactor(example): use session-owned scanner pages
 
 - Replaced JS image/render/cache coordination with a resource-free plain ScanStore and a committed useScanSession lifecycle. Exactly one current-session subscription seeds/reconciles published versions; replay, reset and unmount unsubscribe and close each owner without awaiting. Old-session events and capture completions are ignored.
 - React owns ordered IDs, selection, screen decisions, crop drafts, the 50-page policy, default settings and the export UX lock. Camera capture state supplies readiness/progress, and takePhoto snapshots A4/200 dpi, Original filter and the saved shadow default.
-- Camera, retained ImagePager, CropEditor and memoized PageThumbnail tiles bind the same native session and IDs. Selection-only strip behavior is retained; no drag UI or library API was added. Crop Cancel sends no command, Submit sends setQuad once, and filters/shadow changes persist immediately across Back.
+- Camera, retained ImagePager, CropEditor and memoized PageThumbnail tiles bind the same native session and IDs. Selection-only strip behavior is retained; no drag UI or library API was added. Crop Cancel sends no command, Submit sends setCorners once, and filters/shadow changes persist immediately across Back.
 - PDF, gallery and capture-sample actions use Task 11 ID APIs. Gallery copies use unique host export directories and the existing seven-day startup retention policy, outside native session namespaces. Stale sample/export UI callbacks are suppressed; failures release the app export lock.
-- Deleted CachedImageJanitor, referenced URI/render-cache helpers, URI derivation and JS quad clamping/validation. Only FULL_FRAME and UI outline equality remain.
+- Deleted CachedImageJanitor, referenced URI/render-cache helpers, URI derivation and JS corners clamping/validation. Only FULL_FRAME and UI outline equality remain.
 - Rewrote obsolete reducer/render tests as real store/hook/UI workflow tests with mocked sessions and filesystem/gallery/share/camera boundaries. Coverage includes abandoned render, Effect replay, reset/unmount, read-register-read reconciliation, version ordering, default capture options and returned IDs, crop Cancel/Submit, saved edits, ordering/deletion, page limits, export overlap/errors, permission denial, stale callbacks and host export retention. All camera test calls use a fake camera; no physical capture was requested.
 
 Validation:
 
 - npm run check: passed library typecheck, example typecheck and all 36 JS contracts. The staged Tasks 08-10 example type errors are resolved.
 - git diff --check: passed after removing one extra EOF blank line.
-- Focused example search: no original/thumbnail URI plumbing, legacy analyze/render calls, janitor or JS quad validation/clamping remains.
+- Focused example search: no original/thumbnail URI plumbing, legacy analyze/render calls, janitor or JS corners validation/clamping remains.
 - LSP returned no scanSession.ts diagnostics, but incorrectly parsed ReviewPanel.tsx as non-JSX TypeScript and reported cascading JSX syntax errors. The repository's actual example TypeScript check passed; LSP is not counted as validation evidence for TSX.
 - Native builds, JVM/device tests and human camera/gallery/share checks: not run; no native build or device work was authorized. Build-free checks do not establish native runtime correctness.
 

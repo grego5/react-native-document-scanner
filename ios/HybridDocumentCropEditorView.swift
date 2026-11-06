@@ -13,7 +13,7 @@ final class HybridDocumentCropEditorView: HybridDocumentCropEditorViewSpec, @unc
 
   private lazy var editor: CropEditorView = MainActor.assumeIsolated {
     let editor = CropEditorView()
-    editor.onQuadEdited = { [weak self] _ in
+    editor.onCornersEdited = { [weak self] _ in
       guard let self else { return }
       chosen = true
       publishPreset()
@@ -36,6 +36,7 @@ final class HybridDocumentCropEditorView: HybridDocumentCropEditorViewSpec, @unc
   var session: (any HybridScanSessionSpec) = HybridScanSession.placeholder()
   var pageId: String = ""
   var filter: DocumentFilter? = nil
+  var rectangle: Bool? = nil
   /// A new listener hears the current classification.
   var onPresetChange: ((_ preset: CropDraftPreset) -> Void)? = nil { didSet { reportedPreset = nil } }
   var onLoad: ((_ width: Double, _ height: Double) -> Void)? = nil
@@ -66,6 +67,8 @@ final class HybridDocumentCropEditorView: HybridDocumentCropEditorViewSpec, @unc
     MainActor.assumeIsolated {
       guard !dropped else { return }
       let state = (session as? HybridScanSession)?.state
+      // The mode first, so a new page's saved crop is not squared by the previous page's mode.
+      editor.rectangle = rectangle == true
       if !bound || state !== boundState || pageId != boundId {
         bound = true
         binding?.close()
@@ -73,7 +76,7 @@ final class HybridDocumentCropEditorView: HybridDocumentCropEditorViewSpec, @unc
         boundState = state; boundId = pageId
         reportedPreset = nil
         chosen = true
-        if let saved = state?.snapshot().pages[pageId]?.quad { draft(SessionQuad.coordinates(saved)) }
+        if let saved = state?.snapshot().pages[pageId]?.corners { draft(SessionCorners.coordinates(saved)) }
         discard()
         binding = state.map { owner in
           SessionPageBinding(state: owner, id: pageId, original: true, changed: { [weak self] next in
@@ -106,15 +109,15 @@ final class HybridDocumentCropEditorView: HybridDocumentCropEditorViewSpec, @unc
   func submitResult() throws -> Promise<Variant_Bool_ScannerFailure> {
     onMain { editor in
       let (state, id) = try self.available(chosen: true)
-      try state.setDocumentCrop(id, quad: SessionQuad.quad(editor.quad))
+      try state.setDocumentCrop(id, corners: SessionCorners.corners(editor.corners))
       return .first(true)
     } failed: { .second($0) }
   }
 
-  func getQuadResult() throws -> Promise<Variant_ScannerFailure_DocumentQuad> {
+  func getCornersResult() throws -> Promise<Variant_ScannerFailure_DocumentCorners> {
     onMain { editor in
       _ = try self.available(chosen: true)
-      return .second(SessionQuad.quad(editor.quad))
+      return .second(SessionCorners.corners(editor.corners))
     } failed: { .first($0) }
   }
 
@@ -122,12 +125,10 @@ final class HybridDocumentCropEditorView: HybridDocumentCropEditorViewSpec, @unc
     onMain { editor in
       let (state, id) = try self.available()
       switch preset {
-      case .none: try editor.replaceQuad(CropQuadEditing.fullFrame)
+      case .none: try editor.replaceCorners(CropCornerEditing.fullFrame)
       case .auto:
-        guard let automatic = state.snapshot().pages[id]?.analysis?.candidate?.quad else {
-          throw ScannerCodeError(code: .inputInvalid)
-        }
-        try editor.replaceQuad(SessionQuad.coordinates(automatic))
+        guard let automatic = self.automaticCrop(state, id) else { throw ScannerCodeError(code: .inputInvalid) }
+        try editor.replaceCorners(automatic)
       @unknown default: throw ScannerCodeError(code: .inputInvalid)
       }
       self.chosen = true
@@ -166,21 +167,29 @@ final class HybridDocumentCropEditorView: HybridDocumentCropEditorViewSpec, @unc
   /// or the full frame when even that is not a valid crop, as a suggestion only, and the draft
   /// can be read or submitted once an edit or preset replaces it.
   @MainActor
-  private func draft(_ saved: QuadCoordinates) {
-    chosen = CropQuadEditing.isValid(saved)
-    let candidates = [saved, CropQuadEditing.clampToFrame(saved), CropQuadEditing.fullFrame]
-    try? editor.replaceQuad(candidates.first(where: CropQuadEditing.isValid)!)
+  private func draft(_ saved: CornerCoordinates) {
+    chosen = CropCornerEditing.isValid(saved)
+    let candidates = [saved, CropCornerEditing.clampToFrame(saved), CropCornerEditing.fullFrame]
+    try? editor.replaceCorners(candidates.first(where: CropCornerEditing.isValid)!)
+  }
+
+  /// The analysis candidate, as the editor draws it: its bounding rectangle for a rectangle crop.
+  @MainActor
+  private func automaticCrop(_ state: ScanSessionState, _ id: String) -> CornerCoordinates? {
+    guard let candidate = state.snapshot().pages[id]?.analysis?.candidate?.corners else { return nil }
+    let corners = SessionCorners.coordinates(candidate)
+    return editor.rectangle ? CropCornerEditing.boundingRectangle(corners) : corners
   }
 
   /// Classifies the draft once it is the user's crop.
   @MainActor
   private func publishPreset() {
     guard !dropped, binding?.valid == true, chosen, let onPresetChange else { return }
-    let quad = editor.quad
-    let automatic = boundId.flatMap { boundState?.snapshot().pages[$0]?.analysis?.candidate?.quad }
+    let corners = editor.corners
+    let automatic = boundState.flatMap { state in boundId.flatMap { automaticCrop(state, $0) } }
     let preset: CropDraftPreset
-    if quad == CropQuadEditing.fullFrame { preset = .none }
-    else if let automatic, quad == SessionQuad.coordinates(automatic) { preset = .auto }
+    if corners == CropCornerEditing.fullFrame { preset = .none }
+    else if let automatic, corners == automatic { preset = .auto }
     else { preset = .custom }
     guard preset != reportedPreset else { return }
     reportedPreset = preset

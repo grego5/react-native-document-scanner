@@ -64,7 +64,7 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual([self.annotations], list(self.annotations.parent.iterdir()))
         self.assertNotIn(b'\r\n', self.annotations.read_bytes())
 
-    def test_reviewed_export_has_native_document_quad_and_no_image_files(self):
+    def test_reviewed_export_has_native_document_corners_and_no_image_files(self):
         self.manifest['images']['page.jpg'] = self.document()
         save_manifest(self.annotations, self.manifest)
         output = self.root / 'export' / 'labels.json'
@@ -74,15 +74,15 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(1, result['exported'])
         self.assertEqual(1, result['skippedUnlabeled'])
         self.assertEqual(['page.jpg'], list(exported['images']))
-        quad = exported['images']['page.jpg']['quad']
-        self.assertEqual(set(CORNERS), set(quad))
-        self.assertEqual(dict(x=.1, y=.2), quad['topLeft'])
+        corners = exported['images']['page.jpg']['quad']
+        self.assertEqual(set(CORNERS), set(corners))
+        self.assertEqual(dict(x=.1, y=.2), corners['topLeft'])
         self.assertEqual([output], list(output.parent.iterdir()))
         self.assertNotIn('bytes', exported['images']['page.jpg'])
         with self.assertRaises(FileExistsError):
             export_labels(self.annotations, output)
 
-    def test_no_document_exports_null_quad(self):
+    def test_no_document_exports_null_corners(self):
         sample = dict(self.manifest['images']['page.jpg'], status='no-document', quad=None)
         validate_sample(sample)
         self.manifest['images']['page.jpg'] = sample
@@ -121,15 +121,15 @@ class MetadataTests(unittest.TestCase):
 
     def test_scanner_samples_seed_labels_and_receive_corrections(self):
         import hashlib
-        quad = self.document()['quad']
+        corners = self.document()['quad']
         for name, status in (('1793396103268-640.png', 'unlabeled'), ('1793396103268-4000.jpg', 'document')):
             Image.new('RGB', (60, 80), 'white').save(self.photos / name)
             digest = hashlib.sha256((self.photos / name).read_bytes()).hexdigest()
             save_manifest((self.photos / name).with_suffix('.json'), dict(
-                version=2, coordinateSpace='exifUprightNormalized', image=name, sha256=digest, status=status, quad=quad,
-                prediction=dict(quad=quad, score=.9)))
+                version=2, coordinateSpace='exifUprightNormalized', image=name, sha256=digest, status=status, quad=corners,
+                prediction=dict(quad=corners, score=.9)))
         manifest = initialize(self.photos, self.annotations)
-        self.assertEqual(('unlabeled', quad), (manifest['images']['1793396103268-640.png']['status'],
+        self.assertEqual(('unlabeled', corners), (manifest['images']['1793396103268-640.png']['status'],
                                                manifest['images']['1793396103268-640.png']['quad']))
         self.assertEqual('document', manifest['images']['1793396103268-4000.jpg']['status'])
         self.assertNotIn('1793396103268-640.json', manifest['images'])

@@ -30,7 +30,7 @@ Camera takePhoto currently returns file metadata; the app sets busy, copies came
 
 ## Implementation steps
 
-1. Require the native session prop and change takePhoto to Promise<string> returning the new page ID. Extend TakePhotoOptions with renderOptions using the existing DocumentRenderOptions type and preserve skipQualityGate.
+1. Require the native session prop and change takePhoto to Promise<string> returning the new page ID. Extend TakePhotoOptions with renderOptions using the existing DocumentRenderOptions type and preserve skipLowQualityControl.
 
 2. At shutter admission, snapshot session identity, render options and gate overrides before posting asynchronous work. Reserve session resources; save the original and frame inside its directory. Publish the page only after successful source saving and start Task 05 analysis/rendering.
 
@@ -72,7 +72,7 @@ feat(camera): capture pages into native sessions
 
 ## Implementation evidence
 
-- Camera now requires a native-backed ScanSession prop and takePhoto resolves a page ID. TakePhotoOptions accepts DocumentRenderOptions while preserving skipQualityGate. Removed the obsolete public CapturedPhoto type; Nitrogen removed its unused transport bindings automatically. No compatibility aliases were added.
+- Camera now requires a native-backed ScanSession prop and takePhoto resolves a page ID. TakePhotoOptions accepts DocumentRenderOptions while preserving skipLowQualityControl. Removed the obsolete public CapturedPhoto type; Nitrogen removed its unused transport bindings automatically. No compatibility aliases were added.
 - Added SessionCapture and CaptureAdmission. Native admission snapshots session identity/generation, normalized render settings, selected immutable model and gate settings before asynchronous main work, and reserves original/frame writer pins. Overlap reports capture/busy. Model/camera readiness, first streaming preview, permission, mode and session validity are checked before a physical shot.
 - CameraX writes directly to the reserved original staging file. Saved-source description and unfiltered frame encoding run as CAPTURE jobs on the session image FIFO. The main owner claims publication only for the admitted session generation, remembers the existing sample ticket under the immutable original's final name, publishes the page and starts native authoritative analysis/rendering with captured defaults/model selection. Analysis Actions now accept that explicit model selection.
 - Close/session replacement/detach reject once and invalidate publication. Rejected physical captures retain their slot, original/frame producer pins and registered directory through physical/queued/running save completion. Stale results clean their outputs and never enter another scan. Nonterminal callbacks and frozen preview handoff are scoped to the admitted generation; an old session close cannot cancel a capture belonging to a newly bound owner. Original source pixels remain unchanged.

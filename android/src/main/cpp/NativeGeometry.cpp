@@ -8,7 +8,7 @@ namespace {
 namespace g = document_scanner::geometry;
 using document_scanner::Orientation;
 using document_scanner::Point;
-using document_scanner::Quad;
+using document_scanner::Corners;
 using document_scanner::Size;
 using Doubles = alias_ref<JArrayDouble>;
 
@@ -22,9 +22,9 @@ Orientation orientation(jint value) {
     throw std::invalid_argument("EXIF orientation must be between 1 and 8.");
   return static_cast<Orientation>(value);
 }
-Quad quad(Doubles values) {
+Corners corners(Doubles values) {
   if (!values || values->size() != 8)
-    throw std::invalid_argument("A quad requires eight coordinates.");
+    throw std::invalid_argument("A corners requires eight coordinates.");
   const auto a = values->getRegion(0, 8);
   return {Point{a[0], a[1]}, Point{a[2], a[3]}, Point{a[4], a[5]}, Point{a[6], a[7]}};
 }
@@ -76,7 +76,7 @@ local_ref<JArrayDouble> sourcePointNative(alias_ref<jclass>, jdouble x, jdouble 
 local_ref<JArrayDouble> coordinatesNative(alias_ref<jclass>, Doubles values, jint w, jint h, jboolean normalized) {
   return checked([&]() -> local_ref<JArrayDouble> {
     if (!values || (values->size() != 2 && values->size() != 8))
-      throw std::invalid_argument("Expected a point or quad.");
+      throw std::invalid_argument("Expected a point or corners.");
     const auto s = size(w, h);
     const auto a = values->getRegion(0, values->size());
     std::vector<Point> result;
@@ -87,7 +87,7 @@ local_ref<JArrayDouble> coordinatesNative(alias_ref<jclass>, Doubles values, jin
 }
 local_ref<JArrayInt> inferenceCropNative(alias_ref<jclass>, Doubles seed, jint w, jint h) {
   return checked([&]() -> local_ref<JArrayInt> {
-    const auto crop = g::photoInferenceCrop(quad(seed), size(w, h));
+    const auto crop = g::photoInferenceCrop(corners(seed), size(w, h));
     if (!crop)
       return nullptr;
     const jint a[]{static_cast<jint>(crop->left), static_cast<jint>(crop->top), static_cast<jint>(crop->width),
@@ -101,32 +101,32 @@ local_ref<JArrayDouble> regionNative(alias_ref<jclass>, Doubles values, jint l, 
                                      jint ph) {
   return checked([&]() -> local_ref<JArrayDouble> {
     return points(
-        g::RegionTransform(size(pw, ph), {double(l), double(t), double(w), double(h)}).toSource(quad(values)));
+        g::RegionTransform(size(pw, ph), {double(l), double(t), double(w), double(h)}).toSource(corners(values)));
   });
 }
 local_ref<JArrayDouble> clampNative(alias_ref<jclass>, Doubles values) {
-  return checked([&]() -> local_ref<JArrayDouble> { return points(g::clampToFrame(quad(values))); });
+  return checked([&]() -> local_ref<JArrayDouble> { return points(g::clampToFrame(corners(values))); });
 }
 jboolean validCropNative(alias_ref<jclass>, Doubles values) {
-  return checked([&]() -> jboolean { return values && values->size() == 8 && g::validCropQuad(quad(values)); });
+  return checked([&]() -> jboolean { return values && values->size() == 8 && g::validCropCorners(corners(values)); });
 }
 local_ref<JArrayDouble> moveNative(alias_ref<jclass>, Doubles values, jint index, jdouble x, jdouble y, jboolean edge) {
   return checked([&]() -> local_ref<JArrayDouble> {
-    const auto q = quad(values);
+    const auto q = corners(values);
     const auto next = edge ? g::moveEdge(q, index, {x, y}) : g::moveCorner(q, index, {x, y});
     return next ? points(*next) : nullptr;
   });
 }
 void validateRenderNative(alias_ref<jclass>, Doubles values) {
   try {
-    g::validateRenderQuad(quad(values));
+    g::validateRenderCorners(corners(values));
   } catch (const std::invalid_argument &e) {
     throwNewJavaException("com/margelo/nitro/documentscanner/InvalidInputException", e.what());
   }
 }
 local_ref<JArrayDouble> targetNative(alias_ref<jclass>, Doubles values, jdouble scale, jdouble paper) {
   try {
-    const auto target = g::targetCanvas(quad(values), scale, paper > 0 ? std::optional<double>(paper) : std::nullopt);
+    const auto target = g::targetCanvas(corners(values), scale, paper > 0 ? std::optional<double>(paper) : std::nullopt);
     const double result[]{double(target.size.width), double(target.size.height)};
     return doubles(result);
   } catch (const std::invalid_argument &e) {
@@ -140,7 +140,7 @@ local_ref<JArrayDouble> outputPolygonNative(alias_ref<jclass>, Doubles values, j
       throw std::invalid_argument("Homography requires nine values.");
     const auto a = homography->getRegion(0, 9);
     const g::Matrix m{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]};
-    const auto clipped = g::clipImageToQuad(quad(values), size(w, h));
+    const auto clipped = g::clipImageToCorners(corners(values), size(w, h));
     return points(g::normalizedOutputPolygon(clipped, m, size(tw, th)));
   });
 }

@@ -21,7 +21,7 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 - .agents/skills/docs/references/architecture.md â€” Images, Capture quality, Live guidance, Document focus
 - android/src/androidTest/java/com/margelo/nitro/documentscanner/processing/DocCornerNetRuntimeTest.kt â€” runtime fixture assertions
 - android/src/test/java/com/margelo/nitro/documentscanner/CaptureGateTest.kt and CaptureStabilityTest.kt
-- android/src/test/java/com/margelo/nitro/documentscanner/processing/LiveQuadTraceReplayTest.kt
+- android/src/test/java/com/margelo/nitro/documentscanner/processing/LiveGuideTraceReplayTest.kt
 - tools/models/README.md â€” private fixture preparation
 
 ## Current behavior and invariants
@@ -31,12 +31,12 @@ The bundled model is 224Ã—224 float32 RGB with nine outputs. Photo tensor err
 ## Implementation steps
 
 1. Inventory existing pure-policy, instrumented image, and trace cases; map every later migration to named baseline cases.
-2. Create portable synthetic fixtures for orientation, strided pixels, quads, policy events, filters, gray PNG, and PDF placement under tests/fixtures; keep private images and reports in ignored .local/.
+2. Create portable synthetic fixtures for orientation, strided pixels, corners, policy events, filters, gray PNG, and PDF placement under tests/fixtures; keep private images and reports in ignored .local/.
 3. Add an Android export harness only where existing tests cannot expose engine-boundary inputs and expected outputs. Do not record new captures automatically.
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 
@@ -46,7 +46,7 @@ Keep platform handles out of portable C++ interfaces; borrow pixels only through
 ## Validation commands
 
 - npm run check
-- npm run test:native -- -Test '*CaptureGateTest,*CaptureStabilityTest,*LiveQuadStabilizerTest'
+- npm run test:native -- -Test '*CaptureGateTest,*CaptureStabilityTest,*GuideStabilizerTest'
 
 Verification prerequisites: establish the exact compiler/OpenCV setup before shared builds and the exact Mac workspace/scheme/destination before Xcode commands. Replace command placeholders only with verified values and record the expanded command. Report each unavailable environment or private fixture as not run with its reason; never report missing tests or compilation as passed. When moving a pure algorithm to C++, move its assertions in the same task so removed JVM tests do not become a false validation signal. Native camera captures always require a human tap.
 
@@ -64,15 +64,15 @@ test: establish cross-platform scanner parity fixtures
 
 ## Implementation and validation — 2026-10-31
 
-Implemented portable UTF-8 TSV fixtures and a migration inventory in [tests/fixtures](../tests/fixtures/README.md). Seven fixture files cover orientation, padded RGB rows, normalized quads, ordered capture policy events, filters, gray PNG and PDF placement. A test-only reader loads the same files as JVM resources and instrumentation assets. Existing source-loader, faint-stroke and independent PNG assertions consume those fixtures; new JVM and PDF assertions freeze boundary results. No production algorithms, thresholds, generated bindings or public contracts changed. No export harness was needed because existing test boundaries expose the required inputs and results.
+Implemented portable UTF-8 TSV fixtures and a migration inventory in [tests/fixtures](../tests/fixtures/README.md). Seven fixture files cover orientation, padded RGB rows, normalized corners, ordered capture policy events, filters, gray PNG and PDF placement. A test-only reader loads the same files as JVM resources and instrumentation assets. Existing source-loader, faint-stroke and independent PNG assertions consume those fixtures; new JVM and PDF assertions freeze boundary results. No production algorithms, thresholds, generated bindings or public contracts changed. No export harness was needed because existing test boundaries expose the required inputs and results.
 
 Changed files: tests/fixtures/README.md and parity/*.tsv; android/build.gradle; testSupport/processing/ParityFixtures.kt; test/processing/ParityFixtureTest.kt and GrayscalePngTest.kt; androidTest/processing/SourceImageLoaderTest.kt, DocumentFiltersTest.kt and PdfWriterTest.kt; this task and TASKS.md. Test paths above are under android/src with the existing com/margelo/nitro/documentscanner package.
 
 Validation:
 - npm run check: passed library/example typechecks and all 16 JS contract tests.
-- The planned npm run test:native command with comma-separated -Test values compiled but failed with no tests found: npm forwarded one combined Gradle filter. Corrected invocation below passed 46 tests, zero failures, one assumption skip across 47 tests. The skip is LiveQuadTraceReplayTest.recordedTracesReplay: no private recorded trace path was supplied.
+- The planned npm run test:native command with comma-separated -Test values compiled but failed with no tests found: npm forwarded one combined Gradle filter. Corrected invocation below passed 46 tests, zero failures, one assumption skip across 47 tests. The skip is LiveGuideTraceReplayTest.recordedTracesReplay: no private recorded trace path was supplied.
 - Expanded equivalent native invocation from repository root:
-  ./tools/test-native.ps1 -Test @('*CaptureGateTest','*CaptureStabilityTest','*LiveQuadStabilizerTest','*ParityFixtureTest','*GrayscalePngTest','*DocCornerGeometryTest','*LiveQuadTraceReplayTest')
+  ./tools/test-native.ps1 -Test @('*CaptureGateTest','*CaptureStabilityTest','*GuideStabilizerTest','*ParityFixtureTest','*GrayscalePngTest','*DocCornerGeometryTest','*LiveGuideTraceReplayTest')
 - Device: Samsung SM-G998U, adb serial 192.168.1.55:5555, Android API 35, arm64-v8a. Existing prepared example/android project; compile SDK/build tools 37, NDK 27.1.12297006, Kotlin 2.2.10, existing org.opencv:opencv:4.12.0. No new OpenCV runtime or shared-core build.
 - Expanded device invocation from repository root (platform-tools added to PATH):
   $env:ORG_GRADLE_PROJECT_docCornerFixtures = 'C:/dev/react-native-document-scanner/.local/doccornernet-runtime/assets'

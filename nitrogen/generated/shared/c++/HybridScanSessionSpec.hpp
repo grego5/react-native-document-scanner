@@ -17,8 +17,8 @@
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `SessionPdfOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct SessionPdfOptions; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentFilter` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
 // Forward declaration of `ScanSessionSnapshot` to properly resolve imports.
@@ -35,7 +35,7 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include <vector>
 #include <optional>
 #include "SessionPdfOptions.hpp"
-#include "DocumentQuad.hpp"
+#include "DocumentCorners.hpp"
 #include "DocumentFilter.hpp"
 #include "ScanSessionSnapshot.hpp"
 #include "ScanSessionObservation.hpp"
@@ -76,7 +76,7 @@ namespace margelo::nitro::documentscanner {
       virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> createPdfResult(const std::optional<std::vector<std::string>>& pageIds, const SessionPdfOptions& options) = 0;
       virtual std::shared_ptr<Promise<std::variant<std::vector<std::string>, ScannerFailure>>> exportImagesResult(const std::optional<std::vector<std::string>>& pageIds, const std::string& outputDirectory) = 0;
       virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveCaptureSampleResult(const std::string& pageId) = 0;
-      virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setDocumentCropResult(const std::string& pageId, const DocumentQuad& quad) = 0;
+      virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setDocumentCropResult(const std::string& pageId, const DocumentCorners& corners) = 0;
       virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setFilterResult(const std::string& pageId, DocumentFilter filter) = 0;
       virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setShadowRemovalResult(const std::string& pageId, bool enabled) = 0;
       virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setPageOrderResult(const std::vector<std::string>& pageIds) = 0;

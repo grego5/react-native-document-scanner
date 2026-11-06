@@ -23,6 +23,7 @@ namespace margelo::nitro::documentscanner::views {
     session(nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>>::fromRawValue("DocumentCropEditorView", "session", rawProps, sourceProps.session)),
     pageId(nitro::ReactProp<std::string>::fromRawValue("DocumentCropEditorView", "pageId", rawProps, sourceProps.pageId)),
     filter(nitro::ReactProp<std::optional<DocumentFilter>>::fromRawValue("DocumentCropEditorView", "filter", rawProps, sourceProps.filter)),
+    rectangle(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentCropEditorView", "rectangle", rawProps, sourceProps.rectangle)),
     onPresetChange(nitro::ReactProp<std::optional<std::function<void(CropDraftPreset /* preset */)>>>::fromRawValue("DocumentCropEditorView", "onPresetChange", rawProps, sourceProps.onPresetChange)),
     onLoad(nitro::ReactProp<std::optional<std::function<void(double /* width */, double /* height */)>>>::fromRawValue("DocumentCropEditorView", "onLoad", rawProps, sourceProps.onLoad)),
     onError(nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* failure */)>>>::fromRawValue("DocumentCropEditorView", "onError", rawProps, sourceProps.onError)),
@@ -33,6 +34,7 @@ namespace margelo::nitro::documentscanner::views {
       case hashString("session"): return true;
       case hashString("pageId"): return true;
       case hashString("filter"): return true;
+      case hashString("rectangle"): return true;
       case hashString("onPresetChange"): return true;
       case hashString("onLoad"): return true;
       case hashString("onError"): return true;

@@ -69,7 +69,7 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 The session owns membership, revisions, admission, publication, and resource retirement. Engine services own synchronous computation, codecs, and local temporary handles. The process-wide source/inference services retain their existing ownership; camera/views borrow the session. Do not add a second processor-owned queue/cache/disposal namespace.
 
@@ -107,7 +107,7 @@ Required checks must pass before Status changes to Completed. A phase may be pre
 
 The internal ObjC++ render/PDF bridge, Swift services, test suite and exported
 header are implemented. Shared `Point` and `Size` names are explicitly qualified
-to avoid Apple SDK type collisions. The test quad uses an explicit type and
+to avoid Apple SDK type collisions. The test corners uses an explicit type and
 contextual initializer to avoid the observed Swift/C++ lookup diagnostic.
 Generated bindings and public session behavior are unchanged.
 

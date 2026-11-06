@@ -28,10 +28,10 @@ internal class SessionExportSnapshot(
       val result = try { analysis.getNow(null) } catch (error: CompletionException) {
         throw ScannerException(ScannerErrorCode.ANALYSIS_FAILED, error.cause ?: error)
       }
-      val candidate = result?.candidate?.quad
-      val quad = candidate?.takeIf { NativeQuadGeometry.renderIssue(NativeQuadGeometry.coordinates(it)) == null }
+      val candidate = result?.candidate?.corners
+      val corners = candidate?.takeIf { NativeCornerGeometry.renderIssue(NativeCornerGeometry.coordinates(it)) == null }
         ?: ScanPage.fullFrame()
-      return requested.copy(quad = quad)
+      return requested.copy(corners = corners)
     }
     override fun close() {
       if (!closed.compareAndSet(false, true)) return

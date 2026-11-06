@@ -9,13 +9,13 @@ import XCTest
 /// Scripted model output, shared by every runtime a `CornerInference` opens.
 private final class Script: @unchecked Sendable {
   private let lock = NSLock()
-  private var quad: [Double]? = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
+  private var corners: [Double]? = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
   private var score = 0.99
   private var fails = false
   private(set) var calls: [(orientation: UInt8, crop: CGRect, rowBytes: Int)] = []
 
-  func set(quad: [Double]?, score: Double = 0.99, fails: Bool = false) {
-    lock.lock(); self.quad = quad; self.score = score; self.fails = fails; lock.unlock()
+  func set(corners: [Double]?, score: Double = 0.99, fails: Bool = false) {
+    lock.lock(); self.corners = corners; self.score = score; self.fails = fails; lock.unlock()
   }
 
   var count: Int { lock.lock(); defer { lock.unlock() }; return calls.count }
@@ -24,7 +24,7 @@ private final class Script: @unchecked Sendable {
     lock.lock(); defer { lock.unlock() }
     calls.append((orientation, crop, CVPixelBufferGetBytesPerRow(buffer)))
     if fails { throw CornerInferenceError.inferenceFailed }
-    return CornerPrediction(quad: quad, score: score, preprocessingMs: 0, inferenceMs: 0)
+    return CornerPrediction(corners: corners, score: score, preprocessingMs: 0, inferenceMs: 0)
   }
 }
 
@@ -94,7 +94,7 @@ final class LiveGuidanceTests: XCTestCase {
     let rows = try String(contentsOf: url, encoding: .utf8).split(separator: "\n")
       .map(String.init).filter { !$0.isEmpty && !$0.hasPrefix("#") }.dropFirst()
     XCTAssertFalse(rows.isEmpty)
-    func quad(_ text: String) -> LiveQuad? { text == "-" ? nil : text.split(separator: ",").map { Double($0)! } }
+    func corners(_ text: String) -> LiveCorners? { text == "-" ? nil : text.split(separator: ",").map { Double($0)! } }
     var name: String?
     var policy = AdaptiveDetectionPolicy()
     var checked = 0
@@ -103,12 +103,12 @@ final class LiveGuidanceTests: XCTestCase {
       XCTAssertEqual(v.count, 12, line)
       if v[0] != name { name = v[0]; policy = AdaptiveDetectionPolicy() }
       switch v[1] {
-      case "reference": policy.reference(quad(v[5]))
+      case "reference": policy.reference(corners(v[5]))
       case "confirmed": policy.confirmed()
       case "reset": policy.reset()
       case "next":
         let gap = policy.next(tracking: v[2] == "true", reliable: v[3] == "true", degraded: v[4] == "true",
-                              current: quad(v[5]), width: Int(v[6])!, height: Int(v[7])!)
+                              current: corners(v[5]), width: Int(v[6])!, height: Int(v[7])!)
         XCTAssertEqual(gap, v[8] == "max" ? Int64.max : Int64(v[8])!, line)
         XCTAssertEqual(policy.status, v[9], line)
         XCTAssertEqual(policy.lastReset, v[10], line)
@@ -161,7 +161,7 @@ final class LiveGuidanceTests: XCTestCase {
     XCTAssertEqual(call.crop, CGRect(x: 80, y: 0, width: 480, height: 480))
     let result = try XCTUnwrap(rig.results.last)
     XCTAssertEqual(result.status, .tracking)
-    XCTAssertEqual(result.quad, [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
+    XCTAssertEqual(result.corners, [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
     XCTAssertEqual(result.framing?.orientation, 6)
     XCTAssertEqual(result.framing?.framed, PixelSize(480, 480))
     XCTAssertEqual(result.acceptanceId, 1)
@@ -233,7 +233,7 @@ final class LiveGuidanceTests: XCTestCase {
     rig.detector.begin(enabled: true)
     rig.analyze(buffer)
     XCTAssertEqual(rig.results.last?.status, .tracking)
-    rig.script.set(quad: [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8], score: 0.5)
+    rig.script.set(corners: [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8], score: 0.5)
     rig.clock.advance(100_000_000)
     rig.analyze(buffer)
     XCTAssertEqual(rig.results.last?.status, .searching)
@@ -256,13 +256,13 @@ final class LiveGuidanceTests: XCTestCase {
     rig.analyze(blank)
     XCTAssertEqual(rig.results.last?.status, .tracking)
     // Without flow evidence the model alone decides: a missing page clears the guide.
-    rig.script.set(quad: nil)
+    rig.script.set(corners: nil)
     rig.clock.advance(100_000_000)
     rig.analyze(blank)
     XCTAssertEqual(rig.results.last?.status, .searching)
-    XCTAssertNil(rig.results.last?.quad)
+    XCTAssertNil(rig.results.last?.corners)
     // An accepted guide that is not refreshed expires on main at its deadline.
-    rig.script.set(quad: [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
+    rig.script.set(corners: [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
     rig.clock.advance(100_000_000)
     rig.analyze(blank)
     XCTAssertEqual(rig.results.last?.status, .tracking)
@@ -278,14 +278,14 @@ final class LiveGuidanceTests: XCTestCase {
   func testRuntimeFailureReportsUnavailableUntilTheNextStart() throws {
     let rig = Rig()
     let buffer = try frame()
-    rig.script.set(quad: nil, fails: true)
+    rig.script.set(corners: nil, fails: true)
     rig.detector.begin(enabled: true)
     rig.analyze(buffer)
     XCTAssertEqual(rig.results.last?.status, .unavailable)
     XCTAssertTrue(rig.detector.state.hasFailed)
     rig.analyze(buffer)
     XCTAssertEqual(rig.script.count, 1, "a failed detector stops inferring")
-    rig.script.set(quad: [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
+    rig.script.set(corners: [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])
     rig.detector.begin(enabled: true)
     rig.analyze(buffer)
     XCTAssertEqual(rig.results.last?.status, .tracking)
@@ -305,7 +305,7 @@ final class LiveGuidanceTests: XCTestCase {
     XCTAssertEqual(carried.status, .tracking)
     XCTAssertGreaterThan(carried.acceptanceId, first.acceptanceId, "flow retention refreshes the hold")
     XCTAssertNil(carried.score, "a carried frame has no inference score")
-    XCTAssertEqual(carried.quad?.count, 8)
+    XCTAssertEqual(carried.corners?.count, 8)
     // Losing the page's features wakes inference to confirm it again.
     rig.analyze(blank)
     rig.analyze(blank)
@@ -342,29 +342,39 @@ final class LiveGuidanceTests: XCTestCase {
 
   // MARK: - Overlay
 
-  func testTransitionEasesSnapsLargeJumpsAndHonoursZeroDuration() {
-    var transition = QuadTransition()
+  func testTransitionSmoothsSmallGapsFollowsLargeOnesAndSnapsJumps() {
     let a: [CGFloat] = [0, 0, 100, 0, 100, 100, 0, 100]
-    transition.retarget(a, nowNs: 0, snapDistance: 50)
+    let frame: Int64 = 16_000_000
+    func firstFrameShare(_ shift: CGFloat) -> CGFloat {
+      var transition = GuideTransition()
+      transition.retarget(a, nowNs: 0, snapDistance: 200)
+      transition.retarget(a.map { $0 + shift }, nowNs: 0, snapDistance: 200)
+      transition.advance(nowNs: frame)
+      return transition.points[0] / shift
+    }
+    // A 4 pt jitter keeps the 80 ms time constant; a 90 pt move of a 200 pt snap distance nears the 20 ms one.
+    XCTAssertEqual(firstFrameShare(4), 1 - exp(-16.0 / 80), accuracy: 1e-6)
+    XCTAssertGreaterThan(firstFrameShare(90), firstFrameShare(4) * 2)
+
+    var transition = GuideTransition()
+    transition.retarget(a, nowNs: 0, snapDistance: 200)
     XCTAssertEqual(transition.points, a, "the first guide is drawn in place")
     XCTAssertFalse(transition.isAnimating)
-    let b = a.map { $0 + 10 }
-    transition.retarget(b, nowNs: 0, snapDistance: 50)
+    let b = a.map { $0 + 20 }
+    transition.retarget(b, nowNs: 0, snapDistance: 200)
     XCTAssertTrue(transition.isAnimating)
-    transition.advance(nowNs: 25_000_000)
-    XCTAssertEqual(transition.points[0], 5, accuracy: 1e-9)
-    transition.advance(nowNs: 50_000_000)
-    XCTAssertEqual(transition.points, b)
-    XCTAssertFalse(transition.isAnimating)
-    transition.retarget(b.map { $0 + 60 }, nowNs: 60_000_000, snapDistance: 50)
+    var now: Int64 = 0
+    while transition.isAnimating && now < 2_000_000_000 { now += frame; transition.advance(nowNs: now) }
+    XCTAssertEqual(transition.points, b, "it lands exactly on its target")
+    transition.retarget(b.map { $0 + 300 }, nowNs: now, snapDistance: 200)
     XCTAssertFalse(transition.isAnimating, "a likely new page snaps")
     transition.durationNs = 0
-    transition.retarget(b, nowNs: 70_000_000, snapDistance: 500)
+    transition.retarget(b, nowNs: now + 1, snapDistance: 500)
     XCTAssertEqual(transition.points, b)
   }
 
   @MainActor
-  func testOverlayMapsTheFramedQuadAndDimsHeldGuides() throws {
+  func testOverlayMapsTheFramedCornersAndDimsHeldGuides() throws {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
     let overlay = LiveGuideOverlay(clock: { 0 })
     overlay.frame = window.bounds
@@ -373,7 +383,7 @@ final class LiveGuidanceTests: XCTestCase {
     overlay.viewfinder = true
     XCTAssertTrue(overlay.showsViewfinder)
     let framing = try XCTUnwrap(CameraFraming(buffer: PixelSize(640, 480), rotationAngle: 90, square: false))
-    var result = LiveGuideResult(status: .tracking, quad: [0, 0, 1, 0, 1, 1, 0, 1], framing: framing,
+    var result = LiveGuideResult(status: .tracking, corners: [0, 0, 1, 0, 1, 1, 0, 1], framing: framing,
                                  acceptanceId: 3, deadlineNs: 1)
     overlay.show(result)
     // A 480x640 upright frame fits 390x520, centered vertically.
@@ -400,7 +410,7 @@ final class LiveGuidanceTests: XCTestCase {
     // preview layer keeps showing them unturned.
     let capture = try XCTUnwrap(CameraFraming(buffer: PixelSize(640, 480), rotationAngle: 90, square: false))
     overlay.previewFraming = try XCTUnwrap(CameraFraming(buffer: PixelSize(640, 480), rotationAngle: 0, square: false))
-    overlay.show(LiveGuideResult(status: .tracking, quad: [0, 0, 1, 0, 1, 1, 0, 1], framing: capture,
+    overlay.show(LiveGuideResult(status: .tracking, corners: [0, 0, 1, 0, 1, 1, 0, 1], framing: capture,
                                  acceptanceId: 1, deadlineNs: 1))
     // The 640x480 preview fits 390x292.5, centered vertically. Upright TL is the buffer's bottom-left.
     XCTAssertEqual(overlay.drawnPoints, [0, 568.25, 0, 275.75, 390, 275.75, 390, 568.25])
@@ -431,7 +441,7 @@ final class LiveGuidanceTests: XCTestCase {
     func analyzeLive(_ buffer: CVPixelBuffer, orientation: UInt8, crop: CGRect) throws -> CornerPrediction {
       gate.entered.signal()
       gate.release.wait()
-      return CornerPrediction(quad: nil, score: 0, preprocessingMs: 0, inferenceMs: 0)
+      return CornerPrediction(corners: nil, score: 0, preprocessingMs: 0, inferenceMs: 0)
     }
   }
 
@@ -491,7 +501,7 @@ final class LiveGuidanceTests: XCTestCase {
     let older = folder.appendingPathComponent("older.tflite"), newer = folder.appendingPathComponent("newer.tflite")
     try Data([0xA]).write(to: older)
     try Data([0xB]).write(to: newer)
-    let loader = QuadModelLoader(inference: inference)
+    let loader = CornerModelLoader(inference: inference)
     var olderOutcomes: [ScannerErrorCode?] = [], newerOutcomes: [ScannerErrorCode?] = []
     let finished = expectation(description: "loads")
     finished.expectedFulfillmentCount = 2
@@ -554,7 +564,7 @@ final class LiveGuidanceTests: XCTestCase {
       view.view.frame = window.bounds
       view.onDocumentStateChange = { [unowned self] in documents.append($0) }
       view.onError = { [unowned self] in errors.append($0.code) }
-      view.quadTensorModel = "model.tflite"
+      view.cornerDetectionModel = "model.tflite"
       window.addSubview(view.view)
       window.layoutIfNeeded()
     }
@@ -578,7 +588,7 @@ final class LiveGuidanceTests: XCTestCase {
     rig.view.afterUpdate()
     XCTAssertEqual(rig.models.count, 1, "the same source is not prepared again")
     rig.modelResult = nil
-    rig.view.quadTensorModel = "other.tflite"
+    rig.view.cornerDetectionModel = "other.tflite"
     rig.view.afterUpdate()
     XCTAssertEqual(rig.camera.starts, 1)
     XCTAssertEqual(rig.documents.last, .searching)
@@ -598,7 +608,7 @@ final class LiveGuidanceTests: XCTestCase {
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     XCTAssertEqual(rig.documents.last, .tracking)
     XCTAssertTrue(preview.guide.hasOutline)
-    rig.view.guide = false
+    rig.view.guideLiveCorners = false
     rig.view.afterUpdate()
     XCTAssertEqual(rig.documents.last, .off)
     XCTAssertFalse(preview.guide.hasOutline)
@@ -608,10 +618,10 @@ final class LiveGuidanceTests: XCTestCase {
     sink(buffer, 2_000_000)
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     XCTAssertEqual(rig.script.count, calls)
-    rig.view.guide = true
+    rig.view.guideLiveCorners = true
     rig.view.afterUpdate()
     XCTAssertEqual(rig.documents.last, .searching)
-    rig.view.mode = .off
+    rig.view.active = false
     rig.view.afterUpdate()
     XCTAssertEqual(rig.documents.last, .off)
   }

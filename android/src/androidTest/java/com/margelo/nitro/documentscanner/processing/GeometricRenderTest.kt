@@ -28,10 +28,10 @@ class GeometricRenderTest {
       val source = fixture(name)
       val into = Mat()
       try {
-        val quad = if (name == "outside") doubleArrayOf(-.02,.125,.875,.125,.875,.875,.125,.875)
+        val corners = if (name == "outside") doubleArrayOf(-.02,.125,.875,.125,.875,.875,.125,.875)
           else doubleArrayOf(.125,.125,.875,.125,.875,.875,.125,.875)
         val scale = if (name == "scaled") 2.0 else 1.0
-        val result = NativeRenderGeometry.render(source, into, quad, scale, if (scale > 1) 720.0 else null, true)
+        val result = NativeRenderGeometry.render(source, into, corners, scale, if (scale > 1) 720.0 else null, true)
         val metadata = doubleArrayOf(if (result.curved) 1.0 else 0.0) +
           result.validContentPolygon.flatMap { listOf(it.x, it.y) }.toDoubleArray()
         val pixels = ByteArray((into.total()*into.channels()).toInt()).also { into.get(0,0,it) }
@@ -43,7 +43,7 @@ class GeometricRenderTest {
         assertArrayEquals(name, expected[4].split(',').map(String::toDouble).toDoubleArray(), metadata, 1e-12)
         val straight = Mat()
         try {
-          val straightResult = NativeRenderGeometry.render(source, straight, quad, scale, if (scale > 1) 720.0 else null, false)
+          val straightResult = NativeRenderGeometry.render(source, straight, corners, scale, if (scale > 1) 720.0 else null, false)
           assertEquals(result.validContentPolygon, straightResult.validContentPolygon)
           if (!result.curved) assertEquals(0.0, Core.norm(into, straight, Core.NORM_INF), 0.0)
         } finally { straight.release() }
@@ -54,18 +54,18 @@ class GeometricRenderTest {
     val source = Mat(96,128,CvType.CV_8UC4,Scalar(120.0,80.0,40.0,255.0))
     val before = source.clone()
     val into = Mat()
-    val quad = doubleArrayOf(.1,.1,.9,.1,.9,.9,.1,.9)
+    val corners = doubleArrayOf(.1,.1,.9,.1,.9,.9,.1,.9)
     try {
-      val result = NativeRenderGeometry.render(source,into,quad,1.0,null,true)
+      val result = NativeRenderGeometry.render(source,into,corners,1.0,null,true)
       assertFalse(result.curved)
       assertTrue(result.validContentPolygon.size >= 4)
-      assertThrows(IllegalArgumentException::class.java) { NativeRenderGeometry.render(source,source,quad,1.0,null,true) }
-      assertThrows(IllegalArgumentException::class.java) { NativeRenderGeometry.render(source,into,quad.copyOf(7),1.0,null,true) }
+      assertThrows(IllegalArgumentException::class.java) { NativeRenderGeometry.render(source,source,corners,1.0,null,true) }
+      assertThrows(IllegalArgumentException::class.java) { NativeRenderGeometry.render(source,into,corners.copyOf(7),1.0,null,true) }
       assertThrows(com.margelo.nitro.documentscanner.InvalidInputException::class.java) {
-        NativeRenderGeometry.render(source,into,quad.copyOf().apply {this[0]=Double.NaN},1.0,null,true)
+        NativeRenderGeometry.render(source,into,corners.copyOf().apply {this[0]=Double.NaN},1.0,null,true)
       }
       assertEquals(0.0,Core.norm(before,source,Core.NORM_INF),0.0)
-      NativeRenderGeometry.render(source,into,quad,1.0,null,false)
+      NativeRenderGeometry.render(source,into,corners,1.0,null,false)
       assertFalse(into.empty())
     } finally {source.release();before.release();into.release()}
   }

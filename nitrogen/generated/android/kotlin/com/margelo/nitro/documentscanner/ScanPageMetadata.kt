@@ -41,7 +41,7 @@ data class ScanPageMetadata(
   val analysis: DocumentAnalysis?,
   @DoNotStrip
   @Keep
-  val quad: DocumentQuad,
+  val corners: DocumentCorners,
   @DoNotStrip
   @Keep
   val options: DocumentRenderOptions,
@@ -64,7 +64,7 @@ data class ScanPageMetadata(
       && Objects.deepEquals(this.rendering, other.rendering)
       && Objects.deepEquals(this.ready, other.ready)
       && Objects.deepEquals(this.analysis, other.analysis)
-      && Objects.deepEquals(this.quad, other.quad)
+      && Objects.deepEquals(this.corners, other.corners)
       && Objects.deepEquals(this.options, other.options)
       && Objects.deepEquals(this.analysisFailure, other.analysisFailure)
       && Objects.deepEquals(this.renderFailure, other.renderFailure)
@@ -79,7 +79,7 @@ data class ScanPageMetadata(
       rendering,
       ready,
       analysis,
-      quad,
+      corners,
       options,
       analysisFailure,
       renderFailure
@@ -94,8 +94,8 @@ data class ScanPageMetadata(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(id: String, revision: Double, readyRevision: Double?, analyzing: Boolean, rendering: Boolean, ready: Boolean, analysis: DocumentAnalysis?, quad: DocumentQuad, options: DocumentRenderOptions, analysisFailure: ScannerFailure?, renderFailure: ScannerFailure?): ScanPageMetadata {
-      return ScanPageMetadata(id, revision, readyRevision, analyzing, rendering, ready, analysis, quad, options, analysisFailure, renderFailure)
+    private fun fromCpp(id: String, revision: Double, readyRevision: Double?, analyzing: Boolean, rendering: Boolean, ready: Boolean, analysis: DocumentAnalysis?, corners: DocumentCorners, options: DocumentRenderOptions, analysisFailure: ScannerFailure?, renderFailure: ScannerFailure?): ScanPageMetadata {
+      return ScanPageMetadata(id, revision, readyRevision, analyzing, rendering, ready, analysis, corners, options, analysisFailure, renderFailure)
     }
   }
 }

@@ -12,17 +12,17 @@
 
 #include "DocumentAnalysis.hpp"
 #include "DocumentCandidate.hpp"
+#include "DocumentCorners.hpp"
 #include "DocumentFilter.hpp"
 #include "DocumentImageFormat.hpp"
 #include "DocumentPoint.hpp"
-#include "DocumentQuad.hpp"
 #include "DocumentRenderOptions.hpp"
 #include "JDocumentAnalysis.hpp"
 #include "JDocumentCandidate.hpp"
+#include "JDocumentCorners.hpp"
 #include "JDocumentFilter.hpp"
 #include "JDocumentImageFormat.hpp"
 #include "JDocumentPoint.hpp"
-#include "JDocumentQuad.hpp"
 #include "JDocumentRenderOptions.hpp"
 #include "JPaperSize.hpp"
 #include "JScannerErrorCode.hpp"
@@ -66,8 +66,8 @@ namespace margelo::nitro::documentscanner {
       jboolean ready = this->getFieldValue(fieldReady);
       static const auto fieldAnalysis = clazz->getField<JDocumentAnalysis>("analysis");
       jni::local_ref<JDocumentAnalysis> analysis = this->getFieldValue(fieldAnalysis);
-      static const auto fieldQuad = clazz->getField<JDocumentQuad>("quad");
-      jni::local_ref<JDocumentQuad> quad = this->getFieldValue(fieldQuad);
+      static const auto fieldCorners = clazz->getField<JDocumentCorners>("corners");
+      jni::local_ref<JDocumentCorners> corners = this->getFieldValue(fieldCorners);
       static const auto fieldOptions = clazz->getField<JDocumentRenderOptions>("options");
       jni::local_ref<JDocumentRenderOptions> options = this->getFieldValue(fieldOptions);
       static const auto fieldAnalysisFailure = clazz->getField<JScannerFailure>("analysisFailure");
@@ -82,7 +82,7 @@ namespace margelo::nitro::documentscanner {
         static_cast<bool>(rendering),
         static_cast<bool>(ready),
         analysis != nullptr ? std::make_optional(analysis->toCpp()) : std::nullopt,
-        quad->toCpp(),
+        corners->toCpp(),
         options->toCpp(),
         analysisFailure != nullptr ? std::make_optional(analysisFailure->toCpp()) : std::nullopt,
         renderFailure != nullptr ? std::make_optional(renderFailure->toCpp()) : std::nullopt
@@ -95,7 +95,7 @@ namespace margelo::nitro::documentscanner {
      */
     [[maybe_unused]]
     static jni::local_ref<JScanPageMetadata::javaobject> fromCpp(const ScanPageMetadata& value) {
-      using JSignature = JScanPageMetadata(jni::alias_ref<jni::JString>, double, jni::alias_ref<jni::JDouble>, jboolean, jboolean, jboolean, jni::alias_ref<JDocumentAnalysis>, jni::alias_ref<JDocumentQuad>, jni::alias_ref<JDocumentRenderOptions>, jni::alias_ref<JScannerFailure>, jni::alias_ref<JScannerFailure>);
+      using JSignature = JScanPageMetadata(jni::alias_ref<jni::JString>, double, jni::alias_ref<jni::JDouble>, jboolean, jboolean, jboolean, jni::alias_ref<JDocumentAnalysis>, jni::alias_ref<JDocumentCorners>, jni::alias_ref<JDocumentRenderOptions>, jni::alias_ref<JScannerFailure>, jni::alias_ref<JScannerFailure>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -107,7 +107,7 @@ namespace margelo::nitro::documentscanner {
         value.rendering,
         value.ready,
         value.analysis.has_value() ? JDocumentAnalysis::fromCpp(value.analysis.value()) : nullptr,
-        JDocumentQuad::fromCpp(value.quad),
+        JDocumentCorners::fromCpp(value.corners),
         JDocumentRenderOptions::fromCpp(value.options),
         value.analysisFailure.has_value() ? JScannerFailure::fromCpp(value.analysisFailure.value()) : nullptr,
         value.renderFailure.has_value() ? JScannerFailure::fromCpp(value.renderFailure.value()) : nullptr

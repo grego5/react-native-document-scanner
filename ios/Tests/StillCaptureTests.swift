@@ -4,17 +4,17 @@ import UniformTypeIdentifiers
 import XCTest
 @testable import ReactNativeDocumentScanner
 
-/// Engine actions that record the live quad and hold analysis, so a page keeps its retained frame
+/// Engine actions that record the live corners and hold analysis, so a page keeps its retained frame
 /// as its thumbnail while a test inspects it.
 private final class HeldActions: ScanSessionActions, @unchecked Sendable {
   let gate = DispatchSemaphore(value: 0)
   private let lock = NSLock()
-  private var quads: [QuadCoordinates?] = []
-  var liveQuads: [QuadCoordinates?] { lock.lock(); defer { lock.unlock() }; return quads }
+  private var cornerSets: [CornerCoordinates?] = []
+  var liveCornerSets: [CornerCoordinates?] { lock.lock(); defer { lock.unlock() }; return cornerSets }
 
-  func prepareAnalysis(_ source: SessionResources.Lease, liveQuad: QuadCoordinates?,
+  func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
-    lock.lock(); quads.append(liveQuad); lock.unlock()
+    lock.lock(); cornerSets.append(liveCorners); lock.unlock()
     return { [gate] in
       gate.wait()
       throw ScannerCodeError(code: .analysisFailed)
@@ -86,20 +86,15 @@ final class StillCaptureTests: XCTestCase {
 
   // MARK: - Settings
 
-  func testQualityFollowsTheModeUnlessExplicit() {
-    XCTAssertEqual(StillSettings.resolve(mode: .quality, jpegQuality: nil, zeroShutterLag: true),
+  func testQualityFollowsTheCaptureMode() {
+    XCTAssertEqual(StillSettings.resolve(mode: .quality, zeroShutterLag: true),
                    StillSettings(priority: .quality, quality: 1))
-    XCTAssertEqual(StillSettings.resolve(mode: .latency, jpegQuality: nil, zeroShutterLag: true),
+    XCTAssertEqual(StillSettings.resolve(mode: .latency, zeroShutterLag: true),
                    StillSettings(priority: .speed, quality: 0.95))
-    XCTAssertEqual(StillSettings.resolve(mode: nil, jpegQuality: nil, zeroShutterLag: true),
+    XCTAssertEqual(StillSettings.resolve(mode: nil, zeroShutterLag: true),
                    StillSettings(priority: .balanced, quality: 0.95), "zsl is the default")
-    XCTAssertEqual(StillSettings.resolve(mode: .zsl, jpegQuality: nil, zeroShutterLag: false),
+    XCTAssertEqual(StillSettings.resolve(mode: .zsl, zeroShutterLag: false),
                    StillSettings(priority: .speed, quality: 0.95), "zsl without a buffer uses latency")
-    XCTAssertEqual(StillSettings.resolve(mode: .quality, jpegQuality: 0.5, zeroShutterLag: false).quality, 0.5)
-    XCTAssertEqual(StillSettings.resolve(mode: .latency, jpegQuality: 3, zeroShutterLag: false).quality, 1)
-    XCTAssertEqual(StillSettings.resolve(mode: .latency, jpegQuality: 0, zeroShutterLag: false).quality, 0.01)
-    XCTAssertEqual(StillSettings.resolve(mode: .quality, jpegQuality: -1, zeroShutterLag: false).quality, 1, "omitted")
-    XCTAssertEqual(StillSettings.resolve(mode: .latency, jpegQuality: .nan, zeroShutterLag: false).quality, 0.95)
   }
 
   func testJpegIsPreferredAndUncompressedBGRAIsTheFallback() {
@@ -129,16 +124,16 @@ final class StillCaptureTests: XCTestCase {
     XCTAssertEqual(StillGeometry.squareCrop(PixelSize(641, 480)), CGRect(x: 80, y: 0, width: 480, height: 480))
   }
 
-  func testLiveQuadMapsOntoTheFramedStill() throws {
-    let quad: QuadCoordinates = [0.1, 0.2, 0.9, 0.2, 0.9, 0.8, 0.1, 0.8]
+  func testLiveCornersMapsOntoTheFramedStill() throws {
+    let corners: CornerCoordinates = [0.1, 0.2, 0.9, 0.2, 0.9, 0.8, 0.1, 0.8]
     // Same aspect, portrait: normalized corners carry over.
     let portrait = try XCTUnwrap(CameraFraming(buffer: PixelSize(1920, 1440), rotationAngle: 90, square: false))
-    let same = try XCTUnwrap(StillGeometry.map(quad, from: portrait, toStill: PixelSize(3024, 4032), square: false))
-    for (a, b) in zip(same, quad) { XCTAssertEqual(a, b, accuracy: 1e-9) }
+    let same = try XCTUnwrap(StillGeometry.map(corners, from: portrait, toStill: PixelSize(3024, 4032), square: false))
+    for (a, b) in zip(same, corners) { XCTAssertEqual(a, b, accuracy: 1e-9) }
     // Square on both sides: the squares coincide.
     let square = try XCTUnwrap(CameraFraming(buffer: PixelSize(1920, 1440), rotationAngle: 90, square: true))
-    let squared = try XCTUnwrap(StillGeometry.map(quad, from: square, toStill: PixelSize(3024, 4032), square: true))
-    for (a, b) in zip(squared, quad) { XCTAssertEqual(a, b, accuracy: 1e-9) }
+    let squared = try XCTUnwrap(StillGeometry.map(corners, from: square, toStill: PixelSize(3024, 4032), square: true))
+    for (a, b) in zip(squared, corners) { XCTAssertEqual(a, b, accuracy: 1e-9) }
     // A square-framed guide on a full still lands in the still's centered band.
     let banded = try XCTUnwrap(StillGeometry.map([0, 0, 1, 0, 1, 1, 0, 1], from: square, toStill: PixelSize(3024, 4032),
                                                  square: false))
@@ -189,7 +184,7 @@ final class StillCaptureTests: XCTestCase {
     let still = try StillProcessor.publish(data, square: true, quality: 0.9, store: store)
     let header = try SourceImageLoader.inspect(still.url)
     XCTAssertEqual(PixelSize(header.width, header.height), PixelSize(480, 480))
-    XCTAssertEqual(still.upright, PixelSize(480, 640), "the upright size before the crop maps the live quad")
+    XCTAssertEqual(still.upright, PixelSize(480, 640), "the upright size before the crop maps the live corners")
   }
 
   func testRequestedQualityIsPreservedThroughPublication() throws {
@@ -239,12 +234,12 @@ final class StillCaptureTests: XCTestCase {
 
   func testShutterFrameIsWrittenUprightAndStraightened() throws {
     let state = try registry.createState(actions: { _ in HeldActions() })
-    let whole = try StillProcessor.writeFrame(liveFrame(width: 64, height: 48, orientation: 6), quad: nil,
+    let whole = try StillProcessor.writeFrame(liveFrame(width: 64, height: 48, orientation: 6), corners: nil,
                                               to: state.resources.output(.frame))
     let header = try SourceImageLoader.inspect(whole.url)
     XCTAssertEqual(PixelSize(header.width, header.height), PixelSize(48, 64))
     let page = try StillProcessor.writeFrame(liveFrame(width: 64, height: 48, orientation: 6),
-                                             quad: [0.25, 0.25, 0.75, 0.25, 0.75, 0.75, 0.25, 0.75],
+                                             corners: [0.25, 0.25, 0.75, 0.25, 0.75, 0.75, 0.25, 0.75],
                                              to: state.resources.output(.frame))
     let straightened = try SourceImageLoader.inspect(page.url)
     XCTAssertEqual(Double(straightened.width), 24, accuracy: 2)
@@ -253,28 +248,30 @@ final class StillCaptureTests: XCTestCase {
 
   // MARK: - Settlement
 
-  func testTicketSettlesOnceAndAnInvalidatedTicketNeverPublishes() {
+  func testTicketSettlesOnceAndAnInvalidatedTicketNeverPublishes() throws {
+    let state = try registry.createState(actions: { _ in HeldActions() })
+    let capture = CameraCaptureResult(pageId: "page", snapshot: state.snapshot())
     var results: [Result<String, ScannerCodeError>] = []
-    let ticket = CaptureTicket { results.append($0) }
+    let ticket = CaptureTicket { results.append($0.map(\.pageId)) }
     XCTAssertTrue(ticket.reject(.processorSuperseded))
     XCTAssertFalse(ticket.reject(.captureFailed))
     var ran = false
-    XCTAssertFalse(ticket.publish { ran = true; return "page" })
+    XCTAssertFalse(ticket.publish { ran = true; return capture })
     XCTAssertFalse(ran)
     XCTAssertEqual(results.count, 1)
-    let failing = CaptureTicket { results.append($0) }
+    let failing = CaptureTicket { results.append($0.map(\.pageId)) }
     XCTAssertTrue(failing.publish { throw SourceStoreError.writeFailed })
     XCTAssertEqual(results.last, .failure(ScannerCodeError(code: .storageWriteFailed)))
-    let admitted = CaptureTicket { results.append($0) }
-    XCTAssertTrue(admitted.publish { "page" })
+    let admitted = CaptureTicket { results.append($0.map(\.pageId)) }
+    XCTAssertTrue(admitted.publish { capture })
     XCTAssertFalse(admitted.reject(.processorDisposed), "an admitted page is never reported as failed")
     XCTAssertEqual(results.last, .success("page"))
   }
 
   private func shot(_ state: ScanSessionState, ticket: CaptureTicket, square: Bool = false,
-                    guide: (quad: QuadCoordinates, framing: CameraFraming)? = nil) -> StillShot {
+                    guide: (corners: CornerCoordinates, framing: CameraFraming)? = nil) -> StillShot {
     StillShot(ticket: ticket, session: state, options: DocumentRenderOptions(removeShadows: nil, jpegQuality: nil,
-      filter: nil, format: nil, paperSize: nil, dpi: nil, followPageEdges: nil), selection: nil,
+      filter: nil, format: nil, paperSize: nil, dpi: nil, simpleDewarp: nil), selection: nil,
       settings: StillSettings(priority: .speed, quality: 0.9), square: square, guide: guide)
   }
 
@@ -284,20 +281,20 @@ final class StillCaptureTests: XCTestCase {
     wait(for: [done], timeout: 20)
   }
 
-  func testSavedShotAdmitsOnePageWithItsFrameAndLiveQuad() throws {
+  func testSavedShotAdmitsOnePageWithItsFrameAndLiveCorners() throws {
     var actions: HeldActions!
     let state = try registry.createState(actions: { _ in actions = HeldActions(); return actions })
     defer { actions.gate.signal() }
     var results: [Result<String, ScannerCodeError>] = []
     let framing = try XCTUnwrap(CameraFraming(buffer: PixelSize(64, 48), rotationAngle: 90, square: false))
-    let quad: QuadCoordinates = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
-    let shot = shot(state, ticket: CaptureTicket { results.append($0) }, guide: (quad, framing))
+    let corners: CornerCoordinates = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
+    let shot = shot(state, ticket: CaptureTicket { results.append($0.map(\.pageId)) }, guide: (corners, framing))
     shot.frame.fill(liveFrame(width: 64, height: 48, orientation: 6))
     save(shot, try encodedStill(width: 640, height: 480, orientation: 6))
     XCTAssertEqual(results, [.success(shot.id)])
     XCTAssertNotNil(state.snapshot().pages[shot.id])
-    XCTAssertEqual(actions.liveQuads.count, 1)
-    for (a, b) in zip(try XCTUnwrap(actions.liveQuads.first ?? nil), quad) { XCTAssertEqual(a, b, accuracy: 1e-9) }
+    XCTAssertEqual(actions.liveCornerSets.count, 1)
+    for (a, b) in zip(try XCTUnwrap(actions.liveCornerSets.first ?? nil), corners) { XCTAssertEqual(a, b, accuracy: 1e-9) }
     let thumbnail = try XCTUnwrap(state.thumbnailSource(shot.id), "the shutter frame is the page's thumbnail")
     let header = try SourceImageLoader.inspect(thumbnail.url)
     XCTAssertLessThan(header.width, 48, "straightened to the guide")
@@ -309,8 +306,8 @@ final class StillCaptureTests: XCTestCase {
     defer { actions.gate.signal() }
     var results: [Result<String, ScannerCodeError>] = []
     let framing = try XCTUnwrap(CameraFraming(buffer: PixelSize(64, 48), rotationAngle: 90, square: false))
-    let quad: QuadCoordinates = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
-    let shot = shot(state, ticket: CaptureTicket { results.append($0) }, guide: (quad, framing))
+    let corners: CornerCoordinates = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
+    let shot = shot(state, ticket: CaptureTicket { results.append($0.map(\.pageId)) }, guide: (corners, framing))
     // The device turned half way after acceptance: same upright size, opposite orientation.
     let rotated = try XCTUnwrap(CameraFraming(buffer: PixelSize(64, 48), rotationAngle: 270, square: false))
     XCTAssertEqual(rotated.framed, framing.framed)
@@ -326,7 +323,7 @@ final class StillCaptureTests: XCTestCase {
   func testInvalidatedShotWritesNothingAndRetiresAnUnadmittedSource() throws {
     let state = try registry.createState(actions: { _ in HeldActions() })
     var results: [Result<String, ScannerCodeError>] = []
-    let early = shot(state, ticket: CaptureTicket { results.append($0) })
+    let early = shot(state, ticket: CaptureTicket { results.append($0.map(\.pageId)) })
     early.ticket.reject(.processorSuperseded)
     save(early, try encodedStill(width: 320, height: 240))
     XCTAssertEqual(try sourceFiles(), 0, "an invalidated shot writes nothing")
@@ -341,7 +338,7 @@ final class StillCaptureTests: XCTestCase {
                                              queue: ScannerWorkQueue(worker: DispatchQueue(label: "test.racing")),
                                              report: { _ in })
     let racingState = try racingRegistry.createState(actions: { _ in HeldActions() })
-    late = shot(racingState, ticket: CaptureTicket { results.append($0) })
+    late = shot(racingState, ticket: CaptureTicket { results.append($0.map(\.pageId)) })
     save(late, try encodedStill(width: 320, height: 240))
     racing.drain()
     XCTAssertEqual(results.map { try? $0.get() }, [nil, nil])
@@ -358,7 +355,7 @@ final class StillCaptureTests: XCTestCase {
     state.close().whenComplete { _ in closed.fulfill() }
     wait(for: [closed], timeout: 10)
     var results: [Result<String, ScannerCodeError>] = []
-    save(shot(state, ticket: CaptureTicket { results.append($0) }), try encodedStill(width: 320, height: 240))
+    save(shot(state, ticket: CaptureTicket { results.append($0.map(\.pageId)) }), try encodedStill(width: 320, height: 240))
     XCTAssertEqual(results, [.failure(ScannerCodeError(code: .processorDisposed))])
     XCTAssertEqual(try sourceFiles(), 0)
   }

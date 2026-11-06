@@ -24,8 +24,8 @@ final class SessionExportSnapshot {
       guard automatic else { return requested }
       switch analysis() {
       case .some(.success(let value)):
-        let quad = value.candidate.flatMap { SessionQuad.renderable($0) ? $0 : nil } ?? SessionQuad.fullFrame
-        return ScanPage.RenderKey(quad: quad, settings: requested.settings)
+        let corners = value.candidate.flatMap { SessionCorners.renderable($0) ? $0 : nil } ?? SessionCorners.fullFrame
+        return ScanPage.RenderKey(corners: corners, settings: requested.settings)
       case .some(.failure): throw ScannerCodeError(code: .analysisFailed)
       case .none: throw ScannerCodeError(code: .renderFailed) // FIFO order makes this unreachable.
       }

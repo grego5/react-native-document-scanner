@@ -2,7 +2,7 @@ package com.margelo.nitro.documentscanner.processing
 
 import com.margelo.nitro.documentscanner.ScannerFiles
 import com.margelo.nitro.documentscanner.requireInput
-import com.margelo.nitro.documentscanner.NativeQuadGeometry
+import com.margelo.nitro.documentscanner.NativeCornerGeometry
 import com.margelo.nitro.documentscanner.SessionResources
 import com.margelo.nitro.documentscanner.LocalSessionFiles
 import android.graphics.Bitmap
@@ -10,7 +10,7 @@ import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.margelo.nitro.documentscanner.DocumentFilter
 import com.margelo.nitro.documentscanner.DocumentImageFormat
-import com.margelo.nitro.documentscanner.DocumentQuad as NitroDocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners as NitroDocumentCorners
 import com.margelo.nitro.documentscanner.DocumentRenderOptions
 import com.margelo.nitro.documentscanner.PageThumbnails
 import com.margelo.nitro.documentscanner.jpegQualityPercent
@@ -30,18 +30,18 @@ import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 
 /**
- * Rectifies the upright original so the submitted quad's corners land exactly on the output corners, and bends each
+ * Rectifies the upright original so the submitted document corners land exactly on the output corners, and bends each
  * side onto the page's own edge where the page curves in the shared geometric stage.
  */
 internal object DocumentRenderer {
   /** Standalone algorithm entry for native pixel fixtures; session work uses leased destinations. */
-  fun render(originalUri: String, quad: NitroDocumentQuad, options: DocumentRenderOptions?): RenderResult =
-    renderTo(originalUri, quad, options, null)
+  fun render(originalUri: String, corners: NitroDocumentCorners, options: DocumentRenderOptions?): RenderResult =
+    renderTo(originalUri, corners, options, null)
 
   /** Pins the original while consuming the destination transactions, including on failure/stale close. */
   fun render(
     original: SessionResources.Resource,
-    quad: NitroDocumentQuad,
+    corners: NitroDocumentCorners,
     options: DocumentRenderOptions?,
     output: SessionResources.RenderDestination,
   ): RenderResult = output.use {
@@ -50,7 +50,7 @@ internal object DocumentRenderer {
         "Session renders require an original and destinations from the same session."
       }
       output.owner.lease(original).use { source ->
-        renderTo(Uri.fromFile(source.file).toString(), quad, options, output)
+        renderTo(Uri.fromFile(source.file).toString(), corners, options, output)
       }
     } catch (error: Throwable) {
       output.discard()
@@ -59,23 +59,23 @@ internal object DocumentRenderer {
   }
 
   /** Export already owns a source pin, even when its page has since been retired. */
-  fun render(source: SessionResources.Lease, quad: NitroDocumentQuad, options: DocumentRenderOptions?,
+  fun render(source: SessionResources.Lease, corners: NitroDocumentCorners, options: DocumentRenderOptions?,
     output: SessionResources.RenderDestination): RenderResult = output.use {
     try {
       requireInput(source.resource.owner === output.owner && source.resource.kind == SessionResources.Kind.ORIGINAL) {
         "Expected a leased session original."
       }
-      renderTo(Uri.fromFile(source.file).toString(), quad, options, output)
+      renderTo(Uri.fromFile(source.file).toString(), corners, options, output)
     } catch (error: Throwable) { output.discard(); throw error }
   }
 
   private fun renderTo(
     originalUri: String,
-    quad: NitroDocumentQuad,
+    corners: NitroDocumentCorners,
     options: DocumentRenderOptions?,
     output: SessionResources.RenderDestination?,
   ): RenderResult {
-    val issue = NativeQuadGeometry.renderIssue(NativeQuadGeometry.coordinates(quad))
+    val issue = NativeCornerGeometry.renderIssue(NativeCornerGeometry.coordinates(corners))
     requireInput(issue == null) { requireNotNull(issue) }
     val config = validateOptions(options)
     val uri = Uri.parse(originalUri)
@@ -96,7 +96,7 @@ internal object DocumentRenderer {
     requireInput(destination.extension == extension && thumbnail.extension == "jpg") {
       "Session output format does not match render options."
     }
-    val sourcePoints = normalizedQuad(quad)
+    val sourcePoints = normalizedCorners(corners)
     NativeGeometry.validateRender(sourcePoints)
 
     try {
@@ -118,7 +118,7 @@ internal object DocumentRenderer {
           val originalScale = sampleSize.toDouble()
           // Shared warp and filtering stay together; only the final BGR/gray image returns to Android.
           val target = NativeRenderGeometry.render(sourceMat, filtered, sourcePoints.coordinates(), originalScale,
-            config.paperLongEdge, config.followPageEdges, config.filter, config.removeShadows,
+            config.paperLongEdge, config.simpleDewarp, config.filter, config.removeShadows,
             doubleArrayOf(header.uprightWidth.toDouble(), header.uprightHeight.toDouble(), region.left.toDouble(), region.top.toDouble(), sampleSize.toDouble()))
           if (config.format == DocumentImageFormat.PNG) {
             FileOutputStream(temporary).use { output ->
@@ -204,14 +204,14 @@ internal object DocumentRenderer {
     val paperLongEdge: Double?,
     val filter: DocumentFilter,
     val format: DocumentImageFormat,
-    val followPageEdges: Boolean,
+    val simpleDewarp: Boolean,
   )
 
   /** Validate at command admission, and make omitted defaults compare equal to explicit defaults. */
   internal fun effectiveOptions(options: DocumentRenderOptions?): DocumentRenderOptions {
     val config = validateOptions(options)
     return DocumentRenderOptions(config.removeShadows, config.quality / 100.0, config.filter, options?.format ?: DocumentImageFormat.JPEG,
-      options?.paperSize, options?.paperSize?.let { options.dpi ?: DEFAULT_DPI }, config.followPageEdges)
+      options?.paperSize, options?.paperSize?.let { options.dpi ?: DEFAULT_DPI }, config.simpleDewarp)
   }
 
   internal fun outputFormat(options: DocumentRenderOptions?): DocumentImageFormat = when (options?.format) {
@@ -239,17 +239,17 @@ internal object DocumentRenderer {
     requireInput(format != DocumentImageFormat.PNG || filter == DocumentFilter.GRAYSCALE || filter == DocumentFilter.BLACKWHITE) {
       "The png format writes 4-bit grayscale and requires the grayscale or blackWhite filter."
     }
-    return RenderConfig(options?.removeShadows ?: true, quality, paperLongEdge, filter, format, options?.followPageEdges ?: true)
+    return RenderConfig(options?.removeShadows ?: true, quality, paperLongEdge, filter, format, options?.simpleDewarp ?: true)
   }
 
   /**
-   * The quad's bounds widened by [PAGE_MARGIN] of their size each side, within the photo; null when they miss it.
+   * The corners's bounds widened by [PAGE_MARGIN] of their size each side, within the photo; null when they miss it.
    * PageEdges searches at most its band, a smaller fraction of the page, past each side.
    */
-  private fun ImageQuad.points() = listOf(topLeft, topRight, bottomRight, bottomLeft)
+  private fun ImageCorners.points() = listOf(topLeft, topRight, bottomRight, bottomLeft)
 
-  private fun pageRegion(quad: ImageQuad, photoWidth: Int, photoHeight: Int): PhotoInferenceCrop? {
-    val points = quad.points()
+  private fun pageRegion(corners: ImageCorners, photoWidth: Int, photoHeight: Int): PhotoInferenceCrop? {
+    val points = corners.points()
     val x0 = points.minOf { it.x } * photoWidth
     val x1 = points.maxOf { it.x } * photoWidth
     val y0 = points.minOf { it.y } * photoHeight
@@ -261,11 +261,11 @@ internal object DocumentRenderer {
     return if (right > left && bottom > top) PhotoInferenceCrop(left, top, right - left, bottom - top) else null
   }
 
-  private fun normalizedQuad(quad: NitroDocumentQuad): ImageQuad = ImageQuad(
-    topLeft = ImagePoint(quad.topLeft.x, quad.topLeft.y),
-    topRight = ImagePoint(quad.topRight.x, quad.topRight.y),
-    bottomRight = ImagePoint(quad.bottomRight.x, quad.bottomRight.y),
-    bottomLeft = ImagePoint(quad.bottomLeft.x, quad.bottomLeft.y),
+  private fun normalizedCorners(corners: NitroDocumentCorners): ImageCorners = ImageCorners(
+    topLeft = ImagePoint(corners.topLeft.x, corners.topLeft.y),
+    topRight = ImagePoint(corners.topRight.x, corners.topRight.y),
+    bottomRight = ImagePoint(corners.bottomRight.x, corners.bottomRight.y),
+    bottomLeft = ImagePoint(corners.bottomLeft.x, corners.bottomLeft.y),
   )
 
   private fun outputDirectoryFor(sourceFile: File): File {

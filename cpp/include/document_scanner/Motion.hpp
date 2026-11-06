@@ -14,7 +14,7 @@ struct Track {
 };
 struct Transform {
   double xx, xy, yx, yy, tx, ty, px = 0, py = 0;
-  std::optional<Quad> warp(const Quad &) const;
+  std::optional<Corners> warp(const Corners &) const;
 };
 std::optional<Transform> fit(std::span<const Track>, int width, int height, double regionArea, double tolerance);
 
@@ -34,7 +34,7 @@ class FlowHistory final {
 public:
   void clear() { steps_.clear(); }
   void add(const Estimate &);
-  std::optional<Quad> warp(const Quad &, int64_t fromNs, int64_t toNs) const;
+  std::optional<Corners> warp(const Corners &, int64_t fromNs, int64_t toNs) const;
 
 private:
   struct Step {
@@ -51,7 +51,7 @@ public:
   FlowEstimator(const FlowEstimator &) = delete;
   FlowEstimator &operator=(const FlowEstimator &) = delete;
   void reset();
-  Estimate update(const PixelLease &, int64_t sensorNs, const std::optional<Quad> &region, bool fitTransform = false);
+  Estimate update(const PixelLease &, int64_t sensorNs, const std::optional<Corners> &region, bool fitTransform = false);
 
 private:
   struct State;
@@ -77,7 +77,7 @@ struct FrameGeometry {
 };
 FrameGeometry frameGeometry(double focalPx, int activeWidth, int activeHeight, int sensorOrientation, int bufferWidth,
                             int bufferHeight, Crop, int rotationDegrees);
-std::optional<Quad> rotationWarp(const Quad &, FrameGeometry, const Matrix &);
+std::optional<Corners> rotationWarp(const Corners &, FrameGeometry, const Matrix &);
 std::optional<double> gyroBlur(std::span<const GyroSample>, double focalPx, int activeWidth, int64_t fromNs,
                                int64_t toNs, int64_t exposureNs, std::optional<ClockCorrelation>);
 std::optional<double> flowBlur(std::optional<double> speed, int sourceWidth, int64_t exposureNs);

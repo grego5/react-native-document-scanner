@@ -13,13 +13,14 @@ public protocol HybridDocumentCropEditorViewSpec_protocol: HybridObject, HybridV
   var session: (any HybridScanSessionSpec) { get set }
   var pageId: String { get set }
   var filter: DocumentFilter? { get set }
+  var rectangle: Bool? { get set }
   var onPresetChange: ((_ preset: CropDraftPreset) -> Void)? { get set }
   var onLoad: ((_ width: Double, _ height: Double) -> Void)? { get set }
   var onError: ((_ failure: ScannerFailure) -> Void)? { get set }
 
   // Methods
   func submitResult() throws -> Promise<Variant_Bool_ScannerFailure>
-  func getQuadResult() throws -> Promise<Variant_ScannerFailure_DocumentQuad>
+  func getCornersResult() throws -> Promise<Variant_ScannerFailure_DocumentCorners>
   func setPresetResult(preset: CropPreset) throws -> Promise<Variant_Bool_ScannerFailure>
 }
 

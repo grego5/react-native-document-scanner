@@ -59,9 +59,9 @@ auto guarded(NSError **error, Operation operation) -> decltype(operation()) {
   return {};
 }
 
-Quad quadFrom(NSArray<NSNumber *> *values) {
+Corners cornersFrom(NSArray<NSNumber *> *values) {
   if (values.count != 8)
-    throw std::invalid_argument("Expected eight quad coordinates.");
+    throw std::invalid_argument("Expected eight corners coordinates.");
   const auto v = [&](NSUInteger i) { return values[i].doubleValue; };
   return {
       document_scanner::Point{v(0), v(1)}, document_scanner::Point{v(2), v(3)},
@@ -192,9 +192,9 @@ struct Buffer final {
 } // namespace
 
 @implementation ScannerDocumentRenderer
-+ (BOOL)validateQuad:(NSArray<NSNumber *> *)quad error:(NSError **)error {
++ (BOOL)validateCorners:(NSArray<NSNumber *> *)corners error:(NSError **)error {
   return guarded(error, [&] {
-    geometry::validateRenderQuad(quadFrom(quad));
+    geometry::validateRenderCorners(cornersFrom(corners));
     return true;
   });
 }
@@ -205,9 +205,9 @@ struct Buffer final {
                                width:(uint32_t)width
                               height:(uint32_t)height
                            rowStride:(NSUInteger)rowStride
-                                quad:(NSArray<NSNumber *> *)quad
+                                corners:(NSArray<NSNumber *> *)corners
                        paperLongEdge:(double)paperLongEdge
-                     followPageEdges:(BOOL)followPageEdges
+                     simpleDewarp:(BOOL)simpleDewarp
                               filter:(NSInteger)filter
                        removeShadows:(BOOL)removeShadows
                              grayPng:(BOOL)grayPng
@@ -217,8 +217,8 @@ struct Buffer final {
                    thumbnailLongSide:(NSInteger)thumbnailLongSide
                                error:(NSError **)error {
   return guarded(error, [&]() -> ScannerRenderedPage * {
-    const Quad normalized = quadFrom(quad);
-    geometry::validateRenderQuad(normalized);
+    const Corners normalized = cornersFrom(corners);
+    geometry::validateRenderCorners(normalized);
     if (filter < 0 || filter > 3 || thumbnailLongSide <= 0 ||
         !(jpegQuality >= 0 && jpegQuality <= 1))
       throw std::invalid_argument("Invalid render configuration.");
@@ -230,7 +230,7 @@ struct Buffer final {
     // Shared warp and filtering stay together; only the final RGB/gray page
     // returns here.
     const auto geometric =
-        renderGeometry(source, normalized, 1.0, paper, followPageEdges);
+        renderGeometry(source, normalized, 1.0, paper, simpleDewarp);
     filterDocument(geometric.pixels.lease(),
                    static_cast<DocumentFilter>(filter), removeShadows,
                    PixelFormat::rgb8, page.allocator());
@@ -344,9 +344,9 @@ struct Buffer final {
 @end
 
 namespace {
-NSArray<NSNumber *> *numbers(const Quad &quad) {
+NSArray<NSNumber *> *numbers(const Corners &corners) {
   NSMutableArray<NSNumber *> *values = [NSMutableArray arrayWithCapacity:8];
-  for (document_scanner::Point p : quad) {
+  for (document_scanner::Point p : corners) {
     [values addObject:@(p.x)];
     [values addObject:@(p.y)];
   }
@@ -355,29 +355,29 @@ NSArray<NSNumber *> *numbers(const Quad &quad) {
 } // namespace
 
 @implementation ScannerCropGeometry
-+ (NSArray<NSNumber *> *)clamp:(NSArray<NSNumber *> *)quad {
-  if (quad.count != 8)
-    return quad;
-  return numbers(geometry::clampToFrame(quadFrom(quad)));
++ (NSArray<NSNumber *> *)clamp:(NSArray<NSNumber *> *)corners {
+  if (corners.count != 8)
+    return corners;
+  return numbers(geometry::clampToFrame(cornersFrom(corners)));
 }
 
-+ (BOOL)validCrop:(NSArray<NSNumber *> *)quad {
-  if (quad.count != 8)
++ (BOOL)validCrop:(NSArray<NSNumber *> *)corners {
+  if (corners.count != 8)
     return NO;
-  for (NSNumber *value in quad)
+  for (NSNumber *value in corners)
     if (!std::isfinite(value.doubleValue) || value.doubleValue < 0 || value.doubleValue > 1)
       return NO;
-  return geometry::validCropQuad(quadFrom(quad));
+  return geometry::validCropCorners(cornersFrom(corners));
 }
 
-+ (NSArray<NSNumber *> *)move:(NSArray<NSNumber *> *)quad
++ (NSArray<NSNumber *> *)move:(NSArray<NSNumber *> *)corners
                         index:(NSInteger)index
                             x:(double)x
                             y:(double)y
                          edge:(BOOL)edge {
-  if (quad.count != 8 || index < 0 || index > 3)
+  if (corners.count != 8 || index < 0 || index > 3)
     return nil;
-  const Quad current = quadFrom(quad);
+  const Corners current = cornersFrom(corners);
   const auto next = edge ? geometry::moveEdge(current, size_t(index), {x, y})
                          : geometry::moveCorner(current, size_t(index), {x, y});
   return next ? numbers(*next) : nil;

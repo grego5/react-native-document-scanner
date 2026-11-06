@@ -16,7 +16,7 @@ public protocol HybridScanSessionSpec_protocol: HybridObject {
   func createPdfResult(pageIds: [String]?, options: SessionPdfOptions) throws -> Promise<Variant_String_ScannerFailure>
   func exportImagesResult(pageIds: [String]?, outputDirectory: String) throws -> Promise<Variant__String__ScannerFailure>
   func saveCaptureSampleResult(pageId: String) throws -> Promise<Variant_String_ScannerFailure>
-  func setDocumentCropResult(pageId: String, quad: DocumentQuad) throws -> Promise<Variant_Bool_ScannerFailure>
+  func setDocumentCropResult(pageId: String, corners: DocumentCorners) throws -> Promise<Variant_Bool_ScannerFailure>
   func setFilterResult(pageId: String, filter: DocumentFilter) throws -> Promise<Variant_Bool_ScannerFailure>
   func setShadowRemovalResult(pageId: String, enabled: Bool) throws -> Promise<Variant_Bool_ScannerFailure>
   func setPageOrderResult(pageIds: [String]) throws -> Promise<Variant_Bool_ScannerFailure>

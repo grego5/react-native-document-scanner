@@ -1,7 +1,7 @@
 import Foundation
 
-/// Normalized upright TL/TR/BR/BL corners as x/y pairs: the live guide's quad shape.
-typealias LiveQuad = [Double]
+/// Normalized upright TL/TR/BR/BL corners as x/y pairs for the live guide.
+typealias LiveCorners = [Double]
 
 /// Adaptive inference pacing, confined to the analysis owner. Once a trusted model result is
 /// confirmed, inference pauses while flow reliably carries it. Losing or degrading the track,
@@ -11,7 +11,7 @@ struct AdaptiveDetectionPolicy {
   static let revalidateGapNs: Int64 = 60_000_000
   static let paused = Int64.max
 
-  private var reference: LiveQuad?
+  private var reference: LiveCorners?
   private var revalidate = false
   /// Why the latest decision was made: acquiring, paused, revalidating or a wake reason.
   private(set) var status = "acquiring"
@@ -29,7 +29,7 @@ struct AdaptiveDetectionPolicy {
   }
 
   /// The model's latest result, or nil when it found no tracked page.
-  mutating func reference(_ quad: LiveQuad?) { reference = quad }
+  mutating func reference(_ corners: LiveCorners?) { reference = corners }
 
   /// The model confirmed the reference; a pending revalidation is satisfied.
   mutating func confirmed() { revalidate = false }
@@ -37,7 +37,7 @@ struct AdaptiveDetectionPolicy {
   /// The gap before the next inference in nanoseconds; `paused` stops it. `tracking`: the guide
   /// still holds a page; `reliable`: flow carried it to this frame as `current`; `degraded`: some
   /// page region lost its features. `width` and `height` are the upright frame in pixels.
-  mutating func next(tracking: Bool, reliable: Bool, degraded: Bool, current: LiveQuad?, width: Int,
+  mutating func next(tracking: Bool, reliable: Bool, degraded: Bool, current: LiveCorners?, width: Int,
                      height: Int) -> Int64 {
     let trusted = tracking && reference != nil
     var wake: String?
@@ -60,7 +60,7 @@ struct AdaptiveDetectionPolicy {
   }
 
   /// Any corner moved more than 5% of the upright frame width; translation counts.
-  static func changed(_ a: LiveQuad, _ b: LiveQuad, width: Int, height: Int) -> Bool {
+  static func changed(_ a: LiveCorners, _ b: LiveCorners, width: Int, height: Int) -> Bool {
     guard a.count == 8, b.count == 8 else { return true }
     return stride(from: 0, to: 8, by: 2).contains { index in
       hypot((a[index] - b[index]) * Double(width), (a[index + 1] - b[index + 1]) * Double(height))

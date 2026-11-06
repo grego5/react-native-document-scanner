@@ -4,7 +4,7 @@
 
 Status: Implemented — native verification pending
 Complexity: High
-Dependencies: [02](02-centralize-quad-validity.md), [03](03-introduce-keyed-queue.md), [04](04-own-session-resources.md)
+Dependencies: [02](02-centralize-corner-validity.md), [03](03-introduce-keyed-queue.md), [04](04-own-session-resources.md)
 
 ## Objective
 
@@ -29,13 +29,13 @@ React currently owns render configurations, per-filter reuse, analysis transitio
 
 ## Implementation steps
 
-1. Add native ScanSessionState and ScanPage (new) keyed by page ID. Page state owns immutable source references, authoritative analysis, effective quad/options, requested revision, ready revision, failure and cached artifacts.
+1. Add native ScanSessionState and ScanPage (new) keyed by page ID. Page state owns immutable source references, authoritative analysis, effective corners/options, requested revision, ready revision, failure and cached artifacts.
 
-2. Add session commands setQuad, setFilter and setRemoveShadows. Validate before acceptance; equal settings are a no-op. Commands change effective settings immediately and enqueue keyed renders without promise chains.
+2. Add session commands setCorners, setFilter and setRemoveShadows. Validate before acceptance; equal settings are a no-op. Commands change effective settings immediately and enqueue keyed renders without promise chains.
 
 3. On saved-source admission, capture initial render options and the model selection/lease semantics from the existing analysis flow. Perform authoritative photo analysis before the first processed render; show the capture-frame placeholder meanwhile.
 
-4. Track explicit user geometry separately from analysis-derived geometry. A setQuad admitted during analysis prevents its later candidate from replacing that geometry; filter changes do not cancel useful analysis.
+4. Track explicit user geometry separately from analysis-derived geometry. A setCorners admitted during analysis prevents its later candidate from replacing that geometry; filter changes do not cancel useful analysis.
 
 5. Cache one compatible result per filter/shadow combination for the same geometry/output configuration. Crop/configuration changes invalidate incompatible files after leases release. Do not expose cache objects/URIs in metadata.
 
@@ -73,7 +73,7 @@ feat(session): own page revisions and processing
 
 ## Implementation evidence
 
-- Added native ScanPage and ScanSessionState. Pages own immutable original/frame tokens, authoritative analysis, effective quad/options, requested/ready revisions, separate analysis/render failures and native artifacts. ID commands validate before acceptance, apply immediately and schedule keyed FIFO work. Explicit geometry (including an explicit full-frame choice during analysis) prevents candidate replacement; equal settings do not increment revisions unless retrying a render failure.
+- Added native ScanPage and ScanSessionState. Pages own immutable original/frame tokens, authoritative analysis, effective corners/options, requested/ready revisions, separate analysis/render failures and native artifacts. ID commands validate before acceptance, apply immediately and schedule keyed FIFO work. Explicit geometry (including an explicit full-frame choice during analysis) prevents candidate replacement; equal settings do not increment revisions unless retrying a render failure.
 - Added SessionPageProcessing and shared PhotoAnalysis. Admission captures normalized initial render options and the selected immutable model; photo decoding/inference precedes the first processed render. Model leases are acquired only on the serial image worker and closed after its owner drains. The transitional analyzer retains its URI contract, disposal check and duration measurement. No model, filter or quality thresholds changed.
 - Caches retain one result per filter/shadow combination for compatible geometry/output settings. Stale success can fill a compatible cache slot but cannot publish an old ready revision; stale failures cannot fail a newer edit. Incompatible artifacts retire through SessionResources. The previous display survives pending crops and render failures; reader leases can outlive replacement. Frames are retained as placeholders and never submitted to filtering.
 - Added ScanSessionStateTest with controlled analysis/render actions and manual executors: captured defaults/model selection; edits during analysis; full-frame/no-candidate/analysis failure; equal settings; invalid admission without consuming sources; A/B/A and shadow reuse; queued replacement; compatible/incompatible stale success; stale failure; failed-setting retry; crop invalidation with retained readers; deletion, ID reuse and close during active work.

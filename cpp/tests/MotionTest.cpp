@@ -17,7 +17,7 @@ void near(double a, double b, double eps = 1e-9) {
   if (std::abs(a - b) > eps || !std::isfinite(a))
     throw std::runtime_error("Motion value mismatch: " + std::to_string(a) + " vs " + std::to_string(b));
 }
-Quad rect(double l = .2, double t = .2, double r = .8, double b = .8) {
+Corners rect(double l = .2, double t = .2, double r = .8, double b = .8) {
   return {Point{l, t}, Point{r, t}, Point{r, b}, Point{l, b}};
 }
 std::vector<m::Track> grid(const std::function<m::Track(double, double)> &f) {
@@ -373,7 +373,7 @@ void tracking() {
   r = update(image(tilted), start + interval, Orientation::upright, true);
   check(r.status == m::Status::measured && r.transform, "Tilted pixel tracking");
   auto target = r.transform->warp(rect());
-  check(bool(target), "Tilted tracked quad");
+  check(bool(target), "Tilted tracked corners");
   const double denominator = .00005 * 128 - .000025 * 96 + 1;
   near((*target)[0].x, (1.01 * 128 + .01 * 96 + 2) / denominator / 640, .005);
   near((*target)[0].y, (-.005 * 128 + 96 - 1) / denominator / 480, .005);

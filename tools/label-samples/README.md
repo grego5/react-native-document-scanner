@@ -2,6 +2,8 @@
 
 A local Tkinter tool that saves **JSON metadata only**. It does not copy, export or modify images, run inference, create training data, or upload anything.
 
+Saved JSON retains the existing `quad` field for compatibility with collected samples and annotations. Application APIs and source names use corners.
+
 ## Open on Windows
 
 From the project root:
@@ -36,11 +38,11 @@ python tools/label-samples/label_samples.py label --images C:/Users/User/Downloa
 2. Drag points to adjust them. Mouse wheel zooms around the pointer; right-drag pans. **Fit image** restores the full view.
 3. Choose **Save document + next**. **Next / skip** leaves the image unlabeled. **No document + save/next** explicitly records that no page is present.
 
-Each save persists immediately. Reopening resumes at the first unlabeled image. EXIF orientation is applied before displaying and normalizing coordinates. Invalid/self-crossing quads are rejected. Source hashes detect images changed after labeling.
+Each save persists immediately. Reopening resumes at the first unlabeled image. EXIF orientation is applied before displaying and normalizing coordinates. Invalid/self-crossing corners are rejected. Source hashes detect images changed after labeling.
 
 ## Scanner-compatible JSON
 
-Each filename in `images` has a `quad` with the exact `DocumentQuad` shape accepted by this library's crop/render API:
+Each filename in `images` has a `corners` with the exact `DocumentCorners` shape accepted by this library's crop/render API:
 
 ```json
 {
@@ -58,7 +60,7 @@ Each filename in `images` has a `quad` with the exact `DocumentQuad` shape accep
 }
 ```
 
-Coordinates are 0–1 relative to the upright original image. `quad` is null for `no-document` entries and for `unlabeled` ones without a starting outline. The wrapper records `version: 2`, `imageRoot` and `coordinateSpace: "exifUprightNormalized"`.
+Coordinates are 0–1 relative to the upright original image. `corners` is null for `no-document` entries and for `unlabeled` ones without a starting outline. The wrapper records `version: 2`, `imageRoot` and `coordinateSpace: "exifUprightNormalized"`.
 
 ## Scanner samples
 

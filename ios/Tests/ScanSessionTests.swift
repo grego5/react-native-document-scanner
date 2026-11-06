@@ -3,13 +3,13 @@ import CoreGraphics
 import NitroModules
 @testable import ReactNativeDocumentScanner
 
-private let candidateQuad: QuadCoordinates = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
+private let candidateCorners: CornerCoordinates = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
 
 private final class CandidateRuntime: CornerRuntime {
   let inputWidth = 320
   let inputHeight = 192
   func analyze(_ source: SourcePixelLease, seed: [Double]?) throws -> CornerPrediction {
-    CornerPrediction(quad: candidateQuad, score: 0.9, preprocessingMs: 0, inferenceMs: 0)
+    CornerPrediction(corners: candidateCorners, score: 0.9, preprocessingMs: 0, inferenceMs: 0)
   }
 }
 
@@ -23,7 +23,7 @@ private final class ScriptedActions: ScanSessionActions, @unchecked Sendable {
   var renderGate: DispatchSemaphore?
   var renderStarted: DispatchSemaphore?
   var failRenders = 0
-  var candidate: QuadCoordinates? = candidateQuad
+  var candidate: CornerCoordinates? = candidateCorners
   var analysisError: Error?
 
   init(resources: SessionResources) { self.resources = resources }
@@ -31,7 +31,7 @@ private final class ScriptedActions: ScanSessionActions, @unchecked Sendable {
   var log: [String] { lock.lock(); defer { lock.unlock() }; return entries }
   private func record(_ entry: String) { lock.lock(); entries.append(entry); lock.unlock() }
 
-  func prepareAnalysis(_ source: SessionResources.Lease, liveQuad: QuadCoordinates?,
+  func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
     { [self] in
       record("analysis")
@@ -111,9 +111,9 @@ final class ScanSessionTests: XCTestCase {
   }
 
   private func admit(_ state: ScanSessionState, _ id: String, selection: CornerInference.Selection? = nil,
-                     options: DocumentRenderOptions? = nil) throws -> URL {
+                     options: DocumentRenderOptions? = nil, autoCrop: Bool = true) throws -> URL {
     let source = try store.publish(image: photo())
-    try state.admitSource(id: id, source: source, options: options, selection: selection)
+    try state.admitSource(id: id, source: source, options: options, selection: selection, autoCrop: autoCrop)
     return source
   }
 
@@ -212,7 +212,7 @@ final class ScanSessionTests: XCTestCase {
     let metadata = try XCTUnwrap(page(state, "a"))
     XCTAssertEqual(metadata.revision, 2) // The candidate replaced full-frame geometry once.
     XCTAssertEqual(metadata.readyRevision, 2)
-    XCTAssertEqual(SessionQuad.coordinates(metadata.quad), candidateQuad)
+    XCTAssertEqual(SessionCorners.coordinates(metadata.corners), candidateCorners)
     XCTAssertEqual(metadata.analysis?.sourceWidth, 480)
     XCTAssertEqual(metadata.analysis?.candidate?.score, 0.9)
     XCTAssertNil(metadata.analysisFailure)
@@ -233,9 +233,9 @@ final class ScanSessionTests: XCTestCase {
     waitUntil("render") { ready(state, "a") }
     let metadata = try XCTUnwrap(page(state, "a"))
     XCTAssertEqual(metadata.analysisFailure?.code, .modelLoadFailed)
-    XCTAssertEqual(SessionQuad.coordinates(metadata.quad), SessionQuad.fullFrame)
+    XCTAssertEqual(SessionCorners.coordinates(metadata.corners), SessionCorners.fullFrame)
     XCTAssertThrowsError(try state.exportSnapshot(nil)) { XCTAssertEqual(($0 as? ScannerCodeError)?.code, .analysisFailed) }
-    try state.setDocumentCrop("a", quad: SessionQuad.quad(SessionQuad.fullFrame))
+    try state.setDocumentCrop("a", corners: SessionCorners.corners(SessionCorners.fullFrame))
     XCTAssertNoThrow(try state.exportSnapshot(nil).close())
     XCTAssertNil(closed(state))
   }
@@ -244,15 +244,27 @@ final class ScanSessionTests: XCTestCase {
     let (state, actions) = try scripted()
     actions.analysisGate = DispatchSemaphore(value: 0)
     _ = try admit(state, "a")
-    let explicit: QuadCoordinates = [0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9]
-    try state.setDocumentCrop("a", quad: SessionQuad.quad(explicit))
+    let explicit: CornerCoordinates = [0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9]
+    try state.setDocumentCrop("a", corners: SessionCorners.corners(explicit))
     XCTAssertEqual(page(state, "a")?.revision, 2)
     XCTAssertEqual(page(state, "a")?.rendering, false) // Rendering waits for analysis.
     actions.analysisGate?.signal()
     waitUntil("render") { ready(state, "a") }
     let metadata = try XCTUnwrap(page(state, "a"))
-    XCTAssertEqual(SessionQuad.coordinates(metadata.quad), explicit)
+    XCTAssertEqual(SessionCorners.coordinates(metadata.corners), explicit)
     XCTAssertEqual(metadata.revision, 2)
+    XCTAssertEqual(metadata.analysis?.candidate?.score, 0.9) // Reported, but not applied.
+    XCTAssertEqual(actions.log, ["analysis", "render:none"])
+    XCTAssertNil(closed(state))
+  }
+
+  func testAPageAdmittedWithoutAutoCropKeepsTheFullFrameButStillHasItsCandidate() throws {
+    let (state, actions) = try scripted()
+    _ = try admit(state, "a", autoCrop: false)
+    waitUntil("render") { ready(state, "a") }
+    let metadata = try XCTUnwrap(page(state, "a"))
+    XCTAssertEqual(SessionCorners.coordinates(metadata.corners), SessionCorners.fullFrame)
+    XCTAssertEqual(metadata.revision, 1)
     XCTAssertEqual(metadata.analysis?.candidate?.score, 0.9) // Reported, but not applied.
     XCTAssertEqual(actions.log, ["analysis", "render:none"])
     XCTAssertNil(closed(state))
@@ -299,7 +311,7 @@ final class ScanSessionTests: XCTestCase {
     try state.setFilter("a", filter: DocumentFilter.none)
     XCTAssertTrue(ready(state, "a")) // Cached slot published synchronously.
     XCTAssertEqual(actions.log, ["analysis", "render:none", "render:enhance"])
-    try state.setDocumentCrop("a", quad: SessionQuad.quad(SessionQuad.fullFrame))
+    try state.setDocumentCrop("a", corners: SessionCorners.corners(SessionCorners.fullFrame))
     waitUntil("geometry") { ready(state, "a") }
     XCTAssertEqual(actions.log.last, "render:none")
     XCTAssertNil(closed(state))

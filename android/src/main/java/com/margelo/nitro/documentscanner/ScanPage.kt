@@ -6,10 +6,10 @@ internal class ScanPage(
   val original: SessionResources.Resource,
   val frame: SessionResources.Resource?,
   var options: DocumentRenderOptions,
-  val model: com.margelo.nitro.documentscanner.processing.QuadModelStore.Selection?,
-  val liveQuad: DocumentQuad? = null,
+  val model: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection?,
+  val liveCorners: DocumentCorners? = null,
 ) {
-  data class RenderKey(val quad: DocumentQuad, val options: DocumentRenderOptions)
+  data class RenderKey(val corners: DocumentCorners, val options: DocumentRenderOptions)
   data class Artifact(
     val image: SessionResources.Resource,
     val thumbnail: SessionResources.Resource,
@@ -26,13 +26,13 @@ internal class ScanPage(
     val analyzing: Boolean,
     val rendering: Boolean,
     val analysis: DocumentAnalysis?,
-    val quad: DocumentQuad,
+    val corners: DocumentCorners,
     val options: DocumentRenderOptions,
     val analysisFailure: ScannerFailure?,
     val renderFailure: ScannerFailure?,
   )
 
-  var quad = fullFrame()
+  var corners = fullFrame()
   var explicitGeometry = false
   var requestedRevision = 1L
   var readyRevision: Long? = null
@@ -45,13 +45,13 @@ internal class ScanPage(
   val cache = LinkedHashMap<RenderKey, Artifact>()
   var displayed: Artifact? = null
 
-  fun key() = RenderKey(quad, options)
+  fun key() = RenderKey(corners, options)
   fun metadata() = Metadata(id, requestedRevision, readyRevision, analyzing,
     !analyzing && readyRevision != requestedRevision && renderFailure == null,
-    analysis, quad, options, analysisFailure, renderFailure)
+    analysis, corners, options, analysisFailure, renderFailure)
 
   companion object {
-    fun fullFrame() = DocumentQuad(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0),
+    fun fullFrame() = DocumentCorners(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0),
       DocumentPoint(1.0, 1.0), DocumentPoint(0.0, 1.0))
   }
 }
@@ -60,6 +60,6 @@ internal class ScanPage(
 internal data class SessionSampleSource(
   val original: SessionResources.Lease,
   val analysis: DocumentAnalysis?,
-  val model: com.margelo.nitro.documentscanner.processing.QuadModelStore.Selection?,
-  val liveQuad: DocumentQuad?,
+  val model: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection?,
+  val liveCorners: DocumentCorners?,
 )

@@ -12,7 +12,7 @@ void Stabilizer::reset() {
   deadlineNs_ = 0;
   lastTimestamp_.reset();
 }
-std::optional<Decision> Stabilizer::shape(const Quad &q, const Input &f) const {
+std::optional<Decision> Stabilizer::shape(const Corners &q, const Input &f) const {
   double area = 0;
   for (size_t i = 0; i < 4; ++i)
     area += q[i].x * q[(i + 1) % 4].y - q[(i + 1) % 4].x * q[i].y;
@@ -26,7 +26,7 @@ std::optional<Decision> Stabilizer::shape(const Quad &q, const Input &f) const {
   }
   return std::nullopt;
 }
-void Stabilizer::accept(const Quad &q, const Input &f) {
+void Stabilizer::accept(const Corners &q, const Input &f) {
   accepted_.emplace(q);
   acceptedSensorNs_ = f.sensorNs;
   ++acceptanceId_;
@@ -42,9 +42,9 @@ Output Stabilizer::output(Decision d, bool tracking, bool expired) const {
           expired};
 }
 std::optional<Output> Stabilizer::retain(const Input &f) {
-  if (!accepted_ || f.arrivalNs >= deadlineNs_ || !f.quad || shape(*f.quad, f))
+  if (!accepted_ || f.arrivalNs >= deadlineNs_ || !f.corners || shape(*f.corners, f))
     return std::nullopt;
-  accept(*f.quad, f);
+  accept(*f.corners, f);
   return output(Decision::agreed, true, false);
 }
 Output Stabilizer::update(const Input &f) {
@@ -57,7 +57,7 @@ Output Stabilizer::update(const Input &f) {
   const bool expired = accepted_ && f.arrivalNs >= deadlineNs_;
   if (expired)
     accepted_.reset();
-  auto invalid = f.quad ? shape(*f.quad, f) : std::optional{Decision::missing};
+  auto invalid = f.corners ? shape(*f.corners, f) : std::optional{Decision::missing};
   Decision d;
   bool tracking = false;
   if (invalid) {
@@ -66,7 +66,7 @@ Output Stabilizer::update(const Input &f) {
     d = *invalid;
   } else {
     d = accepted_ ? Decision::replaced : Decision::acquired;
-    accept(*f.quad, f);
+    accept(*f.corners, f);
     tracking = true;
   }
   return output(backward ? Decision::timestampBackward : d, tracking, expired);

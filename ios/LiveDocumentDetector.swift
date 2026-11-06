@@ -6,14 +6,14 @@ enum LiveGuideStatus: Equatable, Sendable {
   case searching, tracking, held, unavailable
 }
 
-/// One immutable guide publication. `quad` is normalized to the upright `framing.framed` region
+/// One immutable guide publication. `corners` is normalized to the upright `framing.framed` region
 /// of the frame it was accepted on; `acceptanceId` and `deadlineNs` (monotonic uptime) are set
 /// for tracking and held results. `generation` is the detector generation the frame was analyzed
 /// in; `modelGeneration`, `sequence` and `sensorNs` identify the model and frame behind it.
 /// `score` is this frame's inference score, nil for a frame flow alone carried.
 struct LiveGuideResult: Equatable, Sendable {
   var status: LiveGuideStatus
-  var quad: LiveQuad? = nil
+  var corners: LiveCorners? = nil
   var framing: CameraFraming? = nil
   var acceptanceId: Int64 = 0
   var deadlineNs: Int64 = 0
@@ -160,7 +160,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
   private var acceptedId: Int64 = 0
   private var acceptedFraming: CameraFraming?
   /// The latest accepted outline, carried by flow, and the framing and sensor time it belongs to.
-  private var flowRegion: LiveQuad?
+  private var flowRegion: LiveCorners?
   private var flowRegionFraming: CameraFraming?
   private var trackedRegionSensorNs: Int64 = 0
   private var sequence = 0
@@ -307,7 +307,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
         acceptedFraming = framing
         flowRegion = accepted
         trackedRegionSensorNs = sensorNs
-        publish(LiveGuideResult(status: .tracking, quad: accepted, framing: framing, acceptanceId: held.acceptanceId,
+        publish(LiveGuideResult(status: .tracking, corners: accepted, framing: framing, acceptanceId: held.acceptanceId,
                                 deadlineNs: held.deadlineNs, generation: lastToken,
                                 modelGeneration: modelGeneration ?? 0, sequence: sequence, sensorNs: sensorNs))
       } else {
@@ -344,7 +344,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
     modelGeneration = analysis.generation
     let prediction = analysis.prediction
     let rejected = ScannerLiveGuide.scoreRejected(NSNumber(value: prediction.score), minimum: settings.minCornerScore)
-    let candidate = rejected ? nil : prediction.quad
+    let candidate = rejected ? nil : prediction.corners
     if rejected {
       resetTracking()
       scorePausedGeneration = token
@@ -380,7 +380,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
                                  score: prediction.score)
     if status != 0, let accepted {
       result.status = status == 1 ? .tracking : .held
-      result.quad = accepted
+      result.corners = accepted
       result.framing = acceptedFraming
       result.acceptanceId = validated.acceptanceId
       result.deadlineNs = validated.deadlineNs
@@ -388,8 +388,8 @@ final class LiveDocumentDetector: @unchecked Sendable {
     publish(result)
   }
 
-  private func warp(_ quad: LiveQuad, to sensorNs: Int64) -> LiveQuad? {
-    flow?.warp(Self.numbers(quad)!, fromNs: trackedRegionSensorNs, toNs: sensorNs)?
+  private func warp(_ corners: LiveCorners, to sensorNs: Int64) -> LiveCorners? {
+    flow?.warp(Self.numbers(corners)!, fromNs: trackedRegionSensorNs, toNs: sensorNs)?
       .map(\.doubleValue)
   }
 
@@ -436,7 +436,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
     flowRegion = nil
   }
 
-  private static func numbers(_ quad: LiveQuad?) -> [NSNumber]? { quad?.map { NSNumber(value: $0) } }
+  private static func numbers(_ corners: LiveCorners?) -> [NSNumber]? { corners?.map { NSNumber(value: $0) } }
 
   private static func copy(_ buffer: CVPixelBuffer, framing: CameraFraming, sensorNs: Int64) -> LiveFrame? {
     guard CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA,
@@ -475,7 +475,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
   private func deliver(_ result: LiveGuideResult) {
     dispatchPrecondition(condition: .onQueue(.main))
     guard state.isCurrent(result.generation) else { return }
-    if result.quad != nil {
+    if result.corners != nil {
       // A frame analyzed before the deadline must not resurrect guidance that already expired.
       if result.acceptanceId <= expiredAcceptanceId { return }
       // An analysis or main-thread stall can deliver a result after its deadline; never draw it.

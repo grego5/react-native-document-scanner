@@ -27,7 +27,7 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 ## Current behavior and invariants
 
-4096-pixel source/output limits, no enlargement beyond available pixels, fixed quad corners, straight-warp coverage polygon, and curved-edge fallback behavior remain unchanged.
+4096-pixel source/output limits, no enlargement beyond available pixels, fixed corners corners, straight-warp coverage polygon, and curved-edge fallback behavior remain unchanged.
 
 ## Implementation steps
 
@@ -37,7 +37,7 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 
@@ -64,7 +64,7 @@ refactor: share perspective and page-edge rendering
 
 ## Implementation report
 
-- Added `RenderGeometry.hpp` / `RenderGeometry.cpp`: the portable pre-filter stage borrows a full upright RGBA8 pixel lease (padded rows allowed), validates the submitted normalized quad, chooses the existing target dimensions, constructs/inverts the Point2f homography, performs the perspective or curved warp, and returns independent immutable pixels with the normalized straight-warp coverage polygon. Source/output limits, original-scale sizing, paper limits, interpolation, border values, coverage mask and rejection behavior are preserved.
+- Added `RenderGeometry.hpp` / `RenderGeometry.cpp`: the portable pre-filter stage borrows a full upright RGBA8 pixel lease (padded rows allowed), validates the submitted normalized corners, chooses the existing target dimensions, constructs/inverts the Point2f homography, performs the perspective or curved warp, and returns independent immutable pixels with the normalized straight-warp coverage polygon. Source/output limits, original-scale sizing, paper limits, interpolation, border values, coverage mask and rejection behavior are preserved.
 - Moved Android `PageEdges.kt` detection/fitting/source-boundary logic to private `cpp/src/PageEdges.cpp` / `internal/PageEdges.hpp`, preserving the 800-pixel detection canvas, 6% band, 31 stations, strongest-step tie handling, triple search and least-squares order, thresholds, fixed corners and float32 offset arrays. The existing strip/parallel remap kernel is unchanged. Unsupported sides stay straight; any outside submitted corner disables all bending.
 - Replaced the old `PageEdgesRemap.*` JNI wrapper with `NativeRenderGeometry.*` and a small Kotlin value adapter. JNI retains a source Mat header as the lease owner for its synchronous call and copies the independently owned result into Android's mutable filter input. No Mat, JNI address or platform handle enters the portable headers. Added a read-only span accessor to the validated PixelView for private library adapters.
 - `DocumentRenderer.kt` now delegates its geometric stage while retaining decode, filter/shadow order, encoding, thumbnail registration and atomic file publication. The processor's existing `FastCores.run { DocumentRenderer.render(...) }` scope remains unchanged, using the same Android OpenCV runtime. No public/Nitro API or generated binding changed.

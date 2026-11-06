@@ -32,13 +32,13 @@ PDF and gallery exports consume URI arrays. PdfWriter can embed JPEG/4-bit PNG d
 
 1. Expose session.createPdf(pageIds, options) without options.pages. Snapshot the caller's ordered IDs, effective requested revisions/settings and resource leases atomically at invocation. Unknown IDs fail input/invalid before creating output.
 
-2. Enqueue one export job; render missing snapshot artifacts inline through the serial synchronous pipeline, never await jobs queued behind it. If admission occurs during analysis, pin that source's already-requested analysis outcome and the invocation's explicit-quad override/settings: later page mutations cannot change the geometry chosen for this snapshot. Analysis failures required to obtain its automatic crop fail export; no-candidate analysis uses full frame.
+2. Enqueue one export job; render missing snapshot artifacts inline through the serial synchronous pipeline, never await jobs queued behind it. If admission occurs during analysis, pin that source's already-requested analysis outcome and the invocation's explicit-corners override/settings: later page mutations cannot change the geometry chosen for this snapshot. Analysis failures required to obtain its automatic crop fail export; no-candidate analysis uses full frame.
 
 3. Edits/deletion after snapshot admission cannot alter export content. Reuse matching artifacts, preserve existing PdfWriter quality/DPI/EXIF behavior, and never fall back to an older display. Close invalidates pending/running publication and cleans temporary outputs before replacement.
 
 4. Add session.exportImages(pageIds, outputDirectory) returning independent exported file URIs in input order. Apply the same snapshot rules; copy output artifacts to unique files outside session directories. Roll back partial exported copies on failure. These exported URIs are artifacts, not access to page-owned files.
 
-5. Add session.saveCaptureSample(pageId, quad?) that opens/pins the source before sample queue admission, preserving folder/model provenance. Keep folder selection and live sample controls on their existing owners.
+5. Add session.saveCaptureSample(pageId, corners?) that opens/pins the source before sample queue admission, preserving folder/model provenance. Keep folder selection and live sample controls on their existing owners.
 
 6. Require PDF/image output paths outside active session directories and preserve existing explicit destination validation. Export leases survive page removal; external copies survive session close.
 
@@ -74,7 +74,7 @@ feat(export): snapshot session pages for output
 
 ## Implementation evidence - 2026-10-31
 
-- Added public session createPdf(pageIds, SessionPdfOptions without pages), exportImages(pageIds, outputDirectory), and saveCaptureSample(pageId, quad?) with generated typed result unions and existing ScannerError translation. Native snapshots pin caller order/duplicates, requested revision/settings, matching cache files and originals atomically.
+- Added public session createPdf(pageIds, SessionPdfOptions without pages), exportImages(pageIds, outputDirectory), and saveCaptureSample(pageId, corners?) with generated typed result unions and existing ScannerError translation. Native snapshots pin caller order/duplicates, requested revision/settings, matching cache files and originals atomically.
 - ScanPage now retains its one authoritative analysis outcome. Pending automatic exports pin that outcome and invocation-time explicit geometry; later edits/removal cannot select a different crop. Analysis stays ahead of the export FIFO job, with no worker wait. Missing artifacts render inline through the same synchronous leased pipeline; matching current cache artifacts are reused, old displays are not substituted, and current/required analysis failures reject.
 - SessionExports stages PDF/image output outside active/reserved session directories, including canonical aliases. Publication claims an open state before final moves/replacement; queued/running close discards staged output. Partial copies/moves roll back. Unique external images/PDFs survive successful session close. Existing PdfWriter encoding/DPI/EXIF logic is unchanged.
 - Sample ID admission snapshots original/analysis/model provenance. The sample-private analysis record is named SamplePhotoAnalysis to avoid colliding with the shared PhotoAnalysis pipeline object. The sample queue opens/pins the source before admission, retains invocation folder selection and releases the lease on settlement. Page-owned provenance remains available after live-ticket cache eviction or global model changes. The example export/gallery hooks remain intentionally staged until Task 12.

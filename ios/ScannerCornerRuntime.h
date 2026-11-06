@@ -3,10 +3,10 @@
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
-/// Immutable normalized upright TL/TR/BR/BL prediction; nil quad means invalid
+/// Immutable normalized upright TL/TR/BR/BL prediction; nil corners means invalid
 /// geometry.
 @interface ScannerCornerResult : NSObject
-@property(nonatomic, readonly, nullable) NSArray<NSNumber *> *quad;
+@property(nonatomic, readonly, nullable) NSArray<NSNumber *> *corners;
 @property(nonatomic, readonly) double score;
 @property(nonatomic, readonly) double preprocessingMs;
 @property(nonatomic, readonly) double inferenceMs;

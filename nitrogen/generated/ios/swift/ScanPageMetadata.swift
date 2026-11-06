@@ -18,7 +18,7 @@ public extension ScanPageMetadata {
   /**
    * Create a new instance of `ScanPageMetadata`.
    */
-  init(id: String, revision: Double, readyRevision: Double?, analyzing: Bool, rendering: Bool, ready: Bool, analysis: DocumentAnalysis?, quad: DocumentQuad, options: DocumentRenderOptions, analysisFailure: ScannerFailure?, renderFailure: ScannerFailure?) {
+  init(id: String, revision: Double, readyRevision: Double?, analyzing: Bool, rendering: Bool, ready: Bool, analysis: DocumentAnalysis?, corners: DocumentCorners, options: DocumentRenderOptions, analysisFailure: ScannerFailure?, renderFailure: ScannerFailure?) {
     self.init(std.string(id), revision, { () -> bridge.std__optional_double_ in
       if let __unwrappedValue = readyRevision {
         return bridge.create_std__optional_double_(__unwrappedValue)
@@ -31,7 +31,7 @@ public extension ScanPageMetadata {
       } else {
         return .init()
       }
-    }(), quad, options, { () -> bridge.std__optional_ScannerFailure_ in
+    }(), corners, options, { () -> bridge.std__optional_ScannerFailure_ in
       if let __unwrappedValue = analysisFailure {
         return bridge.create_std__optional_ScannerFailure_(__unwrappedValue)
       } else {
@@ -89,8 +89,8 @@ public extension ScanPageMetadata {
   }
   
   @inline(__always)
-  var quad: DocumentQuad {
-    return self.__quad
+  var corners: DocumentCorners {
+    return self.__corners
   }
   
   @inline(__always)

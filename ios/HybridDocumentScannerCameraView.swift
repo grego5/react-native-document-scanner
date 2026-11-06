@@ -3,14 +3,14 @@ import Foundation
 import NitroModules
 import UIKit
 
-/// Rear-camera preview over one AVFoundation owner. The camera runs only while the mode is not
-/// `off`, the view is in a window with a size, the app is in the foreground and permission is
+/// Rear-camera preview over one AVFoundation owner. The camera runs only while `active` is not
+/// false, the view is in a window with a size, the app is in the foreground and permission is
 /// granted; losing any of them stops it deterministically, keeping the view mounted. Nitro sets
 /// props, mounts and unmounts on main, where all of this state lives.
 ///
 /// The bound scan session is borrowed: stopping or detaching the camera never closes it, and a
 /// replaced or closed session advances `sessionGeneration`, which later capture publication
-/// checks. The camera starts only once `quadTensorModel` is prepared; a preparation failure keeps
+/// checks. The camera starts only once `cornerDetectionModel` is prepared; a preparation failure keeps
 /// it suspended until the source changes. Live guidance analyzes the camera's frames on its frame
 /// queue and publishes here. Focus, torch and exposure run through `CameraControls`, which executes
 /// their policies on the camera's session owner. `takePhoto` takes one still at a time and admits it
@@ -35,15 +35,16 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   var view: UIView { preview }
   var session: (any HybridScanSessionSpec) = HybridScanSession.placeholder()
-  var renderOptions: DocumentRenderOptions = DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: nil, format: nil, paperSize: nil, dpi: nil, followPageEdges: nil)
-  var quadTensorModel: String? = nil
+  var imageCorrection = ImageCorrectionOptions(removeShadows: nil, filter: nil, simpleDewarp: nil)
+  var outputOptions = ImageOutputOptions(jpegQuality: nil, format: nil, width: nil, height: nil, dpi: nil)
+  var cornerDetectionModel: String? = nil
   var onError: ((_ error: ScannerFailure) -> Void)? = nil
-  var mode: CameraMode? = nil
-  var guide: Bool? = nil
-  var adaptiveDetection: Bool? = nil
+  var active: Bool? = nil
+  var guideLiveCorners: Bool? = nil
+  var autoCrop: Bool? = nil
+  var inferenceThrottling: Bool? = nil
   var minCornerScore: Double? = nil
-  var qualityGate: Bool? = nil
-  var qualityGateConfig: QualityGateConfig? = nil
+  var lowQualityControl = LowQualityControl(enabled: true, captureBlurPercent: nil, requireFocus: nil)
   var tapToFocus: Bool? = nil
   var exposureCompensation: Double? = nil
   var minFrameRate: Double? = nil
@@ -51,10 +52,11 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// Android only; AVFoundation's low-light boost is not applied.
   var lowLightBoost: Bool? = nil
   var captureMode: CaptureMode? = nil
-  var jpegQuality: Double? = nil
+  /// The largest bounded still, for text; false takes the standard 1440x1080-class one.
+  var highResolutionPhoto: Bool? = nil
   var guideTransitionDuration: Double? = nil
-  var analysisWidth: Double? = nil
-  var squareFrame: Bool? = nil
+  var analysisFrameWidth: Double? = nil
+  var squareAspectRatio: Bool? = nil
   var showStats: Bool? = nil
   var guideColor: Double? = nil
   var captureFeedback: Bool? = nil
@@ -70,8 +72,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var dropped = false
   private var attached = false
   private var foreground = true
-  private var active = true
-  private var request = CameraRequest(analysisWidth: CameraFormatPolicy.defaultAnalysisWidth)
+  private var activeApplied = true
+  private var request = CameraRequest(analysisFrameWidth: CameraFormatPolicy.defaultAnalysisWidth)
   /// The request the camera was started with; nil while stopped.
   private var started: CameraRequest?
   /// A failed start stays suspended until a lifecycle change or a new request retries it.
@@ -120,7 +122,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     self.inBackground = inBackground ?? {
       MainActor.assumeIsolated { UIApplication.shared.applicationState == .background }
     }
-    self.models = models ?? { QuadModelLoader.shared.load($0, completion: $1) }
+    self.models = models ?? { CornerModelLoader.shared.load($0, completion: $1) }
     let detector = detector ?? LiveDocumentDetector()
     self.detector = detector
     let controls = controls ?? CameraControls(camera: self.camera)
@@ -142,9 +144,10 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     MainActor.assumeIsolated {
       guard !dropped else { return }
       updateSession()
-      let nextActive = mode != .off
-      if nextActive != active { active = nextActive; failed = false }
-      let next = CameraRequest(analysisWidth: CameraFormatPolicy.analysisWidth(analysisWidth))
+      let nextActive = active ?? true
+      if nextActive != activeApplied { activeApplied = nextActive; failed = false }
+      let next = CameraRequest(analysisFrameWidth: CameraFormatPolicy.analysisFrameWidth(analysisFrameWidth),
+                               highResolutionPhoto: highResolutionPhoto ?? true)
       if next != request { request = next; failed = false }
       applyFraming()
       controls.update(controlSettings)
@@ -174,12 +177,12 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   /// The quality gate is not implemented yet, so `options` changes nothing: an accepted shot fires
   /// at once.
-  func takePhotoResult(options: TakePhotoOptions?) throws -> Promise<Variant_String_ScannerFailure> {
-    let promise = Promise<Variant_String_ScannerFailure>()
+  func takePhotoResult(options: TakePhotoOptions?) throws -> Promise<Variant_ScannerFailure_CameraCaptureResult> {
+    let promise = Promise<Variant_ScannerFailure_CameraCaptureResult>()
     let ticket = CaptureTicket { result in
       switch result {
-      case .success(let id): promise.resolve(withResult: .first(id))
-      case .failure(let error): promise.resolve(withResult: .second(ScannerFailure(code: error.code)))
+      case .success(let result): promise.resolve(withResult: .second(result))
+      case .failure(let error): promise.resolve(withResult: .first(ScannerFailure(code: error.code)))
       }
     }
     DispatchQueue.main.async { [weak self] in
@@ -245,7 +248,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// Starts, restarts or stops the camera to match the current conditions.
   private func evaluate() {
     let sized = MainActor.assumeIsolated { preview.bounds.width > 0 && preview.bounds.height > 0 }
-    let wanted = !dropped && active && attached && foreground && sized && modelReady
+    let wanted = !dropped && activeApplied && attached && foreground && sized && modelReady
       && permissions.status() == .granted
     if !wanted {
       stopCamera()
@@ -260,7 +263,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     report()
   }
 
-  /// Any stop (detach, background, mode off, permission or unmount) invalidates the shot in
+  /// Any stop (detach, background, inactive, permission or unmount) invalidates the shot in
   /// flight at once; its slot stays busy until the camera settles it.
   private func stopCamera() {
     shot?.ticket.reject(.cameraUnavailable)
@@ -364,10 +367,10 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       overlay.color = guideColor.flatMap { $0.isFinite ? UInt32(truncatingIfNeeded: Int64($0)) : nil }
         ?? LiveGuideOverlay.defaultColor
       overlay.transitionNs = guideTransitionDuration.flatMap { $0.isFinite ? Int64(max(0, $0) * 1_000_000) : nil }
-        ?? QuadTransition.defaultDurationNs
+        ?? GuideTransition.defaultDurationNs
     }
     updateDetectorSettings()
-    let nextGuide = guide ?? true
+    let nextGuide = guideLiveCorners ?? true
     guard nextGuide != guideOn else { return }
     guideOn = nextGuide
     latestGuide = nil
@@ -378,14 +381,14 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   }
 
   private func updateDetectorSettings() {
-    detector.update(LiveDocumentDetector.Settings(adaptive: adaptiveDetection ?? false, minCornerScore: resolvedScore,
+    detector.update(LiveDocumentDetector.Settings(adaptive: inferenceThrottling ?? false, minCornerScore: resolvedScore,
                                                   rotationAngle: captureAngle, square: appliedSquare))
   }
 
   /// Applies the square prop unless a shot is in flight; the shot's end applies it.
   private func applyFraming() {
     guard shot == nil else { return }
-    let square = squareFrame ?? false
+    let square = squareAspectRatio ?? false
     MainActor.assumeIsolated { preview.square = square }
     guard square != appliedSquare else { return }
     appliedSquare = square
@@ -394,7 +397,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   private func guideResult(_ result: LiveGuideResult) {
     guard !dropped, started != nil, guideOn else { return }
-    latestGuide = result.quad != nil && result.framing != nil ? result : nil
+    latestGuide = result.corners != nil && result.framing != nil ? result : nil
     switch result.status {
     case .searching: setDocumentState(.searching)
     case .tracking: setDocumentState(.tracking)
@@ -408,7 +411,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// A new source stops the camera until it is prepared; a failure keeps it suspended until the
   /// source changes.
   private func updateModel() {
-    let source = quadTensorModel ?? ""
+    let source = cornerDetectionModel ?? ""
     guard source != requestedModel else { return }
     requestedModel = source
     modelReady = false
@@ -475,7 +478,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     if shot != nil { return .captureBusy }
     guard let borrowed else { return .captureNotReady }
     if borrowed.snapshot().closed { return .processorDisposed }
-    guard active, attached else { return .cameraUnavailable }
+    guard activeApplied, attached else { return .cameraUnavailable }
     guard permissions.status() == .granted else { return .cameraPermissionDenied }
     if failed { return .cameraUnavailable }
     guard cameraState == .ready else { return .captureNotReady }
@@ -487,18 +490,23 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private func shoot(_ ticket: CaptureTicket) {
     if let code = captureRejection() { ticket.reject(code); return }
     guard let borrowed else { return }
-    var settings = StillSettings.resolve(mode: captureMode, jpegQuality: jpegQuality,
+    var settings = StillSettings.resolve(mode: captureMode,
                                          zeroShutterLag: configuration?.zeroShutterLag ?? false)
     settings.rotationAngle = captureAngle
     // Only an outline seen through the framing the still is shot in; one from before a rotation
     // or square change would land elsewhere on the still.
     let framing = analysisFraming
     let guide = latestGuide.flatMap { result in
-      result.quad.flatMap { quad in result.framing.flatMap { $0 == framing ? (quad: quad, framing: $0) : nil } }
+      result.corners.flatMap { corners in result.framing.flatMap { $0 == framing ? (corners: corners, framing: $0) : nil } }
     }
+    let paper: PaperSize? = outputOptions.width == nil && outputOptions.height == nil ? nil :
+      PaperSize(width: outputOptions.width ?? .nan, height: outputOptions.height ?? .nan)
+    let renderOptions = DocumentRenderOptions(removeShadows: imageCorrection.removeShadows,
+      jpegQuality: outputOptions.jpegQuality, filter: imageCorrection.filter, format: outputOptions.format,
+      paperSize: paper, dpi: outputOptions.dpi, simpleDewarp: imageCorrection.simpleDewarp)
     let shot = StillShot(ticket: ticket, session: borrowed, options: renderOptions,
                          selection: try? CornerInference.shared.selection(), settings: settings,
-                         square: appliedSquare, guide: guide)
+                         square: appliedSquare, guide: guide, autoCrop: autoCrop ?? true)
     self.shot = shot
     shotExposed = false
     detector.requestFrame { [slot = shot.frame] in slot.fill($0) }

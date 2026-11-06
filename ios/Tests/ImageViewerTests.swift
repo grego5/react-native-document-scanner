@@ -33,7 +33,7 @@ final class PictureActions: ScanSessionActions, @unchecked Sendable {
 
   init(resources: SessionResources, failures: Int) { self.resources = resources; self.failures = failures }
 
-  func prepareAnalysis(_ source: SessionResources.Lease, liveQuad: QuadCoordinates?,
+  func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
     { AnalysisValue(width: 480, height: 360, duration: 1, candidate: [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8], score: 0.9) }
   }
@@ -112,7 +112,7 @@ final class ImageViewerTests: XCTestCase {
                      format: DocumentImageFormat? = nil, filter: DocumentFilter? = nil) throws -> URL {
     let source = try store.publish(image: picture(width: width, height: height))
     let options = DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: filter, format: format,
-                                        paperSize: nil, dpi: nil, followPageEdges: nil)
+                                        paperSize: nil, dpi: nil, simpleDewarp: nil)
     try state.admitSource(id: id, source: source, options: options, selection: nil)
     return source
   }

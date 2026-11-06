@@ -10,10 +10,10 @@
 #include <fbjni/fbjni.h>
 #include "DocumentCandidate.hpp"
 
+#include "DocumentCorners.hpp"
 #include "DocumentPoint.hpp"
-#include "DocumentQuad.hpp"
+#include "JDocumentCorners.hpp"
 #include "JDocumentPoint.hpp"
-#include "JDocumentQuad.hpp"
 
 namespace margelo::nitro::documentscanner {
 
@@ -34,12 +34,12 @@ namespace margelo::nitro::documentscanner {
     [[nodiscard]]
     DocumentCandidate toCpp() const {
       static const auto clazz = javaClassStatic();
-      static const auto fieldQuad = clazz->getField<JDocumentQuad>("quad");
-      jni::local_ref<JDocumentQuad> quad = this->getFieldValue(fieldQuad);
+      static const auto fieldCorners = clazz->getField<JDocumentCorners>("corners");
+      jni::local_ref<JDocumentCorners> corners = this->getFieldValue(fieldCorners);
       static const auto fieldScore = clazz->getField<double>("score");
       double score = this->getFieldValue(fieldScore);
       return DocumentCandidate(
-        quad->toCpp(),
+        corners->toCpp(),
         score
       );
     }
@@ -50,12 +50,12 @@ namespace margelo::nitro::documentscanner {
      */
     [[maybe_unused]]
     static jni::local_ref<JDocumentCandidate::javaobject> fromCpp(const DocumentCandidate& value) {
-      using JSignature = JDocumentCandidate(jni::alias_ref<JDocumentQuad>, double);
+      using JSignature = JDocumentCandidate(jni::alias_ref<JDocumentCorners>, double);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
-        JDocumentQuad::fromCpp(value.quad),
+        JDocumentCorners::fromCpp(value.corners),
         value.score
       );
     }

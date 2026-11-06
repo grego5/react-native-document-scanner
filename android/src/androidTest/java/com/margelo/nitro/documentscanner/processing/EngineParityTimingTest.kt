@@ -60,7 +60,7 @@ class EngineParityTimingTest {
     val folder = File(context.getExternalFilesDir(null), "engine-parity").apply { mkdirs() }
     val report = StringBuilder("# device=${Build.MODEL} sdk=${Build.VERSION.SDK_INT}\n")
       .append("stage\tside\tfilter\tshadows\titeration\tms\twidth\theight\tbytes\tpixelCrc\n")
-    val quad = DocumentQuad(DocumentPoint(.05,.05), DocumentPoint(.95,.05), DocumentPoint(.95,.95), DocumentPoint(.05,.95))
+    val corners = DocumentCorners(DocumentPoint(.05,.05), DocumentPoint(.95,.05), DocumentPoint(.95,.95), DocumentPoint(.05,.95))
     for (side in listOf(2048, 4096)) {
       val source = fixture(side)
       val file = File(context.cacheDir, "engine-parity-$side.jpg")
@@ -76,14 +76,14 @@ class EngineParityTimingTest {
             // Sustained work, not a fixed number of cold calls, warms workers and frequency scaling.
             val warmUntil = System.nanoTime() + 2_000_000_000L
             do {
-              val warm = DocumentRenderer.render(Uri.fromFile(file).toString(), quad, options)
+              val warm = DocumentRenderer.render(Uri.fromFile(file).toString(), corners, options)
               PageThumbnails.forget(listOf(warm.outputUri))
               File(Uri.parse(warm.outputUri).path!!).delete()
               File(Uri.parse(warm.thumbnailUri).path!!).delete()
             } while (System.nanoTime() < warmUntil)
             repeat(11) { iteration ->
               val start = System.nanoTime()
-              val rendered = DocumentRenderer.render(Uri.fromFile(file).toString(), quad, options)
+              val rendered = DocumentRenderer.render(Uri.fromFile(file).toString(), corners, options)
               val ms = (System.nanoTime() - start) / 1e6
               val output = File(Uri.parse(rendered.outputUri).path!!)
               try {

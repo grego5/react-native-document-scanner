@@ -1,50 +1,73 @@
 import QuartzCore
 import UIKit
 
-/// Eases the drawn guide toward each new detection, in view points. Main only.
-struct QuadTransition {
-  static let defaultDurationNs: Int64 = 50_000_000
+/// Eases the drawn guide toward each new detection, in view points, with a distance-adaptive exponential, as the One
+/// Euro filter adapts to speed: a small gap, mostly detection jitter, closes with the `durationNs` time constant, so
+/// the guide holds still; a large one closes with `fastNs`, so it keeps up with the page. A corner farther than the
+/// snap distance is likely another page and snaps. Main only; the same as Android's.
+struct GuideTransition {
+  static let defaultDurationNs: Int64 = 80_000_000
+  static let fastNs: Int64 = 20_000_000
+  private static let near: CGFloat = 0.05
+  private static let far: CGFloat = 0.5
+  /// Under half a point the guide lands on its target and stops animating.
+  private static let settled: CGFloat = 0.5
 
   private(set) var points = [CGFloat](repeating: 0, count: 8)
-  private var from = [CGFloat](repeating: 0, count: 8)
   private var target = [CGFloat](repeating: 0, count: 8)
-  private var startedNs: Int64 = 0
+  private var lastNs: Int64 = 0
+  private var snapDistance: CGFloat = 0
   private(set) var hasPoints = false
   private(set) var isAnimating = false
-  /// Easing length for later retargets; zero or less snaps.
+  /// Time constant for small gaps; zero or less snaps.
   var durationNs = defaultDurationNs
 
   /// Starts from the last drawn position; a corner jumping farther than `snapDistance` snaps.
   mutating func retarget(_ next: [CGFloat], nowNs: Int64, snapDistance: CGFloat) {
-    let jump = stride(from: 0, to: 8, by: 2).contains { index in
-      hypot(next[index] - points[index], next[index + 1] - points[index + 1]) > snapDistance
-    }
     target = next
-    if !hasPoints || jump || durationNs <= 0 {
+    if !hasPoints || gap() > snapDistance || durationNs <= 0 {
       points = next
       hasPoints = true
       isAnimating = false
       return
     }
-    from = points
-    startedNs = nowNs
+    self.snapDistance = snapDistance
+    if !isAnimating { lastNs = nowNs }
     isAnimating = points != target
   }
 
   mutating func advance(nowNs: Int64) {
     guard isAnimating else { return }
-    let progress = durationNs <= 0 ? 1 : min(1, max(0, CGFloat(nowNs - startedNs) / CGFloat(durationNs)))
-    if progress >= 1 {
+    let elapsed = nowNs - lastNs
+    guard elapsed > 0 else { return }
+    lastNs = nowNs
+    let near = snapDistance * Self.near, far = snapDistance * Self.far
+    let share: CGFloat = far <= near ? 1 : (gap() - near) / (far - near)
+    let reach: CGFloat = min(1, max(0, share))
+    let slow = CGFloat(durationNs), fast = CGFloat(min(durationNs, Self.fastNs))
+    let timeConstant: CGFloat = slow + (fast - slow) * reach
+    let step: CGFloat = 1 - exp(-CGFloat(elapsed) / timeConstant)
+    for index in 0..<8 { points[index] += (target[index] - points[index]) * step }
+    if gap() <= Self.settled {
       points = target
       isAnimating = false
-    } else {
-      points = (0..<8).map { from[$0] + (target[$0] - from[$0]) * progress }
     }
   }
 
   mutating func clear() {
     hasPoints = false
     isAnimating = false
+  }
+
+  /// The farthest any corner is from its target.
+  private func gap() -> CGFloat {
+    var farthest: CGFloat = 0
+    for index in stride(from: 0, to: 8, by: 2) {
+      let dx: CGFloat = target[index] - points[index]
+      let dy: CGFloat = target[index + 1] - points[index + 1]
+      farthest = max(farthest, hypot(dx, dy))
+    }
+    return farthest
   }
 }
 
@@ -63,7 +86,7 @@ final class LiveGuideOverlay: UIView {
 
   private let outline = CAShapeLayer()
   private let brackets = CAShapeLayer()
-  private var transition = QuadTransition()
+  private var transition = GuideTransition()
   private var link: CADisplayLink?
   private var stateAlpha: CGFloat = 1
   private(set) var drawnAcceptanceId: Int64 = 0
@@ -148,20 +171,20 @@ final class LiveGuideOverlay: UIView {
     }
   }
 
-  /// The result's quad in view points. Detection and preview may turn the buffer differently
+  /// The result's corners in view points. Detection and preview may turn the buffer differently
   /// (AVFoundation's capture and preview angles differ, for example, in a portrait-locked app held
   /// sideways), so each corner goes back to normalized buffer coordinates through the detection
   /// framing, then into `preview`, which is presented aspect-fitted as the preview layer is. Without
   /// a preview framing the detection framing is assumed to be the one shown.
   static func mappedPoints(_ result: LiveGuideResult, preview: CameraFraming?, in bounds: CGRect) -> [CGFloat]? {
-    guard let quad = result.quad, quad.count == 8, let framing = result.framing else { return nil }
+    guard let corners = result.corners, corners.count == 8, let framing = result.framing else { return nil }
     let shown = preview ?? framing
     let rect = shown.presentation(in: bounds)
     guard !rect.isEmpty else { return nil }
     var points: [CGFloat] = []
     points.reserveCapacity(8)
     for index in stride(from: 0, to: 8, by: 2) {
-      let point = shown.toFramed(framing.toBuffer(CGPoint(x: quad[index], y: quad[index + 1])))
+      let point = shown.toFramed(framing.toBuffer(CGPoint(x: corners[index], y: corners[index + 1])))
       points.append(rect.minX + point.x * rect.width)
       points.append(rect.minY + point.y * rect.height)
     }

@@ -18,7 +18,7 @@ Do not implement later task outcomes, redesign unrelated Android behavior, chang
 
 This is a lookup map. Locate symbols and read only the ranges needed for the next implementation decision. Prefer a configured matching LSP project; use focused rg when indexing is unavailable.
 
-- android/src/main/java/com/margelo/nitro/documentscanner/processing/DocCornerSession.kt — tensor checks, decodeOutput, validNormalizedQuad
+- android/src/main/java/com/margelo/nitro/documentscanner/processing/DocCornerSession.kt — tensor checks, decodeOutput, validNormalizedCorners
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/NativeTensorPreprocessor.kt
 - android/src/main/cpp/NativeTensorPreprocessor.cpp
 - android/src/androidTest/java/com/margelo/nitro/documentscanner/processing/NativeTensorPreprocessorTest.kt
@@ -36,7 +36,7 @@ One float32 NHWC input and one nine-float output; score is ranking evidence and 
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 
@@ -67,8 +67,8 @@ refactor: share scanner tensor preparation and decoding
 - Moved the existing integer separable resize kernels and RGB normalization without changing arithmetic. The portable workspace borrows `PixelLease` and writable float32 output synchronously; it applies encoded crop/orientation before resizing the entire upright region. Source dimensions may change between calls; rectangular target dimensions come from the selected model. The native helper defaults to the bundled 224x224 input; custom model selection semantics remain unchanged.
 - Shared tensor metadata validation and nine-float interpretation reject malformed/nonfinite output, preserve exact float32-to-double corner promotion, and return no candidate for invalid geometry. Scores have no acceptance threshold. Photo inference crop selection now reuses the shared prediction predicate.
 - Android `NativeTensorPreprocessor.*` retains only JNI, bitmap locks, buffer validation/references and shared workspace ownership. `DocCornerSession.kt` retains interpreter invocation and maps accepted shared values to existing candidate/provenance types. `CornerInference` still serializes one runtime and primes its worker before every task; its completion-bound image ownership is unchanged.
-- Moved the decoder/quad fixture assertions out of JVM tests into CTest, added portable resize goldens and all-EXIF crop/stride/format tests, and added JNI metadata/decoder error-contract assertions in `NativeTensorPreprocessorTest.kt`. Existing Kotlin resampling oracle tests remain independent. Updated portable-core and architecture documentation.
-- The separate Kotlin `validNormalizedQuad` helper remains only for existing live/tracked-guide policy consumers pending their later migration; production model-output decoding no longer uses it. No iOS adapter/runtime integration was added or executed; that remains Task 20, with cross-platform release evidence still required.
+- Moved the decoder/corners fixture assertions out of JVM tests into CTest, added portable resize goldens and all-EXIF crop/stride/format tests, and added JNI metadata/decoder error-contract assertions in `NativeTensorPreprocessorTest.kt`. Existing Kotlin resampling oracle tests remain independent. Updated portable-core and architecture documentation.
+- The separate Kotlin `validNormalizedCorners` helper remains only for existing live/tracked-guide policy consumers pending their later migration; production model-output decoding no longer uses it. No iOS adapter/runtime integration was added or executed; that remains Task 20, with cross-platform release evidence still required.
 
 ### Validation
 

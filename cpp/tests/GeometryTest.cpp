@@ -19,7 +19,7 @@ void near(Point actual, Point expected) {
   near(actual.x, expected.x);
   near(actual.y, expected.y);
 }
-void near(const Quad &actual, const Quad &expected) {
+void near(const Corners &actual, const Corners &expected) {
   for (size_t i = 0; i < 4; ++i)
     near(actual[i], expected[i]);
 }
@@ -31,7 +31,7 @@ void rejects(const std::function<void()> &f) {
   }
   throw std::runtime_error("Invalid geometry accepted");
 }
-Quad rect(double l, double t, double r, double b) { return {Point{l, t}, Point{r, t}, Point{r, b}, Point{l, b}}; }
+Corners rect(double l, double t, double r, double b) { return {Point{l, t}, Point{r, t}, Point{r, b}, Point{l, b}}; }
 void orientations() {
   // Independent marker order: encoded TL=red, TR=green, BR=yellow, BL=blue.
   const std::array<std::array<int, 4>, 8> orders{
@@ -100,7 +100,7 @@ void inferenceRegions() {
   check(g::photoInferenceCrop(rect(.1, .1, .105, .105), {1000, 2000}).has_value(), "Small valid prediction");
 }
 void cropEditing() {
-  // Migrated CropQuadEditingTest assertions.
+  // Migrated CropCornerEditingTest assertions.
   const auto q = rect(.1, .1, .9, .9);
   near(*g::moveEdge(q, 0, {.3, -.5}), {Point{.2, 0}, Point{1, 0}, Point{.9, .9}, Point{.1, .9}});
   check(!g::moveEdge(q, 0, {0, .9}), "Opposite edge crossing rejected");
@@ -110,17 +110,17 @@ void cropEditing() {
   check(g::moveCorner(q, 0, {.3, .3}).has_value(), "Valid corner accepted");
   near(g::clampToFrame({Point{-.2, .1}, Point{1.3, 0}, Point{1, 1.5}, Point{0, 1}}),
        {Point{0, .1}, Point{1, 0}, Point{1, 1}, Point{0, 1}});
-  check(!g::validCropQuad(rect(0, 0, .001, .001)), "Minimum edit area");
+  check(!g::validCropCorners(rect(0, 0, .001, .001)), "Minimum edit area");
   check(!g::moveCorner(q, 0, {NAN, .2}) && !g::moveEdge(q, 0, {0, NAN}), "Nonfinite motion rejected");
   rejects([&] { g::moveCorner(q, 4, {0, 0}); });
 }
 void rendering() {
-  g::validateRenderQuad(rect(-.12, -.08, .9, .9));
-  rejects([] { g::validateRenderQuad(rect(-.81, .1, .9, .9)); });
-  rejects([] { g::validateRenderQuad(rect(.8, .1, .1, .9)); });
-  rejects([] { g::validateRenderQuad(rect(0, 0, .001, .001)); });
-  rejects([] { g::validateRenderQuad(rect(-.8, -.8, 1.8, 1.8)); });
-  rejects([] { g::validateRenderQuad(rect(NAN, 0, 1, 1)); });
+  g::validateRenderCorners(rect(-.12, -.08, .9, .9));
+  rejects([] { g::validateRenderCorners(rect(-.81, .1, .9, .9)); });
+  rejects([] { g::validateRenderCorners(rect(.8, .1, .1, .9)); });
+  rejects([] { g::validateRenderCorners(rect(0, 0, .001, .001)); });
+  rejects([] { g::validateRenderCorners(rect(-.8, -.8, 1.8, 1.8)); });
+  rejects([] { g::validateRenderCorners(rect(NAN, 0, 1, 1)); });
   const auto page = rect(65, 48, 570, 430);
   const auto paper = g::targetCanvas(page, 1, 10 / 2.54 * 100);
   check(paper.size.width == 394 && paper.size.height == 298, "Paper size keeps proportions");
@@ -131,19 +131,19 @@ void rendering() {
   rejects([] { g::targetCanvas(rect(0, 0, 100, 1), 1); });
   rejects([] { g::targetCanvas(rect(0, 0, 100, 10), 1); });
   const auto outside = rect(-20, -10, 120, 90);
-  const auto clipped = g::clipImageToQuad(outside, {100, 80});
+  const auto clipped = g::clipImageToCorners(outside, {100, 80});
   check(clipped.size() == 4, "Outside render clipping");
   // Homography from [-20,-10,120,90] to [0,0,140,100] is a translation.
   const auto output = g::normalizedOutputPolygon(clipped, {1, 0, 20, 0, 1, 10, 0, 0, 1}, {140, 100});
   near(output[0], {20.0 / 140, .1});
   near(output[2], {120.0 / 140, .9});
-  const Quad angled{Point{-12, -8}, Point{87, 12}, Point{82, 90}, Point{8, 84}};
-  const auto polygon = g::clipImageToQuad(angled, {100, 80});
+  const Corners angled{Point{-12, -8}, Point{87, 12}, Point{82, 90}, Point{8, 84}};
+  const auto polygon = g::clipImageToCorners(angled, {100, 80});
   check(polygon.size() >= 5, "Clipped corner polygon");
   const auto normalized = g::normalizedOutputPolygon(polygon, {1, 0, 0, 0, 1, 0, 0, 0, 1}, {100, 80});
   for (Point p : normalized)
     check(p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1, "Normalized output polygon");
-  check(g::clipImageToQuad(rect(200, 200, 300, 300), {100, 80}).empty(), "No overlap");
+  check(g::clipImageToCorners(rect(200, 200, 300, 300), {100, 80}).empty(), "No overlap");
 }
 } // namespace
 int main() {

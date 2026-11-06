@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import com.margelo.nitro.documentscanner.DocumentCandidate
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.tensorflow.lite.Interpreter
@@ -15,7 +15,7 @@ internal class DocCornerSession(
   context: Context,
   assetName: String = BUNDLED_ASSET,
   modelBytes: ByteArray? = null,
-) : LiveQuadModel {
+) : LiveCornerModel {
   val size: CornerModelSize
   private val model = (modelBytes ?: context.assets.open(assetName).use { it.readBytes() }).let { bytes ->
     ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply { put(bytes); rewind() }
@@ -90,7 +90,7 @@ internal class DocCornerSession(
     fun decodeOutput(values: FloatArray): DocumentCandidate? {
       val decoded = NativeTensorPreprocessor.decodeOutputNative(values) ?: return null
       val points = (0..3).map { DocumentPoint(decoded[it * 2], decoded[it * 2 + 1]) }
-      return DocumentCandidate(DocumentQuad(points[0], points[1], points[2], points[3]), decoded[8])
+      return DocumentCandidate(DocumentCorners(points[0], points[1], points[2], points[3]), decoded[8])
     }
 
   }

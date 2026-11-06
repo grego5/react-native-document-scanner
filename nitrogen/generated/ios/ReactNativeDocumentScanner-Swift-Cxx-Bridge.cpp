@@ -117,10 +117,10 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     };
   }
   
-  // pragma MARK: std::function<void(const std::variant<ScannerFailure, DocumentQuad>& /* result */)>
-  Func_void_std__variant_ScannerFailure__DocumentQuad_ create_Func_void_std__variant_ScannerFailure__DocumentQuad_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_ScannerFailure__DocumentQuad_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::variant<ScannerFailure, DocumentQuad>& result) mutable -> void {
+  // pragma MARK: std::function<void(const std::variant<ScannerFailure, DocumentCorners>& /* result */)>
+  Func_void_std__variant_ScannerFailure__DocumentCorners_ create_Func_void_std__variant_ScannerFailure__DocumentCorners_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_ScannerFailure__DocumentCorners_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::variant<ScannerFailure, DocumentCorners>& result) mutable -> void {
       swiftClosure.call(result);
     };
   }
@@ -181,10 +181,10 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     };
   }
   
-  // pragma MARK: std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>
-  Func_void_std__variant_std__string__ScannerFailure_ create_Func_void_std__variant_std__string__ScannerFailure_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_std__string__ScannerFailure_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::variant<std::string, ScannerFailure>& result) mutable -> void {
+  // pragma MARK: std::function<void(const std::variant<ScannerFailure, CameraCaptureResult>& /* result */)>
+  Func_void_std__variant_ScannerFailure__CameraCaptureResult_ create_Func_void_std__variant_ScannerFailure__CameraCaptureResult_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_ScannerFailure__CameraCaptureResult_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::variant<ScannerFailure, CameraCaptureResult>& result) mutable -> void {
       swiftClosure.call(result);
     };
   }
@@ -291,6 +291,14 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     #endif
     ReactNativeDocumentScanner::HybridPageThumbnailViewSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
     return swiftPart.toUnsafe();
+  }
+  
+  // pragma MARK: std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>
+  Func_void_std__variant_std__string__ScannerFailure_ create_Func_void_std__variant_std__string__ScannerFailure_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_std__string__ScannerFailure_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::variant<std::string, ScannerFailure>& result) mutable -> void {
+      swiftClosure.call(result);
+    };
   }
   
   // pragma MARK: std::function<void(const std::variant<std::vector<std::string>, ScannerFailure>& /* result */)>

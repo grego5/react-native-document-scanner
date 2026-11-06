@@ -109,8 +109,8 @@ class NativeTensorPreprocessorTest {
     }
     val values = floatArrayOf(.1f, .2f, .8f, .1f, .9f, .8f, .2f, .9f, 0f)
     val candidate = DocCornerSession.decodeOutput(values)!!
-    assertEquals(values[0].toDouble(), candidate.quad.topLeft.x, 0.0)
-    assertEquals(values[4].toDouble(), candidate.quad.bottomRight.x, 0.0)
+    assertEquals(values[0].toDouble(), candidate.corners.topLeft.x, 0.0)
+    assertEquals(values[4].toDouble(), candidate.corners.bottomRight.x, 0.0)
     assertEquals(0.0, candidate.score, 0.0)
     assertNull(DocCornerSession.decodeOutput(values.copyOf().apply { this[4] = 1.01f }))
     assertThrows(IllegalStateException::class.java) { DocCornerSession.decodeOutput(values.copyOf(8)) }

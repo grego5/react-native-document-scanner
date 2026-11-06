@@ -63,7 +63,7 @@ class ScanSessionPipelineTest {
     var analyzed = false
     val processing = SessionPageProcessing(context, resources)
     val actions = object : ScanSessionState.Actions {
-      override fun prepareAnalysis(original: SessionResources.Resource, liveQuad: DocumentQuad?, selection: com.margelo.nitro.documentscanner.processing.QuadModelStore.Selection?) = {
+      override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection?) = {
         assertTrue(outputs.isEmpty())
         analyzed = true
         DocumentAnalysis(320.0, 240.0, 0.0, null)
@@ -94,7 +94,7 @@ class ScanSessionPipelineTest {
     resources.lease(original).use { assertArrayEquals(originalBytes, it.file.readBytes()) }
     resources.lease(frame).use { assertArrayEquals(frameBytes, it.file.readBytes()) }
 
-    state.setDocumentCrop("page", DocumentQuad(DocumentPoint(.1, .1), DocumentPoint(.9, .1),
+    state.setDocumentCrop("page", DocumentCorners(DocumentPoint(.1, .1), DocumentPoint(.9, .1),
       DocumentPoint(.9, .9), DocumentPoint(.1, .9)))
     // Old display survives while its replacement is pending.
     assertFalse(first.image.deleted.isDone)
@@ -112,13 +112,13 @@ class ScanSessionPipelineTest {
     val outputs = mutableListOf<ScanPage.Artifact>()
     var fail = false
     val actions = object : ScanSessionState.Actions {
-      override fun prepareAnalysis(original: SessionResources.Resource, liveQuad: DocumentQuad?, selection: com.margelo.nitro.documentscanner.processing.QuadModelStore.Selection?) =
+      override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection?) =
         { DocumentAnalysis(320.0, 240.0, 0.0, null) }
       override fun render(original: SessionResources.Resource, key: ScanPage.RenderKey): ScanPage.Artifact {
         val destination = resources.renderDestination("jpg")
         // Exercise renderer's actual partial-output cleanup on invalid geometry, not a fake exception.
-        val quad = if (fail) key.quad.copy(topLeft = DocumentPoint(Double.NaN, 0.0)) else key.quad
-        val result = DocumentRenderer.render(original, quad, key.options, destination)
+        val corners = if (fail) key.corners.copy(topLeft = DocumentPoint(Double.NaN, 0.0)) else key.corners
+        val result = DocumentRenderer.render(original, corners, key.options, destination)
         return ScanPage.Artifact(destination.image.resource, destination.thumbnail.resource,
           result.width, result.height, result.validContentPolygon.toList()).also { outputs.add(it) }
       }
@@ -150,8 +150,8 @@ class ScanSessionPipelineTest {
     val processing = SessionPageProcessing(context, resources)
     val renders = mutableListOf<ScanPage.RenderKey>()
     val actions = object : ScanSessionState.Actions {
-      override fun prepareAnalysis(original: SessionResources.Resource, liveQuad: DocumentQuad?,
-        selection: com.margelo.nitro.documentscanner.processing.QuadModelStore.Selection?) =
+      override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?,
+        selection: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection?) =
         { DocumentAnalysis(320.0, 240.0, 0.0, null) }
       override fun render(original: SessionResources.Resource, key: ScanPage.RenderKey): ScanPage.Artifact {
         assertEquals(SessionResources.Kind.ORIGINAL, original.kind)

@@ -115,7 +115,7 @@ Stills have a strict ceiling: at most 4096 pixels on the long side and 12,582,91
 pixels in total, which excludes 24 and 48 MP modes. Among every format's advertised
 `supportedMaxPhotoDimensions`, the largest bounded 4:3 size wins, then the largest
 bounded size of another aspect. Among the formats offering it, a 4:3 video stream
-comes first, then the video width nearest `analysisWidth` (default 640) at or above
+comes first, then the video width nearest `analysisFrameWidth` (default 640) at or above
 it, then below it. The photo output's `maxPhotoDimensions` is set to that size before
 the session starts, and per-shot settings use the same size. A delivered photo may be
 smaller, never larger. With no bounded configuration, or no camera, the view stays
@@ -128,7 +128,7 @@ delivers the active format's size rather than smaller preview-sized buffers; ana
 framing still comes from each delivered buffer's actual size, never the configured
 format. Buffers stay in sensor axes:
 `CameraFraming` names the clockwise turn (an EXIF orientation) and the centered crop
-that make a buffer the upright frame shown. `squareFrame` is virtual: the sensor
+that make a buffer the upright frame shown. `squareAspectRatio` is virtual: the sensor
 streams its full frame and only the centered square is shown and analyzed, so it
 changes framing without restarting the camera. The preview layer is aspect-filled
 into the framed region's aspect-fitted rectangle. Model tensor resizing stays inside
@@ -142,7 +142,7 @@ capture publication.
 
 `takePhoto` accepts one shot at a time; another while one is in flight rejects with
 `capture/busy`. The quality gate does not exist yet, so an accepted shot fires at once and
-`skipQualityGate` changes nothing. Acceptance freezes the bound session, `renderOptions`,
+`skipLowQualityControl` changes nothing. Acceptance freezes the bound session, correction and output options,
 the model selection, the square framing, the still settings and the newest live outline
 (only one seen through the framing the still is shot in, so not one from before a rotation
 or square change; turning guidance off drops it), and asks live analysis for the next frame as the shutter frame. Capture state is
@@ -150,13 +150,12 @@ or square change; turning guidance off drops it), and asks live analysis for the
 complete.
 
 Stills are native JPEG at the configured ceiling (smaller deliveries are accepted, larger
-ones fail). `captureMode` sets the quality prioritization: `quality` (JPEG quality 1 when
-`jpegQuality` is omitted), `latency` as speed (0.95), and the default `zsl` as balanced
+ones fail). `captureMode` sets the quality prioritization: `quality` (JPEG quality 1),
+`latency` as speed (0.95), and the default `zsl` as balanced
 with the photo output's zero-shutter-lag buffer (0.95), falling back to `latency` where
-the configuration has none. An explicit `jpegQuality` is AVFoundation's `AVVideoQualityKey`,
-clamped to 1/100...1. Where JPEG is unavailable the still is uncompressed BGRA. The still is
+the configuration has none. Where JPEG is unavailable the still is uncompressed BGRA. The still is
 tagged with the capture rotation live analysis uses. Mode and quality apply per shot
-without restarting the camera; a request change (a restart) and a `squareFrame` change wait
+without restarting the camera; a request change (a restart) and a `squareAspectRatio` change wait
 until the shot settles.
 
 `AVCameraSession.capture` hands each request a self-retaining delegate that ends with one
@@ -179,7 +178,7 @@ stop (detaching, backgrounding, mode `off`, losing permission, unmounting) with
 finishes and the worker has written nothing, admitted the page, or retired what it wrote.
 The promise resolves with the page ID after admission; no source path reaches JavaScript.
 
-The camera starts only once `quadTensorModel` is prepared. `QuadModelLoader` reads an
+The camera starts only once `cornerDetectionModel` is prepared. `CornerModelLoader` reads an
 absolute path, a `file://` URL or a main-bundle resource name on its own worker and
 installs it in `CornerInference.shared`. Only the newest request may activate: the
 loader checks it under its own lock on the inference queue, immediately before the
@@ -253,12 +252,12 @@ estimator and its transform history). Pacing is `AdaptiveDetectionPolicy`, a Swi
 port of Android's, checked against the shared `adaptive.tsv` fixture. As on Android,
 inference skips frames moving faster than 5% of the buffer width per second or with
 a lost page region, waits 60 ms between inferences while a page is held, pauses
-entirely while reliable flow carries a confirmed page when `adaptiveDetection` is on,
+entirely while reliable flow carries a confirmed page when `inferenceThrottling` is on,
 and pauses after a low-score frame until flow measures movement. Frames that skip
 inference may still keep the guide through flow.
 
 Results are immutable `LiveGuideResult` snapshots: status, the normalized upright
-quad with the framing it was accepted on, acceptance ID and hold deadline, detector
+corners with the framing it was accepted on, acceptance ID and hold deadline, detector
 and model generations, frame sequence, sensor timestamp and score. They are coalesced
 to the newest and delivered on main, which drops any from an earlier generation (a
 start, stop, guide toggle, score change or model change advances it), any already
@@ -278,7 +277,7 @@ over the preview's presentation rectangle. AVFoundation's capture and preview ro
 angles can differ (a portrait-locked app held sideways), so each corner is mapped back
 to buffer coordinates through the framing it was detected on and then into the
 preview's own framing; a preview framing change clears the drawn guide. It is eased over `guideTransitionDuration`
-(50 ms by default; jumps beyond a fifth of the view diagonal snap) in `guideColor`,
+(80 ms by default; jumps beyond a fifth of the view diagonal snap) in `guideColor`,
 dimmed to 45% while held, and corner brackets around a centered A-series page while
 searching. An invalid `minCornerScore` reports `input/invalid` and uses 0.95.
 
@@ -292,7 +291,7 @@ and edge moves, clamping and validity come from the shared crop geometry through
 arriving from JavaScript run on main. Unmount, page removal and session close
 invalidate the binding, pending reads and the draft; only `submit` mutates the page.
 Clearing the photo, on detach, unmount or removal, cancels the touch sequence in
-progress, and an abandoned drag returns to its starting quad. A saved crop the editor
+progress, and an abandoned drag returns to its starting corners. A saved crop the editor
 cannot edit is reported as invalid input; the editor shows its clamp as a
 suggestion, and reading or submitting the draft fails until an edit or preset
 replaces it.

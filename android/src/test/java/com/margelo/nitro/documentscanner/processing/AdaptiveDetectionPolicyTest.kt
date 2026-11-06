@@ -1,7 +1,7 @@
 package com.margelo.nitro.documentscanner.processing
 
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -17,11 +17,11 @@ class AdaptiveDetectionPolicyTest {
       assertEquals(line, 12, v.size)
       if (v[0] != case) { case = v[0]; policy = AdaptiveDetectionPolicy() }
       when (v[1]) {
-        "reference" -> policy.reference(quad(v[5]))
+        "reference" -> policy.reference(corners(v[5]))
         "confirmed" -> policy.confirmed()
         "reset" -> policy.reset()
         "next" -> {
-          val gap = policy.next(v[2].toBooleanStrict(), v[3].toBooleanStrict(), v[4].toBooleanStrict(), quad(v[5]),
+          val gap = policy.next(v[2].toBooleanStrict(), v[3].toBooleanStrict(), v[4].toBooleanStrict(), corners(v[5]),
             v[6].toInt(), v[7].toInt())
           assertEquals(line, if (v[8] == "max") Long.MAX_VALUE else v[8].toLong(), gap)
           assertEquals(line, v[9], policy.status)
@@ -36,7 +36,7 @@ class AdaptiveDetectionPolicyTest {
 
   @Test fun resetDropsTheReferenceAndKeepsTheLastWakeReason() {
     val policy = AdaptiveDetectionPolicy()
-    val page = quad("0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8")
+    val page = corners("0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8")
     policy.reference(page)
     policy.next(true, false, false, null, 240, 320)
     policy.reset()
@@ -45,10 +45,10 @@ class AdaptiveDetectionPolicyTest {
     assertEquals("tracking lost", policy.lastReset)
   }
 
-  private fun quad(text: String): DocumentQuad? {
+  private fun corners(text: String): DocumentCorners? {
     if (text == "-") return null
     val v = text.split(',').map(String::toDouble)
     assertEquals(8, v.size)
-    return DocumentQuad(DocumentPoint(v[0], v[1]), DocumentPoint(v[2], v[3]), DocumentPoint(v[4], v[5]), DocumentPoint(v[6], v[7]))
+    return DocumentCorners(DocumentPoint(v[0], v[1]), DocumentPoint(v[2], v[3]), DocumentPoint(v[4], v[5]), DocumentPoint(v[6], v[7]))
   }
 }

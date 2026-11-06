@@ -140,13 +140,13 @@ class CaptureStabilityTest {
     assertNull(CaptureStability.drift(page, rect(.205, .205, .805, .805)))
     assertEquals("position", CaptureStability.drift(page, rect(.23, .2, .83, .8)))
     assertEquals("scale", CaptureStability.drift(page, rect(.18, .18, .82, .82)))
-    val keystoned = DocumentQuad(DocumentPoint(.23, .2), DocumentPoint(.77, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
+    val keystoned = DocumentCorners(DocumentPoint(.23, .2), DocumentPoint(.77, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
     assertEquals("shape", CaptureStability.drift(page, keystoned))
   }
 
   private fun frame(
     index: Int, speedFraction: Double = .01, status: FlowMotionStatus = FlowMotionStatus.MEASURED, flowLost: Int = 0,
-    blur: Double? = .001, gyroSpeed: Double? = null, guide: DocumentQuad? = page, result: Boolean = true,
+    blur: Double? = .001, gyroSpeed: Double? = null, guide: DocumentCorners? = page, result: Boolean = true,
   ) = FrameRecord(
     index.toLong(), index * FRAME_NS, index * FRAME_NS, index * FRAME_NS,
     CameraFrameState(30_000_000, 0, false).takeIf { result },
@@ -156,7 +156,7 @@ class CaptureStabilityTest {
     gyroSpeed, guide,
   )
 
-  private fun rect(l: Double, t: Double, r: Double, b: Double) = DocumentQuad(
+  private fun rect(l: Double, t: Double, r: Double, b: Double) = DocumentCorners(
     DocumentPoint(l, t), DocumentPoint(r, t), DocumentPoint(r, b), DocumentPoint(l, b))
 
   private companion object {

@@ -7,6 +7,7 @@
     "session": true,
     "pageId": true,
     "filter": true,
+    "rectangle": true,
     "onPresetChange": true,
     "onLoad": true,
     "onError": true,

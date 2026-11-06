@@ -8,7 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.margelo.nitro.documentscanner.DocumentFilter
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.DocumentRenderOptions
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -70,10 +70,10 @@ class ShadowRemovalTest {
     val source = File(context.cacheDir, "shadow-removal-test.jpg")
     try {
       source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it)) }
-      val quad = DocumentQuad(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0), DocumentPoint(1.0, 1.0), DocumentPoint(0.0, 1.0))
+      val corners = DocumentCorners(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0), DocumentPoint(1.0, 1.0), DocumentPoint(0.0, 1.0))
       for (removeShadows in listOf(true, false)) for (filter in DocumentFilter.entries) {
         val options = DocumentRenderOptions(removeShadows, null, filter, null, null, null, null)
-        val rendered = DocumentRenderer.render(Uri.fromFile(source).toString(), quad, options)
+        val rendered = DocumentRenderer.render(Uri.fromFile(source).toString(), corners, options)
         val file = File(Uri.parse(rendered.outputUri).path!!)
         try {
           val decoded = BitmapFactory.decodeFile(file.absolutePath)

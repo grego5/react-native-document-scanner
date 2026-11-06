@@ -1,7 +1,7 @@
 // Test-only pre-migration estimator oracle.
 package com.margelo.nitro.documentscanner.processing
 
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import java.nio.ByteBuffer
 import kotlin.math.ceil
 import kotlin.math.hypot
@@ -77,7 +77,7 @@ internal class ReferenceFlowMotionEstimator(
   fun update(
     pixels: ByteBuffer, rowStride: Int, pixelStride: Int, bufferWidth: Int, bufferHeight: Int,
     cropLeft: Int, cropTop: Int, cropRight: Int, cropBottom: Int, rotationDegrees: Int, sensorTimestampNs: Long,
-    region: DocumentQuad?,
+    region: DocumentCorners?,
     fitTransform: Boolean = false,
   ): FlowMotionEstimate {
     check(!closed) { "The motion estimator is closed." }
@@ -135,7 +135,7 @@ internal class ReferenceFlowMotionEstimator(
     else Imgproc.resize(full, current, Size(width.toDouble(), height.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
   }
 
-  private fun track(region: DocumentQuad?, cropWidth: Int, cropHeight: Int, gapNs: Long, sensorNs: Long, fitTransform: Boolean): FlowMotionEstimate {
+  private fun track(region: DocumentCorners?, cropWidth: Int, cropHeight: Int, gapNs: Long, sensorNs: Long, fitTransform: Boolean): FlowMotionEstimate {
     fun unknown(status: FlowMotionStatus, confidence: Double = 0.0, tracks: Int = 0) =
       FlowMotionEstimate(status, null, bufferWidth, previousSensorNs, sensorNs, confidence, tracks)
     val width = previous.cols()
@@ -215,16 +215,16 @@ internal class ReferenceFlowMotionEstimator(
     )
   }
 
-  /** Fills [mask] with the page quad mapped into tracker pixels, or the central region when it is unusable, and returns
+  /** Fills [mask] with the page corners mapped into tracker pixels, or the central region when it is unusable, and returns
    * the region's bounds (left, top, right, bottom) for coverage.
    */
-  private fun selectRegion(region: DocumentQuad?, width: Int, height: Int): DoubleArray {
+  private fun selectRegion(region: DocumentCorners?, width: Int, height: Int): DoubleArray {
     mask.create(height, width, CvType.CV_8UC1)
     mask.setTo(Scalar(0.0))
-    val points = region?.let { quad ->
-      val cx = (quad.topLeft.x + quad.topRight.x + quad.bottomRight.x + quad.bottomLeft.x) / 4
-      val cy = (quad.topLeft.y + quad.topRight.y + quad.bottomRight.y + quad.bottomLeft.y) / 4
-      listOf(quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft).map { p ->
+    val points = region?.let { corners ->
+      val cx = (corners.topLeft.x + corners.topRight.x + corners.bottomRight.x + corners.bottomLeft.x) / 4
+      val cy = (corners.topLeft.y + corners.topRight.y + corners.bottomRight.y + corners.bottomLeft.y) / 4
+      listOf(corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft).map { p ->
         val x = cx + (p.x - cx) * .9
         val y = cy + (p.y - cy) * .9
         // Upright normalized coordinates back to the unrotated buffer; rotation turns the buffer clockwise upright.

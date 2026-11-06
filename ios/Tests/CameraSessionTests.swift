@@ -30,15 +30,15 @@ private final class FakeCamera: CameraSessionControl {
   func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) { commands.append(command) }
 }
 
-/// Session actions that record each admitted page's live quad and fail its analysis at once.
-private final class RecordedQuads: ScanSessionActions, @unchecked Sendable {
+/// Session actions that record each admitted page's live corners and fail its analysis at once.
+private final class RecordedCornerSets: ScanSessionActions, @unchecked Sendable {
   private let lock = NSLock()
-  private var quads: [QuadCoordinates?] = []
-  var liveQuads: [QuadCoordinates?] { lock.lock(); defer { lock.unlock() }; return quads }
+  private var cornerSets: [CornerCoordinates?] = []
+  var liveCornerSets: [CornerCoordinates?] { lock.lock(); defer { lock.unlock() }; return cornerSets }
 
-  func prepareAnalysis(_ source: SessionResources.Lease, liveQuad: QuadCoordinates?,
+  func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
-    lock.lock(); quads.append(liveQuad); lock.unlock()
+    lock.lock(); cornerSets.append(liveCorners); lock.unlock()
     return { throw ScannerCodeError(code: .analysisFailed) }
   }
 
@@ -93,6 +93,24 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertFalse(CameraStillPolicy.accepts(PixelSize(0, 0), requested: requested))
   }
 
+  func testStandardStillIsTheSmallest4By3WithA1080ShortSide() {
+    XCTAssertEqual(CameraStillPolicy.selectStandard(sizes([(4032, 3024), (1920, 1440), (1440, 1080), (1920, 1080)])),
+                   PixelSize(1440, 1080))
+    XCTAssertEqual(CameraStillPolicy.selectStandard(sizes([(4032, 3024), (1920, 1440), (1920, 1080)])),
+                   PixelSize(1920, 1440))
+    // Nothing reaches 1080: the widest smaller 4:3; no 4:3 at all: the other aspects by the same rule.
+    XCTAssertEqual(CameraStillPolicy.selectStandard(sizes([(1280, 960), (640, 480)])), PixelSize(1280, 960))
+    XCTAssertEqual(CameraStillPolicy.selectStandard(sizes([(3840, 2160), (1920, 1080)])), PixelSize(1920, 1080))
+    XCTAssertNil(CameraStillPolicy.selectStandard(sizes([(8064, 6048)])))
+    let formats = [
+      CameraFormatOption(video: PixelSize(1920, 1440), photos: sizes([(4032, 3024)])),
+      CameraFormatOption(video: PixelSize(1440, 1080), photos: sizes([(1440, 1080), (4032, 3024)])),
+    ]
+    XCTAssertEqual(CameraFormatPolicy.choose(formats, analysisFrameWidth: 640, highResolution: false),
+                   CameraFormatChoice(index: 1, photo: PixelSize(1440, 1080), video: PixelSize(1440, 1080)))
+    XCTAssertEqual(CameraFormatPolicy.choose(formats, analysisFrameWidth: 640)?.photo, PixelSize(4032, 3024))
+  }
+
   func testFormatChoicePutsTheStillFirstThenA4By3VideoNearestTheAnalysisWidth() {
     let formats = [
       CameraFormatOption(video: PixelSize(640, 480), photos: sizes([(640, 480)])),
@@ -101,19 +119,19 @@ final class CameraSessionTests: XCTestCase {
       CameraFormatOption(video: PixelSize(1280, 960), photos: sizes([(4032, 3024)])),
       CameraFormatOption(video: PixelSize(4032, 3024), photos: sizes([(4032, 3024), (8064, 6048)])),
     ]
-    XCTAssertEqual(CameraFormatPolicy.choose(formats, analysisWidth: 640),
+    XCTAssertEqual(CameraFormatPolicy.choose(formats, analysisFrameWidth: 640),
                    CameraFormatChoice(index: 3, photo: PixelSize(4032, 3024), video: PixelSize(1280, 960)))
-    XCTAssertEqual(CameraFormatPolicy.choose(formats, analysisWidth: 1600)?.index, 2)
+    XCTAssertEqual(CameraFormatPolicy.choose(formats, analysisFrameWidth: 1600)?.index, 2)
     // Nothing reaches the width: the closest below it.
-    XCTAssertEqual(CameraFormatPolicy.choose(formats, analysisWidth: 5000)?.index, 4)
+    XCTAssertEqual(CameraFormatPolicy.choose(formats, analysisFrameWidth: 5000)?.index, 4)
     // Only 24/48 MP stills: no bounded configuration.
     XCTAssertNil(CameraFormatPolicy.choose([
       CameraFormatOption(video: PixelSize(1920, 1440), photos: sizes([(5712, 4284), (8064, 6048)])),
-    ], analysisWidth: 640))
-    XCTAssertEqual(CameraFormatPolicy.analysisWidth(nil), 640)
-    XCTAssertEqual(CameraFormatPolicy.analysisWidth(10), 160)
-    XCTAssertEqual(CameraFormatPolicy.analysisWidth(5000), 1920)
-    XCTAssertEqual(CameraFormatPolicy.analysisWidth(.nan), 640)
+    ], analysisFrameWidth: 640))
+    XCTAssertEqual(CameraFormatPolicy.analysisFrameWidth(nil), 640)
+    XCTAssertEqual(CameraFormatPolicy.analysisFrameWidth(10), 160)
+    XCTAssertEqual(CameraFormatPolicy.analysisFrameWidth(5000), 1920)
+    XCTAssertEqual(CameraFormatPolicy.analysisFrameWidth(.nan), 640)
   }
 
   // MARK: - Framing
@@ -198,7 +216,7 @@ final class CameraSessionTests: XCTestCase {
                                              models: { _, done in done(nil) },
                                              detector: detector, controls: controls)
       harness = self
-      view.quadTensorModel = "model.tflite"
+      view.cornerDetectionModel = "model.tflite"
       view.view.frame = window.bounds
       view.onCameraStateChange = { [unowned self] in states.append($0) }
       view.onError = { [unowned self] in errors.append($0.code) }
@@ -221,7 +239,7 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertEqual(h.states, [.suspended])
     XCTAssertTrue(h.fake.starts.isEmpty, "a detached view never starts")
     h.attach()
-    XCTAssertEqual(h.fake.starts, [CameraRequest(analysisWidth: 640)])
+    XCTAssertEqual(h.fake.starts, [CameraRequest(analysisFrameWidth: 640)])
     XCTAssertEqual(h.states, [.suspended, .starting])
     h.fake.emit(.configured(CameraConfiguration(photo: PixelSize(4032, 3024), video: PixelSize(1920, 1440))))
     h.view.setRotation(preview: 90, capture: 90)
@@ -236,15 +254,15 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertEqual(h.view.analysisFraming?.orientation, 6)
     XCTAssertEqual(h.view.analysisFraming?.buffer, PixelSize(1280, 960))
     XCTAssertEqual(h.view.analysisFraming?.crop, CGRect(x: 0, y: 0, width: 1280, height: 960))
-    h.view.squareFrame = true
+    h.view.squareAspectRatio = true
     h.view.afterUpdate()
     XCTAssertEqual(h.view.analysisFraming?.crop, CGRect(x: 160, y: 0, width: 960, height: 960))
     h.fake.emit(.frameSize(PixelSize(640, 480)))
     XCTAssertEqual(h.view.analysisFraming?.crop, CGRect(x: 80, y: 0, width: 480, height: 480))
-    h.view.squareFrame = false
+    h.view.squareAspectRatio = false
     h.view.afterUpdate()
 
-    h.view.mode = .off
+    h.view.active = false
     h.view.afterUpdate()
     XCTAssertEqual(h.fake.stops, 1)
     XCTAssertEqual(h.states.last, .suspended)
@@ -253,7 +271,7 @@ final class CameraSessionTests: XCTestCase {
     h.fake.emit(.streaming(PixelSize(1920, 1440)))
     XCTAssertEqual(h.states.last, .suspended, "a stopped camera's late events are ignored")
 
-    h.view.mode = .scanner
+    h.view.active = true
     h.view.afterUpdate()
     XCTAssertEqual(h.fake.starts.count, 2)
     h.post(UIApplication.didEnterBackgroundNotification)
@@ -299,16 +317,16 @@ final class CameraSessionTests: XCTestCase {
     h.fake.emit(.configured(CameraConfiguration(photo: PixelSize(4032, 3024), video: PixelSize(1920, 1440))))
     h.view.setRotation(preview: 90, capture: 90)
     h.fake.emit(.streaming(PixelSize(1920, 1440)))
-    h.view.squareFrame = true
+    h.view.squareAspectRatio = true
     h.view.afterUpdate()
     XCTAssertEqual(h.fake.starts.count, 1)
     XCTAssertEqual(h.view.analysisFraming?.crop, CGRect(x: 240, y: 0, width: 1440, height: 1440))
     XCTAssertEqual((h.view.view as! CameraPreviewView).previewLayer.frame,
                    CGRect(x: 0, y: 227, width: 390, height: 390))
 
-    h.view.analysisWidth = 1280
+    h.view.analysisFrameWidth = 1280
     h.view.afterUpdate()
-    XCTAssertEqual(h.fake.starts.last, CameraRequest(analysisWidth: 1280))
+    XCTAssertEqual(h.fake.starts.last, CameraRequest(analysisFrameWidth: 1280))
     XCTAssertEqual(h.fake.stops, 1)
     XCTAssertTrue(h.fake.running)
 
@@ -333,9 +351,9 @@ final class CameraSessionTests: XCTestCase {
     h.view.view.frame = CGRect(x: 0, y: 0, width: 300, height: 400)
     h.view.view.layoutIfNeeded()
     XCTAssertEqual(h.fake.starts.count, 1, "no retry loop")
-    h.view.mode = .off
+    h.view.active = false
     h.view.afterUpdate()
-    h.view.mode = .camera
+    h.view.active = true
     h.view.afterUpdate()
     XCTAssertEqual(h.fake.starts.count, 2, "a mode change retries")
   }
@@ -366,7 +384,7 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertEqual(rejection(h.view), .cameraUnavailable, "no bounded configuration")
 
     // Stopping, detaching and unmounting the camera never close its session.
-    h.view.mode = .off
+    h.view.active = false
     h.view.afterUpdate()
     XCTAssertEqual(rejection(h.view), .cameraUnavailable)
     h.detach()
@@ -419,7 +437,7 @@ final class CameraSessionTests: XCTestCase {
       events.append($0)
       if case .failed = $0 { failed.fulfill() }
     }
-    camera.start(CameraRequest(analysisWidth: 640))
+    camera.start(CameraRequest(analysisFrameWidth: 640))
     wait(for: [failed], timeout: 10)
     XCTAssertEqual(events, [.failed(.cameraUnavailable)])
     XCTAssertNil(camera.device)
@@ -489,7 +507,7 @@ final class CameraSessionTests: XCTestCase {
       events.append($0)
       if case .failed = $0 { failed.fulfill() }
     }
-    camera.start(CameraRequest(analysisWidth: 640))
+    camera.start(CameraRequest(analysisFrameWidth: 640))
     camera.frameArrived(PixelSize(1920, 1440))
     RunLoop.main.run(until: Date().addingTimeInterval(0.1))
     XCTAssertEqual(events, [], "the late frame published nothing")
@@ -506,7 +524,6 @@ final class CameraSessionTests: XCTestCase {
     defer { _ = state.close() }
     h.view.session = session
     h.view.captureMode = .quality
-    h.view.jpegQuality = 0.8
     var capture: [CameraCaptureState] = []
     h.view.onCaptureStateChange = { capture.append($0) }
     h.view.afterUpdate()
@@ -518,12 +535,12 @@ final class CameraSessionTests: XCTestCase {
 
     let first = photo(h.view)
     XCTAssertEqual(h.fake.stills.count, 1)
-    XCTAssertEqual(h.fake.stills[0].settings, StillSettings(priority: .quality, quality: 0.8, rotationAngle: 90))
+    XCTAssertEqual(h.fake.stills[0].settings, StillSettings(priority: .quality, quality: 1, rotationAngle: 90))
     XCTAssertEqual(capture.last, .shooting)
     XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy), "one shot at a time")
     // A new request and framing wait for the shot.
-    h.view.analysisWidth = 1280
-    h.view.squareFrame = true
+    h.view.analysisFrameWidth = 1280
+    h.view.squareAspectRatio = true
     h.view.afterUpdate()
     XCTAssertEqual(h.fake.starts.count, 1, "no restart during the shot")
     XCTAssertEqual(h.view.analysisFraming?.square, false)
@@ -534,7 +551,7 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertNotNil(state.snapshot().pages[id])
     let deadline = Date().addingTimeInterval(10)
     while h.fake.starts.count < 2 && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
-    XCTAssertEqual(h.fake.starts.last, CameraRequest(analysisWidth: 1280), "the deferred restart follows the shot")
+    XCTAssertEqual(h.fake.starts.last, CameraRequest(analysisFrameWidth: 1280), "the deferred restart follows the shot")
     h.fake.emit(.streaming(PixelSize(1280, 960)))
     XCTAssertEqual(h.view.analysisFraming?.square, true)
   }
@@ -629,7 +646,7 @@ final class CameraSessionTests: XCTestCase {
     let registry = ScanSessionRegistry(root: root.appendingPathComponent("sessions"), store: store,
                                        queue: ScannerWorkQueue(worker: DispatchQueue(label: "test.guide")),
                                        report: { _ in })
-    let actions = RecordedQuads()
+    let actions = RecordedCornerSets()
     let state = try registry.createState(actions: { _ in actions })
     defer { _ = state.close(); store.shutdown(); store.drain(); try? FileManager.default.removeItem(at: root) }
     let h = Harness()
@@ -639,10 +656,10 @@ final class CameraSessionTests: XCTestCase {
     h.fake.emit(.configured(CameraConfiguration(photo: PixelSize(640, 480), video: PixelSize(640, 480))))
     h.view.setRotation(preview: 90, capture: 90)
     h.fake.emit(.streaming(PixelSize(640, 480)))
-    let quad: LiveQuad = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
+    let corners: LiveCorners = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8]
     func seeGuide() throws {
       let framing = try XCTUnwrap(h.view.analysisFraming)
-      h.detector.onResult?(LiveGuideResult(status: .tracking, quad: quad, framing: framing))
+      h.detector.onResult?(LiveGuideResult(status: .tracking, corners: corners, framing: framing))
     }
     func shoot() throws {
       let shot = photo(h.view)
@@ -652,20 +669,20 @@ final class CameraSessionTests: XCTestCase {
     }
     try seeGuide()
     try shoot()
-    XCTAssertEqual(actions.liveQuads.count, 1)
-    XCTAssertNotNil(actions.liveQuads.last ?? nil, "a guide in the current framing seeds the page")
+    XCTAssertEqual(actions.liveCornerSets.count, 1)
+    XCTAssertNotNil(actions.liveCornerSets.last ?? nil, "a guide in the current framing seeds the page")
     try seeGuide()
     h.view.setRotation(preview: 0, capture: 0)
     try shoot()
-    XCTAssertEqual(actions.liveQuads.count, 2)
-    XCTAssertNil(actions.liveQuads.last ?? nil, "an outline from before the rotation is dropped")
+    XCTAssertEqual(actions.liveCornerSets.count, 2)
+    XCTAssertNil(actions.liveCornerSets.last ?? nil, "an outline from before the rotation is dropped")
     h.view.setRotation(preview: 90, capture: 90)
     try seeGuide()
-    h.view.guide = false
+    h.view.guideLiveCorners = false
     h.view.afterUpdate()
     try shoot()
-    XCTAssertEqual(actions.liveQuads.count, 3)
-    XCTAssertNil(actions.liveQuads.last ?? nil, "disabling guidance drops its outline")
+    XCTAssertEqual(actions.liveCornerSets.count, 3)
+    XCTAssertNil(actions.liveCornerSets.last ?? nil, "disabling guidance drops its outline")
   }
 
   enum Outcome: Equatable {
@@ -674,7 +691,7 @@ final class CameraSessionTests: XCTestCase {
   }
 
   @MainActor
-  private func photo(_ view: HybridDocumentScannerCameraView) -> Promise<Variant_String_ScannerFailure> {
+  private func photo(_ view: HybridDocumentScannerCameraView) -> Promise<Variant_ScannerFailure_CameraCaptureResult> {
     let promise = try! view.takePhotoResult(options: nil)
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     return promise
@@ -684,13 +701,13 @@ final class CameraSessionTests: XCTestCase {
 
   // Not main-actor isolated: a promise settled by the work queue runs its callback there, and a
   // main-actor closure would trap the runtime isolation check.
-  private func outcome(_ promise: Promise<Variant_String_ScannerFailure>) -> Outcome? {
+  private func outcome(_ promise: Promise<Variant_ScannerFailure_CameraCaptureResult>) -> Outcome? {
     let done = expectation(description: "settled")
     let result = Box<Outcome>()
     _ = promise.then {
       switch $0 {
-      case .first(let id): result.value = .first(id)
-      case .second(let failure): result.value = .second(failure.code)
+      case .first(let failure): result.value = .second(failure.code)
+      case .second(let capture): result.value = .first(capture.pageId)
       }
       done.fulfill()
     }

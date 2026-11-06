@@ -116,6 +116,12 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.filter.hasSameValue(oldViewProps->filter)) {
       swiftPart.setFilter(newViewProps.filter.get());
     }
+    // rectangle: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.rectangle.isProvided()
+          : !newViewProps.rectangle.hasSameValue(oldViewProps->rectangle)) {
+      swiftPart.setRectangle(newViewProps.rectangle.get());
+    }
     // onPresetChange: optional
     if (oldViewProps == nullptr
           ? newViewProps.onPresetChange.isProvided()

@@ -8,7 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.margelo.nitro.documentscanner.DocumentFilter
 import com.margelo.nitro.documentscanner.DocumentImageFormat
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.DocumentRenderOptions
 import java.io.File
 import org.junit.After
@@ -207,7 +207,7 @@ class DocumentFiltersTest {
     }
     val result = DocumentRenderer.render(
       Uri.fromFile(fixture).toString(),
-      DocumentQuad(DocumentPoint(0.1, 0.1), DocumentPoint(0.9, 0.1), DocumentPoint(0.9, 0.9), DocumentPoint(0.1, 0.9)),
+      DocumentCorners(DocumentPoint(0.1, 0.1), DocumentPoint(0.9, 0.1), DocumentPoint(0.9, 0.9), DocumentPoint(0.1, 0.9)),
       options,
     )
     val output = File(Uri.parse(result.outputUri).path!!)

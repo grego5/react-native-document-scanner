@@ -8,7 +8,7 @@ description: Develop or maintain the React Native Nitro document-scanner camera 
 Code is the source of truth; these references hold what code does not show (decisions, reasons, evidence, procedures).
 
 - [Architecture](references/architecture.md): ownership, invariants, and why things are built the way they are.
-- [Development](references/development.md): commands, device validation, live quad traces, evidence.
+- [Development](references/development.md): commands, device validation, live guide traces, evidence.
 
 Rules:
 

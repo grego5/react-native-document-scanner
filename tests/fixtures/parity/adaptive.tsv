@@ -1,8 +1,8 @@
 # Adaptive inference pacing. Rows sharing a case run in file order on one fresh policy; exact values, no tolerance.
-# Quads are normalized upright TL,TR,BR,BL as eight comma-separated numbers; - means none or not applicable.
+# Corners are normalized upright TL,TR,BR,BL as eight comma-separated numbers; - means none or not applicable.
 # width/height are upright frame pixels. gap is nanoseconds before the next inference; max pauses it.
-# Steps: reference (quad), confirmed, reset, next (tracking, reliable, degraded, quad, width, height -> gap, status, lastReset, doubt).
-case	step	tracking	reliable	degraded	quad	width	height	gap	status	lastReset	doubt
+# Steps: reference (corners), confirmed, reset, next (tracking, reliable, degraded, corners, width, height -> gap, status, lastReset, doubt).
+case	step	tracking	reliable	degraded	corners	width	height	gap	status	lastReset	doubt
 acquire	next	false	false	false	-	240	320	0	unconfirmed	unconfirmed	-
 acquire	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	0	unconfirmed	unconfirmed	-
 acquire	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-

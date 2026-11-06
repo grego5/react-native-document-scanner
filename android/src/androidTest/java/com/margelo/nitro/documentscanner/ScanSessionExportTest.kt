@@ -6,7 +6,7 @@ import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.margelo.nitro.documentscanner.processing.PdfWriter
-import com.margelo.nitro.documentscanner.processing.QuadModelStore
+import com.margelo.nitro.documentscanner.processing.CornerModelStore
 import java.io.File
 import java.util.ArrayDeque
 import java.util.UUID
@@ -20,8 +20,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ScanSessionExportTest {
   private val context = InstrumentationRegistry.getInstrumentation().targetContext
-  private val automatic = DocumentQuad(DocumentPoint(.1, .1), DocumentPoint(.9, .1), DocumentPoint(.9, .9), DocumentPoint(.1, .9))
-  private val later = DocumentQuad(DocumentPoint(.2, .2), DocumentPoint(.8, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
+  private val automatic = DocumentCorners(DocumentPoint(.1, .1), DocumentPoint(.9, .1), DocumentPoint(.9, .9), DocumentPoint(.1, .9))
+  private val later = DocumentCorners(DocumentPoint(.2, .2), DocumentPoint(.8, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
 
   private inner class Fixture : AutoCloseable {
     val root = File(context.cacheDir, "session-export-test-${UUID.randomUUID()}").apply { mkdirs() }
@@ -37,7 +37,7 @@ class ScanSessionExportTest {
     var failRender = false
     val renders = mutableListOf<ScanPage.RenderKey>()
     val state = ScanSessionState(resources, object : ScanSessionState.Actions {
-      override fun prepareAnalysis(original: SessionResources.Resource, liveQuad: DocumentQuad?, selection: QuadModelStore.Selection?) =
+      override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: CornerModelStore.Selection?) =
         { if (failAnalysis) throw IllegalStateException("analysis failed") else analysis }
       override fun render(original: SessionResources.Resource, key: ScanPage.RenderKey): ScanPage.Artifact {
         check(!failRender)
@@ -52,7 +52,7 @@ class ScanSessionExportTest {
     }, dispatcher = Executor { it.run() })
     val exports = SessionExports(state)
     fun drain() { while (tasks.isNotEmpty()) tasks.removeFirst().run() }
-    fun admit(id: String, color: Int = Color.WHITE, options: DocumentRenderOptions? = null, model: QuadModelStore.Selection? = null) {
+    fun admit(id: String, color: Int = Color.WHITE, options: DocumentRenderOptions? = null, model: CornerModelStore.Selection? = null) {
       val original = resources.output(SessionResources.Kind.ORIGINAL).use { out ->
         val bitmap = Bitmap.createBitmap(160, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(color) }
         try { out.file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)) } }
@@ -94,7 +94,7 @@ class ScanSessionExportTest {
     f.drain()
     val file = File(Uri.parse(exported.get()).path!!)
     assertTrue(file.readText(Charsets.ISO_8859_1).startsWith("%PDF-1.4"))
-    assertEquals(automatic, f.renders.single().quad)
+    assertEquals(automatic, f.renders.single().corners)
     assertEquals(DocumentFilter.NONE, f.renders.single().options.filter)
     f.state.close().get(10, TimeUnit.SECONDS)
     assertTrue("external PDF survives session cleanup", file.isFile)
@@ -106,7 +106,7 @@ class ScanSessionExportTest {
     val exported = f.exports.exportImages(listOf("page"), f.output.path)
     f.state.setDocumentCrop("page", later)
     f.drain(); exported.get()
-    assertEquals(ScanPage.fullFrame(), f.renders.single().quad)
+    assertEquals(ScanPage.fullFrame(), f.renders.single().corners)
   }
 
   @Test fun pendingEditsExportRequestedArtifactsRatherThanAnOlderDisplay() = Fixture().use { f ->
@@ -211,12 +211,12 @@ class ScanSessionExportTest {
   }
 
   @Test fun sampleAdmissionKeepsPageAnalysisAndModelAfterGlobalModelSwapAndDeletion(): Unit = Fixture().use { f ->
-    val captured = QuadModelStore.Selection(byteArrayOf(1))
-    val replacement = QuadModelStore.Selection(byteArrayOf(2))
-    val previous = QuadModelStore.selected
+    val captured = CornerModelStore.Selection(byteArrayOf(1))
+    val replacement = CornerModelStore.Selection(byteArrayOf(2))
+    val previous = CornerModelStore.selected
     try {
       f.admit("page", model = captured); f.drain()
-      QuadModelStore.activate(replacement)
+      CornerModelStore.activate(replacement)
       val sample = f.state.sampleSource("page")
       try {
         f.state.removePage("page")
@@ -228,7 +228,7 @@ class ScanSessionExportTest {
         sample.original.close()
         closing.get(10, TimeUnit.SECONDS)
       } finally { sample.original.close() }
-    } finally { QuadModelStore.activate(previous) }
+    } finally { CornerModelStore.activate(previous) }
   }
 
   @Test fun sampleQueuePinsTheOriginalAndTheInvocationFolderAcrossRemovalAndClose() = Fixture().use { f ->
@@ -243,14 +243,14 @@ class ScanSessionExportTest {
     try {
       collection.configure(context, Uri.fromFile(folder).toString(), true)
       // A validated model, so the sample can record its input size.
-      val model = QuadModelStore.prepare(context, "asset:///doccornernet/model.tflite")
+      val model = CornerModelStore.prepare(context, "asset:///doccornernet/model.tflite")
       f.admit("page", model = model)
       f.drain()
       val source = f.state.sampleSource("page")
       var name: String? = null
       var failure: Throwable? = null
       val saved = collection.saveCapture(context, source.original, Executor { storage.addLast(it) },
-        analysis = source.analysis, model = source.model, liveQuad = later)
+        analysis = source.analysis, model = source.model, liveCorners = later)
       saved.then { name = it }.catch { failure = it }
       collection.configure(context, Uri.fromFile(laterFolder).toString(), true)
       f.state.removePage("page")
@@ -268,7 +268,7 @@ class ScanSessionExportTest {
       val info = org.json.JSONObject(File(folder, name!!.removeSuffix(".png") + ".json").readText())
       // The model's prediction starts the outline to correct; no page edit is ever recorded as a label.
       assertEquals("unlabeled", info.getString("status"))
-      assertEquals(info.optJSONObject("prediction")?.get("quad")?.toString() ?: "null", info.get("quad").toString())
+      assertEquals(info.optJSONObject("prediction")?.get("corners")?.toString() ?: "null", info.get("corners").toString())
       assertEquals("photo-input", info.getString("source"))
       assertFalse(info.isNull("model"))
       assertTrue(laterFolder.listFiles()!!.isEmpty())
@@ -291,7 +291,7 @@ class ScanSessionExportTest {
     })
     val pdf = writer.createPdf(listOf("page"), f.pdf())
     f.drain()
-    assertTrue(f.renders.all { it.quad == ScanPage.fullFrame() })
+    assertTrue(f.renders.all { it.corners == ScanPage.fullFrame() })
     assertEquals("jpg", File(Uri.parse(images.get().single()).path!!).extension)
     val jpeg = requireNotNull(embeddedSource)
     val bytes = File(Uri.parse(pdf.get()).path!!).readBytes()

@@ -8,15 +8,15 @@ void check(bool v) {
   if (!v)
     throw std::runtime_error("Live guide contract failed");
 }
-Quad rect(double l, double t, double r, double b) { return {Point{l, t}, Point{r, t}, Point{r, b}, Point{l, b}}; }
-Input frame(std::optional<Quad> q, int64_t ms) { return {q, 1000, 1000, ms * 1000000, ms * 1000000}; }
+Corners rect(double l, double t, double r, double b) { return {Point{l, t}, Point{r, t}, Point{r, b}, Point{l, b}}; }
+Input frame(std::optional<Corners> q, int64_t ms) { return {q, 1000, 1000, ms * 1000000, ms * 1000000}; }
 int main() {
   const auto page = rect(.2, .2, .8, .8);
   Stabilizer s;
   auto first = s.update(frame(page, 0));
   check(first.status == Status::tracking && first.acceptanceId == 1 && first.chainLength == 1);
   check(s.update(frame(page, 0)).decision == Decision::duplicateTimestamp);
-  const Quad perspective{Point{.2, .2}, Point{.8, .2}, Point{.9, .8}, Point{.45, .6}};
+  const Corners perspective{Point{.2, .2}, Point{.8, .2}, Point{.9, .8}, Point{.45, .6}};
   check(s.update(frame(perspective, 33)).accepted.has_value());
   auto expired = s.update(frame(page, 470));
   check(expired.expired && expired.status == Status::tracking);

@@ -41,7 +41,7 @@ void metadata() {
   rejects([] { TensorPreprocessor p({0, 224}); });
 }
 void predictions() {
-  std::ifstream file(QUAD_FIXTURE);
+  std::ifstream file(CORNERS_FIXTURE);
   check(file.good());
   std::string line;
   std::getline(file, line);
@@ -67,7 +67,7 @@ void predictions() {
     check(bool(result) == (expected == "accept"));
     if (result) {
       for (size_t i = 0; i < 4; ++i)
-        check(result->quad[i].x == double(values[2 * i]) && result->quad[i].y == double(values[2 * i + 1]));
+        check(result->corners[i].x == double(values[2 * i]) && result->corners[i].y == double(values[2 * i + 1]));
       check(result->score == double(values[8]));
     }
   }

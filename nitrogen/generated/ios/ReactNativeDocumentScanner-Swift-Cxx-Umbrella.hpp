@@ -10,10 +10,10 @@
 // Forward declarations of C++ defined types
 // Forward declaration of `AutofocusState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class AutofocusState; }
+// Forward declaration of `CameraCaptureResult` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
 // Forward declaration of `CameraCaptureState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraCaptureState; }
-// Forward declaration of `CameraMode` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class CameraMode; }
 // Forward declaration of `CameraPermissionStatus` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraPermissionStatus; }
 // Forward declaration of `CameraPermissionValue` to properly resolve imports.
@@ -34,14 +34,14 @@ namespace margelo::nitro::documentscanner { enum class CropPreset; }
 namespace margelo::nitro::documentscanner { struct DocumentAnalysis; }
 // Forward declaration of `DocumentCandidate` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentCandidate; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentFilter` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
 // Forward declaration of `DocumentImageFormat` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentImageFormat; }
 // Forward declaration of `DocumentPoint` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentPoint; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
 // Forward declaration of `DocumentRenderOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
 // Forward declaration of `DocumentState` to properly resolve imports.
@@ -62,16 +62,20 @@ namespace margelo::nitro::documentscanner { class HybridImageViewerViewSpec; }
 namespace margelo::nitro::documentscanner { class HybridPageThumbnailViewSpec; }
 // Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
 namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
+// Forward declaration of `ImageCorrectionOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageCorrectionOptions; }
 // Forward declaration of `ImageFit` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ImageFit; }
+// Forward declaration of `ImageOutputOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageOutputOptions; }
 // Forward declaration of `ImagePagerDirection` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ImagePagerDirection; }
+// Forward declaration of `LowQualityControl` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct LowQualityControl; }
 // Forward declaration of `PageThumbnailResizeMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class PageThumbnailResizeMode; }
 // Forward declaration of `PaperSize` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct PaperSize; }
-// Forward declaration of `QualityGateConfig` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct QualityGateConfig; }
 // Forward declaration of `SampleFolder` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct SampleFolder; }
 // Forward declaration of `ScanPageMetadata` to properly resolve imports.
@@ -95,8 +99,8 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 
 // Include C++ defined types
 #include "AutofocusState.hpp"
+#include "CameraCaptureResult.hpp"
 #include "CameraCaptureState.hpp"
-#include "CameraMode.hpp"
 #include "CameraPermissionStatus.hpp"
 #include "CameraPermissionValue.hpp"
 #include "CameraState.hpp"
@@ -107,10 +111,10 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "CropPreset.hpp"
 #include "DocumentAnalysis.hpp"
 #include "DocumentCandidate.hpp"
+#include "DocumentCorners.hpp"
 #include "DocumentFilter.hpp"
 #include "DocumentImageFormat.hpp"
 #include "DocumentPoint.hpp"
-#include "DocumentQuad.hpp"
 #include "DocumentRenderOptions.hpp"
 #include "DocumentState.hpp"
 #include "HybridCameraPermissionSpec.hpp"
@@ -121,11 +125,13 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "HybridImageViewerViewSpec.hpp"
 #include "HybridPageThumbnailViewSpec.hpp"
 #include "HybridScanSessionSpec.hpp"
+#include "ImageCorrectionOptions.hpp"
 #include "ImageFit.hpp"
+#include "ImageOutputOptions.hpp"
 #include "ImagePagerDirection.hpp"
+#include "LowQualityControl.hpp"
 #include "PageThumbnailResizeMode.hpp"
 #include "PaperSize.hpp"
-#include "QualityGateConfig.hpp"
 #include "SampleFolder.hpp"
 #include "ScanPageMetadata.hpp"
 #include "ScanSessionChange.hpp"

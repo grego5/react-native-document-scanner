@@ -46,6 +46,12 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
   @set:Keep
   abstract var filter: DocumentFilter?
   
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var rectangle: Boolean?
+  
   abstract var onPresetChange: ((preset: CropDraftPreset) -> Unit)?
   
   private var onPresetChange_cxx: Func_void_CropDraftPreset?
@@ -95,7 +101,7 @@ abstract class HybridDocumentCropEditorViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun getQuadResult(): Promise<Variant_ScannerFailure_DocumentQuad>
+  abstract fun getCornersResult(): Promise<Variant_ScannerFailure_DocumentCorners>
   
   @DoNotStrip
   @Keep

@@ -59,14 +59,19 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setSession(newProps->session.get());
   }
   if (oldProps == nullptr
-        ? newProps->renderOptions.isProvided()
-        : !newProps->renderOptions.hasSameValue(oldProps->renderOptions)) {
-    hybridView->setRenderOptions(newProps->renderOptions.get());
+        ? newProps->imageCorrection.isProvided()
+        : !newProps->imageCorrection.hasSameValue(oldProps->imageCorrection)) {
+    hybridView->setImageCorrection(newProps->imageCorrection.get());
   }
   if (oldProps == nullptr
-        ? newProps->quadTensorModel.isProvided()
-        : !newProps->quadTensorModel.hasSameValue(oldProps->quadTensorModel)) {
-    hybridView->setQuadTensorModel(newProps->quadTensorModel.get());
+        ? newProps->outputOptions.isProvided()
+        : !newProps->outputOptions.hasSameValue(oldProps->outputOptions)) {
+    hybridView->setOutputOptions(newProps->outputOptions.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->cornerDetectionModel.isProvided()
+        : !newProps->cornerDetectionModel.hasSameValue(oldProps->cornerDetectionModel)) {
+    hybridView->setCornerDetectionModel(newProps->cornerDetectionModel.get());
   }
   if (oldProps == nullptr
         ? newProps->onError.isProvided()
@@ -74,19 +79,24 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setOnError(newProps->onError.get());
   }
   if (oldProps == nullptr
-        ? newProps->mode.isProvided()
-        : !newProps->mode.hasSameValue(oldProps->mode)) {
-    hybridView->setMode(newProps->mode.get());
+        ? newProps->active.isProvided()
+        : !newProps->active.hasSameValue(oldProps->active)) {
+    hybridView->setActive(newProps->active.get());
   }
   if (oldProps == nullptr
-        ? newProps->guide.isProvided()
-        : !newProps->guide.hasSameValue(oldProps->guide)) {
-    hybridView->setGuide(newProps->guide.get());
+        ? newProps->guideLiveCorners.isProvided()
+        : !newProps->guideLiveCorners.hasSameValue(oldProps->guideLiveCorners)) {
+    hybridView->setGuideLiveCorners(newProps->guideLiveCorners.get());
   }
   if (oldProps == nullptr
-        ? newProps->adaptiveDetection.isProvided()
-        : !newProps->adaptiveDetection.hasSameValue(oldProps->adaptiveDetection)) {
-    hybridView->setAdaptiveDetection(newProps->adaptiveDetection.get());
+        ? newProps->autoCrop.isProvided()
+        : !newProps->autoCrop.hasSameValue(oldProps->autoCrop)) {
+    hybridView->setAutoCrop(newProps->autoCrop.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->inferenceThrottling.isProvided()
+        : !newProps->inferenceThrottling.hasSameValue(oldProps->inferenceThrottling)) {
+    hybridView->setInferenceThrottling(newProps->inferenceThrottling.get());
   }
   if (oldProps == nullptr
         ? newProps->minCornerScore.isProvided()
@@ -94,14 +104,9 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setMinCornerScore(newProps->minCornerScore.get());
   }
   if (oldProps == nullptr
-        ? newProps->qualityGate.isProvided()
-        : !newProps->qualityGate.hasSameValue(oldProps->qualityGate)) {
-    hybridView->setQualityGate(newProps->qualityGate.get());
-  }
-  if (oldProps == nullptr
-        ? newProps->qualityGateConfig.isProvided()
-        : !newProps->qualityGateConfig.hasSameValue(oldProps->qualityGateConfig)) {
-    hybridView->setQualityGateConfig(newProps->qualityGateConfig.get());
+        ? newProps->lowQualityControl.isProvided()
+        : !newProps->lowQualityControl.hasSameValue(oldProps->lowQualityControl)) {
+    hybridView->setLowQualityControl(newProps->lowQualityControl.get());
   }
   if (oldProps == nullptr
         ? newProps->tapToFocus.isProvided()
@@ -134,9 +139,9 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setCaptureMode(newProps->captureMode.get());
   }
   if (oldProps == nullptr
-        ? newProps->jpegQuality.isProvided()
-        : !newProps->jpegQuality.hasSameValue(oldProps->jpegQuality)) {
-    hybridView->setJpegQuality(newProps->jpegQuality.get());
+        ? newProps->highResolutionPhoto.isProvided()
+        : !newProps->highResolutionPhoto.hasSameValue(oldProps->highResolutionPhoto)) {
+    hybridView->setHighResolutionPhoto(newProps->highResolutionPhoto.get());
   }
   if (oldProps == nullptr
         ? newProps->guideTransitionDuration.isProvided()
@@ -144,14 +149,14 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setGuideTransitionDuration(newProps->guideTransitionDuration.get());
   }
   if (oldProps == nullptr
-        ? newProps->analysisWidth.isProvided()
-        : !newProps->analysisWidth.hasSameValue(oldProps->analysisWidth)) {
-    hybridView->setAnalysisWidth(newProps->analysisWidth.get());
+        ? newProps->analysisFrameWidth.isProvided()
+        : !newProps->analysisFrameWidth.hasSameValue(oldProps->analysisFrameWidth)) {
+    hybridView->setAnalysisFrameWidth(newProps->analysisFrameWidth.get());
   }
   if (oldProps == nullptr
-        ? newProps->squareFrame.isProvided()
-        : !newProps->squareFrame.hasSameValue(oldProps->squareFrame)) {
-    hybridView->setSquareFrame(newProps->squareFrame.get());
+        ? newProps->squareAspectRatio.isProvided()
+        : !newProps->squareAspectRatio.hasSameValue(oldProps->squareAspectRatio)) {
+    hybridView->setSquareAspectRatio(newProps->squareAspectRatio.get());
   }
   if (oldProps == nullptr
         ? newProps->showStats.isProvided()

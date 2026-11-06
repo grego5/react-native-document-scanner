@@ -16,7 +16,7 @@ internal object CornerInference {
   }
   // All fields below are confined to worker.
   private var users = 0
-  private var selection = QuadModelStore.selected
+  private var selection = CornerModelStore.selected
   private var session: DocCornerSession? = null
 
   private fun <T> onWorker(operation: () -> T): T {
@@ -35,7 +35,7 @@ internal object CornerInference {
     }
   }
 
-  fun validate(context: Context, selection: QuadModelStore.Selection) = onWorker {
+  fun validate(context: Context, selection: CornerModelStore.Selection) = onWorker {
     selection.open(context).use { it.warmUp() }
   }
 
@@ -44,7 +44,7 @@ internal object CornerInference {
     return Lease(context.applicationContext)
   }
 
-  private fun open(context: Context, selected: QuadModelStore.Selection = QuadModelStore.current): DocCornerSession {
+  private fun open(context: Context, selected: CornerModelStore.Selection = CornerModelStore.current): DocCornerSession {
     if (selected !== selection) {
       session?.close()
       session = null
@@ -54,7 +54,7 @@ internal object CornerInference {
   }
 
   /** Each owner confines its lease and timing values to its own executor. */
-  class Lease internal constructor(private val context: Context) : LiveQuadModel {
+  class Lease internal constructor(private val context: Context) : LiveCornerModel {
     private var closed = false
     override var lastPreprocessingMs = 0.0
       private set
@@ -63,7 +63,7 @@ internal object CornerInference {
     override var lastScore: Double? = null
       private set
 
-    private fun <T> useSession(selected: QuadModelStore.Selection? = null, operation: (DocCornerSession) -> T): T {
+    private fun <T> useSession(selected: CornerModelStore.Selection? = null, operation: (DocCornerSession) -> T): T {
       check(!closed) { "The corner model lease is closed." }
       return onWorker {
         val model = if (selected == null) open(context) else open(context, selected)
@@ -78,7 +78,7 @@ internal object CornerInference {
     override fun warmUp() = useSession { it.warmUp() }
     override fun analyze(image: ImageProxy): DocumentCandidate? = useSession { it.analyze(image) }
     fun analyze(bitmap: Bitmap): DocumentCandidate? = useSession { it.analyze(bitmap) }
-    fun analyze(bitmap: Bitmap, selected: QuadModelStore.Selection): DocumentCandidate? =
+    fun analyze(bitmap: Bitmap, selected: CornerModelStore.Selection): DocumentCandidate? =
       useSession(selected) { it.analyze(bitmap) }
 
     override fun close() {

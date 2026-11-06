@@ -27,15 +27,10 @@ struct StillSettings: Equatable, Sendable {
   let quality: Double
   /// The clockwise capture rotation angle the still is tagged with, as live analysis uses it.
   var rotationAngle: Double = 0
-
-  static let minimumQuality = 0.01
-
-  /// `quality` maximizes quality (JPEG quality 1 when omitted); `latency` minimizes the time to
+  /// `quality` maximizes quality (JPEG quality 1); `latency` minimizes the time to
   /// deliver (0.95); `zsl`, the default, uses the output's zero-shutter-lag buffer with balanced
-  /// prioritization (0.95) and falls back to `latency` when the configuration has no buffer. An
-  /// explicit quality above 1 counts as 1, the lowest as 1/100, and a negative or non-finite one
-  /// as omitted.
-  static func resolve(mode: CaptureMode?, jpegQuality: Double?, zeroShutterLag: Bool) -> StillSettings {
+  /// prioritization (0.95) and falls back to `latency` when the configuration has no buffer.
+  static func resolve(mode: CaptureMode?, zeroShutterLag: Bool) -> StillSettings {
     var effective = mode ?? .zsl
     if effective == .zsl && !zeroShutterLag { effective = .latency }
     let priority: Priority
@@ -44,13 +39,12 @@ struct StillSettings: Equatable, Sendable {
     case .zsl: priority = .balanced
     default: priority = .speed
     }
-    let fallback = effective == .quality ? 1.0 : 0.95
-    let quality = jpegQuality.flatMap { $0.isFinite && $0 >= 0 ? min(1, max(minimumQuality, $0)) : nil } ?? fallback
+    let quality = effective == .quality ? 1.0 : 0.95
     return StillSettings(priority: priority, quality: quality)
   }
 }
 
-/// Where a still's pixels land: the upright centered square, and how a live quad maps onto it.
+/// Where a still's pixels land: the upright centered square, and how live corners map onto it.
 enum StillGeometry {
   /// The integral centered square of an upright size.
   static func squareCrop(_ size: PixelSize) -> CGRect {
@@ -63,22 +57,22 @@ enum StillGeometry {
     square ? squareCrop(size) : CGRect(x: 0, y: 0, width: size.width, height: size.height)
   }
 
-  /// Maps a normalized upright quad detected on a live framing onto the upright framed still.
+  /// Maps a normalized upright corners detected on a live framing onto the upright framed still.
   /// The video stream and the still are centered on the sensor and share its long side, so a
   /// stream of another aspect is a centered crop of the still across its short side. Corners up
   /// to 0.5% outside the still are clamped; nil when any lies further out.
-  static func map(_ quad: QuadCoordinates, from framing: CameraFraming, toStill still: PixelSize,
-                  square: Bool) -> QuadCoordinates? {
-    guard quad.count == 8, !still.isEmpty, quad.allSatisfy(\.isFinite) else { return nil }
+  static func map(_ corners: CornerCoordinates, from framing: CameraFraming, toStill still: PixelSize,
+                  square: Bool) -> CornerCoordinates? {
+    guard corners.count == 8, !still.isEmpty, corners.allSatisfy(\.isFinite) else { return nil }
     let video = framing.upright
     let source = framed(video, square: framing.square)
     let target = framed(still, square: square)
     let videoLong = Double(video.longSide), stillLong = Double(still.longSide)
-    var mapped: QuadCoordinates = []
+    var mapped: CornerCoordinates = []
     mapped.reserveCapacity(8)
     for corner in 0..<4 {
-      let x = Double(source.minX) + quad[corner * 2] * Double(source.width)
-      let y = Double(source.minY) + quad[corner * 2 + 1] * Double(source.height)
+      let x = Double(source.minX) + corners[corner * 2] * Double(source.width)
+      let y = Double(source.minY) + corners[corner * 2 + 1] * Double(source.height)
       let stillX = (x - Double(video.width) / 2) / videoLong * stillLong + Double(still.width) / 2
       let stillY = (y - Double(video.height) / 2) / videoLong * stillLong + Double(still.height) / 2
       for value in [(stillX - Double(target.minX)) / Double(target.width),
@@ -132,9 +126,9 @@ enum StillProcessor {
 
   static let frameQuality = 0.85
 
-  /// Writes the shutter frame upright as a JPEG, straightened to `quad` (normalized in the
+  /// Writes the shutter frame upright as a JPEG, straightened to `corners` (normalized in the
   /// frame's upright pixels) when given, and commits it as the page's retained frame.
-  static func writeFrame(_ frame: LiveFrame, quad: QuadCoordinates?,
+  static func writeFrame(_ frame: LiveFrame, corners: CornerCoordinates?,
                          to output: SessionResources.Output) throws -> SessionResources.Resource {
     defer { output.close() }
     guard output.resource.kind == .frame, frame.width > 0, frame.height > 0,
@@ -149,11 +143,11 @@ enum StillProcessor {
     else { throw ScannerCodeError(code: .captureFailed) }
     var image = CIImage(cgImage: raw).oriented(orientation)
     let extent = image.extent
-    if let quad, quad.count == 8, let filter = CIFilter(name: "CIPerspectiveCorrection") {
+    if let corners, corners.count == 8, let filter = CIFilter(name: "CIPerspectiveCorrection") {
       // Core Image's origin is bottom-left.
       func point(_ index: Int) -> CIVector {
-        CIVector(x: extent.minX + quad[index * 2] * extent.width,
-                 y: extent.minY + (1 - quad[index * 2 + 1]) * extent.height)
+        CIVector(x: extent.minX + corners[index * 2] * extent.width,
+                 y: extent.minY + (1 - corners[index * 2 + 1]) * extent.height)
       }
       filter.setValue(image, forKey: kCIInputImageKey)
       filter.setValue(point(0), forKey: "inputTopLeft")
@@ -179,9 +173,9 @@ enum StillProcessor {
 final class CaptureTicket: @unchecked Sendable {
   private let lock = NSLock()
   private var settled = false
-  private let deliver: (Result<String, ScannerCodeError>) -> Void
+  private let deliver: (Result<CameraCaptureResult, ScannerCodeError>) -> Void
 
-  init(_ deliver: @escaping (Result<String, ScannerCodeError>) -> Void) { self.deliver = deliver }
+  init(_ deliver: @escaping (Result<CameraCaptureResult, ScannerCodeError>) -> Void) { self.deliver = deliver }
 
   var isSettled: Bool { lock.lock(); defer { lock.unlock() }; return settled }
 
@@ -199,11 +193,11 @@ final class CaptureTicket: @unchecked Sendable {
   /// Runs `admit` under the claim and settles with its page ID, or with its failure. False, without
   /// running `admit`, when the shot already settled.
   @discardableResult
-  func publish(_ admit: () throws -> String) -> Bool {
+  func publish(_ admit: () throws -> CameraCaptureResult) -> Bool {
     lock.lock()
     guard !settled else { lock.unlock(); return false }
     settled = true
-    let result: Result<String, ScannerCodeError> = Result { try admit() }
+    let result: Result<CameraCaptureResult, ScannerCodeError> = Result { try admit() }
       .mapError { ScannerCodeError(code: ScannerCodeError.code($0, fallback: .captureFailed)) }
     lock.unlock()
     deliver(result)
@@ -229,15 +223,17 @@ final class StillShot: @unchecked Sendable {
   let selection: CornerInference.Selection?
   let settings: StillSettings
   let square: Bool
+  /// `scanner` mode: the page crops to the outline analysis finds; `camera` mode keeps the whole photo.
+  let autoCrop: Bool
   /// The live guide at the shutter, normalized in the upright framed region of its framing.
-  let guide: (quad: QuadCoordinates, framing: CameraFraming)?
+  let guide: (corners: CornerCoordinates, framing: CameraFraming)?
   let frame = ShutterFrameSlot()
 
   init(ticket: CaptureTicket, session: ScanSessionState, options: DocumentRenderOptions,
        selection: CornerInference.Selection?, settings: StillSettings, square: Bool,
-       guide: (quad: QuadCoordinates, framing: CameraFraming)?) {
+       guide: (corners: CornerCoordinates, framing: CameraFraming)?, autoCrop: Bool = true) {
     self.ticket = ticket; self.session = session; self.options = options; self.selection = selection
-    self.settings = settings; self.square = square; self.guide = guide
+    self.settings = settings; self.square = square; self.guide = guide; self.autoCrop = autoCrop
   }
 
   private struct Saved {
@@ -263,13 +259,14 @@ final class StillShot: @unchecked Sendable {
         return Saved(still: still, frame: retainFrame())
       },
       onSuccess: { [self] saved in
-        let quad = guide.flatMap { StillGeometry.map($0.quad, from: $0.framing, toStill: saved.still.upright, square: square) }
-          .flatMap { SessionQuad.renderable($0) ? $0 : nil }
+        let corners = guide.flatMap { StillGeometry.map($0.corners, from: $0.framing, toStill: saved.still.upright, square: square) }
+          .flatMap { SessionCorners.renderable($0) ? $0 : nil }
         let admitted = ticket.publish {
           // admitSource retires the source and frame itself when admission fails.
           try session.admitSource(id: id, source: saved.still.url, frame: saved.frame,
-                                  liveQuad: quad.map(SessionQuad.quad), options: options, selection: selection)
-          return id
+                                  liveCorners: corners.map(SessionCorners.corners), options: options, selection: selection,
+                                  autoCrop: autoCrop)
+          return CameraCaptureResult(pageId: id, snapshot: session.snapshot())
         }
         if !admitted { discard(saved) }
         done()
@@ -284,14 +281,15 @@ final class StillShot: @unchecked Sendable {
   /// The shutter frame as a committed session frame, straightened to the guide when the guide was
   /// detected on the same framed size and orientation; nil when no frame arrived or it could not
   /// be written. The frame comes from analysis after acceptance, so a rotation in between (a half
-  /// turn keeps the size) leaves it upright but unstraightened.
+  /// turn keeps the size) leaves it upright but unstraightened. Without `autoCrop` the page keeps
+  /// the whole photo, so the frame stays unstraightened too.
   private func retainFrame() -> SessionResources.Resource? {
     guard let frame = frame.take(), let output = try? session.resources.output(.frame) else { return nil }
     let upright = frame.orientation >= 5 ? PixelSize(frame.height, frame.width) : PixelSize(frame.width, frame.height)
-    let quad = guide.flatMap {
-      $0.framing.orientation == frame.orientation && $0.framing.framed == upright ? $0.quad : nil
+    let corners = (autoCrop ? guide : nil).flatMap {
+      $0.framing.orientation == frame.orientation && $0.framing.framed == upright ? $0.corners : nil
     }
-    do { return try StillProcessor.writeFrame(frame, quad: quad, to: output) }
+    do { return try StillProcessor.writeFrame(frame, corners: corners, to: output) }
     catch {
       CameraLog.logger.error("shutter frame not retained: \(String(describing: error), privacy: .public)")
       return nil

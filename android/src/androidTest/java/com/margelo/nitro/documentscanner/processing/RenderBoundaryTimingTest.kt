@@ -28,7 +28,7 @@ class RenderBoundaryTimingTest {
     OpenCvRuntime.ensureLoaded()
     val report = StringBuilder("# device=${Build.MODEL} sdk=${Build.VERSION.SDK_INT}\n")
       .append("side\tfilter\tshadows\titeration\tpath\twarpMs\tfilterMs\ttotalMs\n")
-    val quad = doubleArrayOf(.05, .05, .95, .05, .95, .95, .05, .95)
+    val corners = doubleArrayOf(.05, .05, .95, .05, .95, .95, .05, .95)
     for (side in listOf(768, 2048, 4096)) {
       val source = fixture(side)
       try {
@@ -44,9 +44,9 @@ class RenderBoundaryTimingTest {
                 var geometryEnd = start
                 try {
                   if (combined) {
-                    NativeRenderGeometry.render(source, into, quad, 1.0, null, true, filter, shadows)
+                    NativeRenderGeometry.render(source, into, corners, 1.0, null, true, filter, shadows)
                   } else {
-                    NativeRenderGeometry.render(source, into, quad, 1.0, null, true)
+                    NativeRenderGeometry.render(source, into, corners, 1.0, null, true)
                     geometryEnd = System.nanoTime()
                     val filtered = DocumentFilters.apply(into, filter, shadows)
                     filtered.release()

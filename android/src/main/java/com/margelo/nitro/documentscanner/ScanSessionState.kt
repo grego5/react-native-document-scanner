@@ -1,7 +1,7 @@
 package com.margelo.nitro.documentscanner
 
 import com.margelo.nitro.documentscanner.processing.DocumentRenderer
-import com.margelo.nitro.documentscanner.processing.QuadModelStore
+import com.margelo.nitro.documentscanner.processing.CornerModelStore
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 
@@ -19,9 +19,9 @@ internal class ScanSessionState(
 ) {
   interface Actions : AutoCloseable {
     /** Called at admission: capture model selection, without decoding or acquiring an interpreter. */
-    fun prepareAnalysis(original: SessionResources.Resource, liveQuad: DocumentQuad?, selection: QuadModelStore.Selection?): () -> DocumentAnalysis
-    fun preparePinnedAnalysis(source: SessionResources.Lease, liveQuad: DocumentQuad?, selection: QuadModelStore.Selection?): () -> DocumentAnalysis =
-      prepareAnalysis(source.resource, liveQuad, selection)
+    fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: CornerModelStore.Selection?): () -> DocumentAnalysis
+    fun preparePinnedAnalysis(source: SessionResources.Lease, liveCorners: DocumentCorners?, selection: CornerModelStore.Selection?): () -> DocumentAnalysis =
+      prepareAnalysis(source.resource, liveCorners, selection)
     fun renderSnapshot(source: SessionResources.Lease, key: ScanPage.RenderKey): ScanPage.Artifact = render(source.resource, key)
     fun render(original: SessionResources.Resource, key: ScanPage.RenderKey): ScanPage.Artifact
     override fun close()
@@ -55,7 +55,7 @@ internal class ScanSessionState(
 
   fun sampleSource(id: String): SessionSampleSource = synchronized(lock) {
     val page = page(id)
-    SessionSampleSource(resources.lease(page.original), page.analysis, page.model, page.liveQuad)
+    SessionSampleSource(resources.lease(page.original), page.analysis, page.model, page.liveCorners)
   }
 
   /** Atomically pin the currently displayed native artifact, including its thumbnail sidecar. */
@@ -98,17 +98,20 @@ internal class ScanSessionState(
     val value = page.metadata()
     events.updatePage(ScanPageMetadata(value.id, value.requestedRevision.toDouble(), value.readyRevision?.toDouble(),
       value.analyzing, value.rendering, value.readyRevision == value.requestedRevision,
-      value.analysis, value.quad, value.options, value.analysisFailure, value.renderFailure))
+      value.analysis, value.corners, value.options, value.analysisFailure, value.renderFailure))
   }
 
-  /** Takes ownership of already published immutable source tokens only on successful admission. */
+  /** Takes ownership of already published immutable source tokens only on successful admission. Without [autoCrop] the
+   * page keeps the full frame: it is still analyzed, so the editor's automatic preset and samples have the candidate,
+   * but the candidate is never applied by itself. */
   fun admit(
     id: String,
     original: SessionResources.Resource,
     frame: SessionResources.Resource?,
-    liveQuad: DocumentQuad?,
+    liveCorners: DocumentCorners?,
     options: DocumentRenderOptions?,
-    selection: QuadModelStore.Selection? = QuadModelStore.selected,
+    selection: CornerModelStore.Selection? = CornerModelStore.selected,
+    autoCrop: Boolean = true,
   ) = transition {
     requireOpen()
     requireInput(id.isNotBlank() && !pages.containsKey(id)) { "Page ID must be nonempty and unique." }
@@ -119,9 +122,10 @@ internal class ScanSessionState(
     resources.lease(original).close()
     frame?.let { resources.lease(it).close() }
     val analysisSource = resources.lease(original)
-    val analyze = try { actions.preparePinnedAnalysis(analysisSource, liveQuad, selection) }
+    val analyze = try { actions.preparePinnedAnalysis(analysisSource, liveCorners, selection) }
       catch (error: Throwable) { analysisSource.close(); throw error }
-    val page = ScanPage(id, original, frame, effective, selection, liveQuad)
+    val page = ScanPage(id, original, frame, effective, selection, liveCorners)
+    page.explicitGeometry = !autoCrop
     pages[id] = page
     changed(page)
     queue.submit(resources.workOwner, ScannerWorkQueue.Kind.ANALYSIS, id,
@@ -141,29 +145,29 @@ internal class ScanSessionState(
       })
   }
 
-  fun setDocumentCrop(id: String, quad: DocumentQuad) = transition {
+  fun setDocumentCrop(id: String, corners: DocumentCorners) = transition {
     val page = page(id)
-    val issue = NativeQuadGeometry.renderIssue(NativeQuadGeometry.coordinates(quad))
+    val issue = NativeCornerGeometry.renderIssue(NativeCornerGeometry.coordinates(corners))
     requireInput(issue == null) { requireNotNull(issue) }
     // Even an explicit full-frame edit during analysis protects that choice from its candidate.
     page.explicitGeometry = true
-    edit(page, quad, page.options)
+    edit(page, corners, page.options)
   }
 
   fun setFilter(id: String, filter: DocumentFilter) = transition {
     val page = page(id)
     val options = DocumentRenderer.effectiveOptions(page.options.copy(filter = filter))
-    edit(page, page.quad, options)
+    edit(page, page.corners, options)
   }
 
   fun setShadowRemoval(id: String, value: Boolean) = transition {
     val page = page(id)
-    edit(page, page.quad, page.options.copy(removeShadows = value))
+    edit(page, page.corners, page.options.copy(removeShadows = value))
   }
 
-  private fun edit(page: ScanPage, quad: DocumentQuad, options: DocumentRenderOptions) {
-    if (page.quad == quad && page.options == options && page.renderFailure == null) return
-    page.quad = quad
+  private fun edit(page: ScanPage, corners: DocumentCorners, options: DocumentRenderOptions) {
+    if (page.corners == corners && page.options == options && page.renderFailure == null) return
+    page.corners = corners
     page.options = options
     page.requestedRevision++
     page.renderFailure = null
@@ -177,10 +181,10 @@ internal class ScanSessionState(
     page.analyzing = false
     page.analysis = analysis
     page.analysisFailure = error?.let { failure(it, ScannerErrorCode.ANALYSIS_FAILED) }
-    val candidate = analysis?.candidate?.quad
+    val candidate = analysis?.candidate?.corners
     if (!page.explicitGeometry && candidate != null &&
-      NativeQuadGeometry.renderIssue(NativeQuadGeometry.coordinates(candidate)) == null && page.quad != candidate) {
-      page.quad = candidate
+      NativeCornerGeometry.renderIssue(NativeCornerGeometry.coordinates(candidate)) == null && page.corners != candidate) {
+      page.corners = candidate
       page.requestedRevision++
       invalidate(page)
     }
@@ -228,7 +232,7 @@ internal class ScanSessionState(
 
   /** Geometry/output configuration determines compatibility; filters and shadows each have one slot. */
   private fun compatible(a: ScanPage.RenderKey, b: ScanPage.RenderKey) =
-    a.quad == b.quad && a.options.copy(filter = b.options.filter, removeShadows = b.options.removeShadows) == b.options
+    a.corners == b.corners && a.options.copy(filter = b.options.filter, removeShadows = b.options.removeShadows) == b.options
 
   private fun invalidate(page: ScanPage) {
     val iterator = page.cache.iterator()

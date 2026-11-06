@@ -19,8 +19,8 @@ import com.facebook.soloader.SoLoader
 import com.margelo.nitro.JNIOnLoad
 import com.margelo.nitro.documentscanner.DocumentCandidate
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
-import com.margelo.nitro.documentscanner.LiveQuadOverlay
+import com.margelo.nitro.documentscanner.DocumentCorners
+import com.margelo.nitro.documentscanner.LiveGuideOverlay
 import com.margelo.nitro.documentscanner.processing.LiveGuideStatus.*
 import org.junit.Assert.*
 import org.junit.Before
@@ -43,19 +43,19 @@ class LiveDocumentDetectorTest {
   fun initializeNative() {
     SoLoader.init(instrumentation.targetContext, false)
     JNIOnLoad.initializeNativeNitro()
-    QuadModelStore.activate(QuadModelStore.prepare(instrumentation.targetContext, "asset:///doccornernet/model.tflite"))
+    CornerModelStore.activate(CornerModelStore.prepare(instrumentation.targetContext, "asset:///doccornernet/model.tflite"))
   }
 
   @Test
   fun lowScoresPauseInferenceAndRawScoresRemainVisible() {
     Harness().use { h ->
       h.model.score = .9f
-      val observations = mutableListOf<LiveQuadObservation>()
-      h.detector.traceObserver = LiveQuadTraceObserver { observations.add(it) }
+      val observations = mutableListOf<LiveDocumentObservation>()
+      h.detector.traceObserver = LiveGuideTraceObserver { observations.add(it) }
       repeat(3) { h.send(); assertEquals(SEARCHING, h.last().status) }
       assertEquals(1, h.model.calls.get())
       assertEquals(.9, h.last().score!!, .00001)
-      assertNotNull(observations.last().rawQuad)
+      assertNotNull(observations.last().rawCorners)
       assertFalse(observations.last().guideEligible)
       h.model.score = .96f
       h.detector.minCornerScore = .94
@@ -64,7 +64,7 @@ class LiveDocumentDetectorTest {
       h.model.score = .9f
       h.send()
       assertEquals(SEARCHING, h.last().status)
-      assertNull(h.last().quad)
+      assertNull(h.last().corners)
     }
   }
 
@@ -72,16 +72,16 @@ class LiveDocumentDetectorTest {
   fun invalidCornerGeometryStillRetainsItsLowScoreAndPausesInference() {
     Harness().use { h ->
       h.model.score = .1f
-      h.model.next = DocumentQuad(DocumentPoint(-.1, .2), documentQuad.topRight,
-        documentQuad.bottomRight, documentQuad.bottomLeft)
-      val observations = mutableListOf<LiveQuadObservation>()
-      h.detector.traceObserver = LiveQuadTraceObserver { observations.add(it) }
+      h.model.next = DocumentCorners(DocumentPoint(-.1, .2), documentCorners.topRight,
+        documentCorners.bottomRight, documentCorners.bottomLeft)
+      val observations = mutableListOf<LiveDocumentObservation>()
+      h.detector.traceObserver = LiveGuideTraceObserver { observations.add(it) }
       repeat(3) { h.send() }
       assertEquals(1, h.model.calls.get())
       assertEquals(SEARCHING, h.last().status)
-      assertNull(h.last().quad)
+      assertNull(h.last().corners)
       assertEquals(.1, h.last().score!!, .00001)
-      assertNull(observations.last().rawQuad)
+      assertNull(observations.last().rawCorners)
       assertEquals(.1, observations.last().rawScore!!, .00001)
       assertFalse(observations.last().guideEligible)
     }
@@ -116,9 +116,9 @@ class LiveDocumentDetectorTest {
   fun lowScoreDropsReliableFlowInsteadOfRetainingTheOldOutline() {
     Harness().use { h ->
       h.detector.flowMotionEnabled = true
-      h.detector.inferenceThrottling = false
-      val observations = mutableListOf<LiveQuadObservation>()
-      h.detector.traceObserver = LiveQuadTraceObserver { observations.add(it) }
+      h.detector.pacingEnabled = false
+      val observations = mutableListOf<LiveDocumentObservation>()
+      h.detector.traceObserver = LiveGuideTraceObserver { observations.add(it) }
       val texture: (Int, Int) -> Int = { x, y ->
         val v = ((x * 73856093) xor (y * 19349663)) ushr 8 and 255
         Color.rgb(v, v, v)
@@ -134,7 +134,7 @@ class LiveDocumentDetectorTest {
       send()
       assertEquals(SEARCHING, h.last().status)
       assertFalse(observations.last().flowRetained)
-      assertNull(h.last().quad)
+      assertNull(h.last().corners)
     }
   }
 
@@ -142,7 +142,7 @@ class LiveDocumentDetectorTest {
   fun thresholdChangeWakesAdaptiveTrackingAndZeroDisablesRejection() {
     Harness().use { h ->
       h.detector.flowMotionEnabled = true
-      h.detector.adaptiveDetection = true
+      h.detector.inferenceThrottling = true
       h.model.score = .96f
       val texture: (Int, Int) -> Int = { x, y ->
         val v = ((x * 73856093) xor (y * 19349663)) ushr 8 and 255
@@ -170,9 +170,9 @@ class LiveDocumentDetectorTest {
   fun firstValidInferenceEntersAdaptiveTrackingWithoutAnotherModelCall() {
     Harness().use { h ->
       h.detector.flowMotionEnabled = true
-      h.detector.adaptiveDetection = true
-      val observations = mutableListOf<LiveQuadObservation>()
-      h.detector.traceObserver = LiveQuadTraceObserver { observations.add(it) }
+      h.detector.inferenceThrottling = true
+      val observations = mutableListOf<LiveDocumentObservation>()
+      h.detector.traceObserver = LiveGuideTraceObserver { observations.add(it) }
       val texture: (Int, Int) -> Int = { x,y ->
         val v=((x*73856093) xor (y*19349663)) ushr 8 and 255
         Color.rgb(v,v,v)
@@ -250,7 +250,7 @@ class LiveDocumentDetectorTest {
   @Test
   fun cameraXMappingRespectsCropRotationMirroringAndResizedViewport() {
     val crop = Rect(16, 12, 112, 84)
-    val quad = DocumentQuad(DocumentPoint(.1, .2), DocumentPoint(.8, .1), DocumentPoint(.9, .8), DocumentPoint(.2, .9))
+    val corners = DocumentCorners(DocumentPoint(.1, .2), DocumentPoint(.8, .1), DocumentPoint(.9, .8), DocumentPoint(.2, .9))
     val normalized = floatArrayOf(.1f, .2f, .8f, .1f, .9f, .8f, .2f, .9f)
     val factory = ImageProxyTransformFactory().apply { isUsingCropRect = true; isUsingRotationDegrees = true }
     for (rotation in listOf(0, 90, 180, 270)) {
@@ -287,8 +287,8 @@ class LiveDocumentDetectorTest {
             if (mirror) { postScale(-1f, 1f); postTranslate(viewWidth, 0f) }
             postTranslate(20f, 30f)
           }
-          val result = LiveDetectionResult(TRACKING, quad, source, width, height)
-          val points = LiveQuadOverlay.mappedPoints(result, OutputTransform(matrix, Size(crop.width(), crop.height())))!!
+          val result = LiveDetectionResult(TRACKING, corners, source, width, height)
+          val points = LiveGuideOverlay.mappedPoints(result, OutputTransform(matrix, Size(crop.width(), crop.height())))!!
           for (index in 0..3) {
             val x = normalized[index * 2] * viewWidth
             assertEquals("rotation=$rotation mirror=$mirror scale=$scale x", 20f + if (mirror) viewWidth - x else x, points[index * 2], .001f)
@@ -306,7 +306,7 @@ class LiveDocumentDetectorTest {
     val detector = LiveDocumentDetector(instrumentation.targetContext, false) { callbacks.add(it) }
     try {
       // The next frame intentionally fails; neither cadence nor the flat fixture's low score may skip decoding.
-      detector.inferenceThrottling = false
+      detector.pacingEnabled = false
       detector.minCornerScore = 0.0
       instrumentation.runOnMainSync { detector.begin(false) }
       val paused = Frame()
@@ -417,8 +417,8 @@ class LiveDocumentDetectorTest {
   fun flowEstimatesThrottledFrames() {
     Harness().use { harness ->
       val samples = Collections.synchronizedList(mutableListOf<LiveFrameSample>())
-      harness.detector.traceObserver = object : LiveQuadTraceObserver {
-        override fun onObservation(observation: LiveQuadObservation) = Unit
+      harness.detector.traceObserver = object : LiveGuideTraceObserver {
+        override fun onObservation(observation: LiveDocumentObservation) = Unit
         override fun onFrame(sample: LiveFrameSample) { samples.add(sample) }
       }
       harness.detector.flowMotionEnabled = true
@@ -588,8 +588,8 @@ class LiveDocumentDetectorTest {
   @Test
   fun unfocusedFramesStillDetectAndConfirmThePage() {
     Harness().use { h ->
-      val observations=mutableListOf<LiveQuadObservation>()
-      h.detector.traceObserver=LiveQuadTraceObserver { observations.add(it) }
+      val observations=mutableListOf<LiveDocumentObservation>()
+      h.detector.traceObserver=LiveGuideTraceObserver { observations.add(it) }
       repeat(3) {
         val (frame,pending)=h.submit(afState=android.hardware.camera2.CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN)
         pending.get(10,TimeUnit.SECONDS)
@@ -678,8 +678,8 @@ class LiveDocumentDetectorTest {
   @Test
   fun overdueTrackingResultIsExpiredInsteadOfDrawn() {
     Harness().use { harness ->
-      val observed=mutableListOf<LiveQuadObservation>()
-      harness.detector.traceObserver=LiveQuadTraceObserver { observed.add(it) }
+      val observed=mutableListOf<LiveDocumentObservation>()
+      harness.detector.traceObserver=LiveGuideTraceObserver { observed.add(it) }
       harness.send()
       harness.send()
       val release = stallMain()
@@ -690,7 +690,7 @@ class LiveDocumentDetectorTest {
       instrumentation.waitForIdleSync()
       assertEquals(listOf(TRACKING, TRACKING, SEARCHING), harness.statuses())
       assertFalse(harness.detector.hasPendingExpiry())
-      // The stabilizer also expired that quad, so guidance returns after a fresh confirmation.
+      // The stabilizer also expired that corners, so guidance returns after a fresh confirmation.
       repeat(3) { harness.send() }
       assertEquals(observed.map { "${it.decision}:${it.expiredBeforeInput}" }.toString(),listOf(TRACKING, TRACKING, TRACKING), harness.statuses().drop(3))
     }
@@ -761,17 +761,17 @@ class LiveDocumentDetectorTest {
     Harness().use { harness ->
       harness.send()
       harness.send()
-      val observed = Collections.synchronizedList(mutableListOf<LiveQuadObservation>())
-      harness.detector.traceObserver = LiveQuadTraceObserver { observed.add(it) }
+      val observed = Collections.synchronizedList(mutableListOf<LiveDocumentObservation>())
+      harness.detector.traceObserver = LiveGuideTraceObserver { observed.add(it) }
       repeat(3) { harness.send() }
       // Attaching restarts acceptance history, so the trace replays from a fresh stabilizer.
-      assertEquals(listOf(LiveQuadDecision.ACQUIRED, LiveQuadDecision.REPLACED, LiveQuadDecision.REPLACED), observed.map { it.decision })
+      assertEquals(listOf(GuideDecision.ACQUIRED, GuideDecision.REPLACED, GuideDecision.REPLACED), observed.map { it.decision })
       val acquired = observed.last()
       assertEquals(128, acquired.width)
       assertEquals(96, acquired.height)
       assertEquals(5 * 66_000_000L, acquired.sensorTimestampNs)
       assertEquals(1.0, acquired.rawScore!!, 1e-6)
-      assertEquals(acquired.rawQuad, acquired.accepted)
+      assertEquals(acquired.rawCorners, acquired.accepted)
       assertEquals(harness.last().acceptanceId, acquired.acceptanceId)
       assertTrue(acquired.stabilizerNs > 0)
       harness.detector.traceObserver = null
@@ -788,7 +788,7 @@ class LiveDocumentDetectorTest {
     try {
       // A fixed size keeps the check independent of whether the device lays out the window (screen on or off).
       val overlay = onMain {
-        LiveQuadOverlay(activity).also { overlay ->
+        LiveGuideOverlay(activity).also { overlay ->
           activity.setContentView(android.widget.FrameLayout(activity).apply { addView(overlay, 400, 300) })
           overlay.layout(0, 0, 400, 300)
         }
@@ -797,7 +797,7 @@ class LiveDocumentDetectorTest {
       assertTrue(onMain { overlay.isAttachedToWindow && overlay.width == 400 })
       val target = onMain { OutputTransform(Matrix(), Size(overlay.width, overlay.height)) }
       fun show(status: LiveGuideStatus, id: Long) = onMain {
-        overlay.show(LiveDetectionResult(status, documentQuad, target, overlay.width, overlay.height, acceptanceId = id), target)
+        overlay.show(LiveDetectionResult(status, documentCorners, target, overlay.width, overlay.height, acceptanceId = id), target)
       }
       show(TRACKING, 1)
       assertEquals(255, onMain { overlay.strokeAlpha })
@@ -834,7 +834,7 @@ class LiveDocumentDetectorTest {
     }
   }
 
-  private val documentQuad = DocumentQuad(DocumentPoint(.2, .2), DocumentPoint(.8, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
+  private val documentCorners = DocumentCorners(DocumentPoint(.2, .2), DocumentPoint(.8, .2), DocumentPoint(.8, .8), DocumentPoint(.2, .8))
 
   private fun <T> onMain(block: () -> T): T {
     var value: Result<T>? = null
@@ -868,11 +868,11 @@ class LiveDocumentDetectorTest {
   @Test
   fun unthrottledInferenceKeepsFlowTrackingAcrossModelFailures() {
     Harness().use { h ->
-      val observations = mutableListOf<LiveQuadObservation>()
-      h.detector.traceObserver = LiveQuadTraceObserver { observations.add(it) }
-      h.detector.inferenceThrottling = false
+      val observations = mutableListOf<LiveDocumentObservation>()
+      h.detector.traceObserver = LiveGuideTraceObserver { observations.add(it) }
+      h.detector.pacingEnabled = false
       h.detector.flowMotionEnabled = true
-      h.detector.stabilizerConfig = LiveQuadStabilizerConfig(holdNs=1_000_000_000)
+      h.detector.stabilizerConfig = GuideStabilizerConfig(holdNs=1_000_000_000)
       val texture: (Int,Int) -> Int = { x,y ->
         val value = ((x*73856093) xor (y*19349663)) and 255
         Color.rgb(value,value,value)
@@ -890,7 +890,7 @@ class LiveDocumentDetectorTest {
         send()
         assertEquals(TRACKING,h.last().status)
         assertTrue(observations.last().flowRetained)
-        assertEquals(LiveQuadDecision.MISSING,observations.last().decision)
+        assertEquals(GuideDecision.MISSING,observations.last().decision)
         assertFalse(observations.last().expiredBeforeInput)
       }
       assertEquals(16,h.model.calls.get())
@@ -907,8 +907,8 @@ class LiveDocumentDetectorTest {
     val model = FakeModel()
     val detector = LiveDocumentDetector(instrumentation.targetContext,false,{ model }) {}
     val samples = mutableListOf<LiveFrameSample>()
-    detector.traceObserver = object : LiveQuadTraceObserver {
-      override fun onObservation(observation: LiveQuadObservation) = Unit
+    detector.traceObserver = object : LiveGuideTraceObserver {
+      override fun onObservation(observation: LiveDocumentObservation) = Unit
       override fun onFrame(sample: LiveFrameSample) { samples.add(sample) }
     }
     try {
@@ -916,7 +916,7 @@ class LiveDocumentDetectorTest {
       detector.maxInferenceSpeedFraction = .05
       instrumentation.runOnMainSync { detector.begin(true) }
       for (i in 0..2) {
-        if (i == 2) detector.inferenceThrottling = false
+        if (i == 2) detector.pacingEnabled = false
         val frame = Frame(timestamp=(i+1)*33_333_333L,pixelColor={ x,y ->
           val value = (((x-i*2)*73856093) xor (y*19349663)) and 255
           Color.rgb(value,value,value)
@@ -943,7 +943,7 @@ class LiveDocumentDetectorTest {
     val model = FakeModel()
     val detector = LiveDocumentDetector(instrumentation.targetContext,false,{ model }) {}
     try {
-      detector.inferenceThrottling = false
+      detector.pacingEnabled = false
       instrumentation.runOnMainSync { detector.begin(true) }
       for (i in 1..3) {
         val frame = Frame(timestamp = i*33_333_333L)
@@ -958,9 +958,9 @@ class LiveDocumentDetectorTest {
     }
   }
 
-  private inner class FakeModel : LiveQuadModel {
+  private inner class FakeModel : LiveCornerModel {
     val calls = AtomicInteger()
-    @Volatile var next: DocumentQuad? = documentQuad
+    @Volatile var next: DocumentCorners? = documentCorners
     @Volatile var score = 1.0f
     @Volatile var gate: CountDownLatch? = null
     override val lastPreprocessingMs = 0.0
@@ -971,10 +971,10 @@ class LiveDocumentDetectorTest {
       calls.incrementAndGet()
       gate?.let { gate = null; check(it.await(10, TimeUnit.SECONDS)) }
       lastScore = score.toDouble()
-      val quad = next ?: return null
+      val corners = next ?: return null
       return DocCornerSession.decodeOutput(floatArrayOf(
-        quad.topLeft.x.toFloat(), quad.topLeft.y.toFloat(), quad.topRight.x.toFloat(), quad.topRight.y.toFloat(),
-        quad.bottomRight.x.toFloat(), quad.bottomRight.y.toFloat(), quad.bottomLeft.x.toFloat(), quad.bottomLeft.y.toFloat(), score,
+        corners.topLeft.x.toFloat(), corners.topLeft.y.toFloat(), corners.topRight.x.toFloat(), corners.topRight.y.toFloat(),
+        corners.bottomRight.x.toFloat(), corners.bottomRight.y.toFloat(), corners.bottomLeft.x.toFloat(), corners.bottomLeft.y.toFloat(), score,
       ))
     }
     override fun close() = Unit

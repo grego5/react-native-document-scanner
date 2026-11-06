@@ -57,7 +57,7 @@ namespace margelo::nitro::documentscanner {
     std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> createPdfResult(const std::optional<std::vector<std::string>>& pageIds, const SessionPdfOptions& options) override;
     std::shared_ptr<Promise<std::variant<std::vector<std::string>, ScannerFailure>>> exportImagesResult(const std::optional<std::vector<std::string>>& pageIds, const std::string& outputDirectory) override;
     std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveCaptureSampleResult(const std::string& pageId) override;
-    std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setDocumentCropResult(const std::string& pageId, const DocumentQuad& quad) override;
+    std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setDocumentCropResult(const std::string& pageId, const DocumentCorners& corners) override;
     std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setFilterResult(const std::string& pageId, DocumentFilter filter) override;
     std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setShadowRemovalResult(const std::string& pageId, bool enabled) override;
     std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setPageOrderResult(const std::vector<std::string>& pageIds) override;

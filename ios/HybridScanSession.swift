@@ -66,8 +66,8 @@ class HybridScanSession: HybridScanSessionSpec {
     .resolved(withResult: .second(ScannerUnsupported.failure))
   }
 
-  func setDocumentCropResult(pageId: String, quad: DocumentQuad) throws -> Promise<Variant_Bool_ScannerFailure> {
-    admit { try $0.setDocumentCrop(pageId, quad: quad) }
+  func setDocumentCropResult(pageId: String, corners: DocumentCorners) throws -> Promise<Variant_Bool_ScannerFailure> {
+    admit { try $0.setDocumentCrop(pageId, corners: corners) }
   }
 
   func setFilterResult(pageId: String, filter: DocumentFilter) throws -> Promise<Variant_Bool_ScannerFailure> {

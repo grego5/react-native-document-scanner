@@ -40,7 +40,7 @@ foreach ($filter in $Test) { $arguments += @('--tests', $filter) }
 if (-not [string]::IsNullOrWhiteSpace($Trace)) {
     $tracePath = if ([IO.Path]::IsPathRooted($Trace)) { $Trace } else { Join-Path $repositoryRoot $Trace }
     if (-not (Test-Path -LiteralPath $tracePath)) { throw "Trace input does not exist: $tracePath" }
-    $arguments += "-PliveQuadTrace=$tracePath"
+    $arguments += "-PliveGuideTrace=$tracePath"
 }
 if ($RecompilePlugins) { $arguments += @('--rerun-tasks', '--no-build-cache') }
 

@@ -19,7 +19,7 @@ open class HybridDocumentCropEditorView(
   private val editor = CropEditorView(themedContext)
 
   init {
-    editor.onQuadEdited = { publishPreset() }
+    editor.onCornersEdited = { publishPreset() }
     editor.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
       override fun onViewAttachedToWindow(view: View) { if (!dropped) binding?.start() }
       override fun onViewDetachedFromWindow(view: View) {
@@ -46,6 +46,7 @@ open class HybridDocumentCropEditorView(
   override var onPresetChange: ((preset: CropDraftPreset) -> Unit)? = null
     set(value) { if (field !== value) reportedPreset = null; field = value }
   override var filter: DocumentFilter? = null
+  override var rectangle: Boolean? = null
   override var onLoad: ((width: Double, height: Double) -> Unit)? = null
   override var onError: ((failure: ScannerFailure) -> Unit)? = null
 
@@ -62,12 +63,14 @@ open class HybridDocumentCropEditorView(
   override fun afterUpdate() {
     if (dropped) return
     val state = (session as? HybridScanSession)?.state
+    // The mode first, so a new page's saved crop is not squared by the previous page's mode.
+    editor.rectangle = rectangle == true
     if (state !== boundState || pageId != boundId) {
       binding?.close()
       source?.close(); source = null
       boundState = state; boundId = pageId
       reportedPreset = null
-      state?.snapshot()?.pages?.get(pageId)?.quad?.let { editor.replaceQuad(NativeQuadGeometry.coordinates(it)) }
+      state?.snapshot()?.pages?.get(pageId)?.corners?.let { editor.replaceCorners(NativeCornerGeometry.coordinates(it)) }
       loadGeneration++; filterGeneration++
       loadedUri = null; photo = null; editor.bitmap = null
       binding = state?.let { owner ->
@@ -92,11 +95,11 @@ open class HybridDocumentCropEditorView(
 
   private fun publishPreset() {
     if (dropped || binding?.valid() != true) return
-    val quad = editor.quad
-    val automatic = boundState?.snapshot()?.pages?.get(boundId)?.analysis?.candidate?.quad
+    val corners = editor.corners
+    val automatic = automaticCrop()
     val preset = when {
-      quad.contentEquals(CropQuadEditing.FULL_FRAME) -> CropDraftPreset.NONE
-      automatic != null && quad.contentEquals(NativeQuadGeometry.coordinates(automatic)) -> CropDraftPreset.AUTO
+      corners.contentEquals(CropCornerEditing.FULL_FRAME) -> CropDraftPreset.NONE
+      automatic != null && corners.contentEquals(automatic) -> CropDraftPreset.AUTO
       else -> CropDraftPreset.CUSTOM
     }
     if (preset != reportedPreset && onPresetChange != null) {
@@ -110,7 +113,7 @@ open class HybridDocumentCropEditorView(
     mainHandler.post {
       val result = try {
         requireInput(!dropped && binding?.valid() == true) { "Crop editor page is unavailable." }
-        boundState!!.setDocumentCrop(boundId!!, editor.quad.toDocumentQuad())
+        boundState!!.setDocumentCrop(boundId!!, editor.corners.toDocumentCorners())
         Variant_Boolean_ScannerFailure.create(true)
       } catch (error: Throwable) { Variant_Boolean_ScannerFailure.create(scannerFailure(error, ScannerErrorCode.INPUT_INVALID)) }
       promise.resolve(result)
@@ -118,13 +121,13 @@ open class HybridDocumentCropEditorView(
     return promise
   }
 
-  override fun getQuadResult(): com.margelo.nitro.core.Promise<Variant_ScannerFailure_DocumentQuad> {
-    val promise = com.margelo.nitro.core.Promise<Variant_ScannerFailure_DocumentQuad>()
+  override fun getCornersResult(): com.margelo.nitro.core.Promise<Variant_ScannerFailure_DocumentCorners> {
+    val promise = com.margelo.nitro.core.Promise<Variant_ScannerFailure_DocumentCorners>()
     mainHandler.post {
       val result = try {
         requireInput(!dropped && binding?.valid() == true) { "Crop editor page is unavailable." }
-        Variant_ScannerFailure_DocumentQuad.create(editor.quad.toDocumentQuad())
-      } catch (error: Throwable) { Variant_ScannerFailure_DocumentQuad.create(scannerFailure(error, ScannerErrorCode.INPUT_INVALID)) }
+        Variant_ScannerFailure_DocumentCorners.create(editor.corners.toDocumentCorners())
+      } catch (error: Throwable) { Variant_ScannerFailure_DocumentCorners.create(scannerFailure(error, ScannerErrorCode.INPUT_INVALID)) }
       promise.resolve(result)
     }
     return promise
@@ -136,11 +139,10 @@ open class HybridDocumentCropEditorView(
       val result = try {
         requireInput(!dropped && binding?.valid() == true) { "Crop editor page is unavailable." }
         val coordinates = when (preset) {
-          CropPreset.NONE -> CropQuadEditing.FULL_FRAME
-          CropPreset.AUTO -> NativeQuadGeometry.coordinates(boundState?.snapshot()?.pages?.get(boundId)?.analysis?.candidate?.quad
-            ?: throw InvalidInputException("No automatic crop is available."))
+          CropPreset.NONE -> CropCornerEditing.FULL_FRAME
+          CropPreset.AUTO -> automaticCrop() ?: throw InvalidInputException("No automatic crop is available.")
         }
-        editor.replaceQuad(coordinates)
+        editor.replaceCorners(coordinates)
         publishPreset()
         Variant_Boolean_ScannerFailure.create(true)
       } catch (error: Throwable) { Variant_Boolean_ScannerFailure.create(scannerFailure(error, ScannerErrorCode.INPUT_INVALID)) }
@@ -148,6 +150,12 @@ open class HybridDocumentCropEditorView(
     }
     return promise
   }
+
+  /** The analysis candidate, as the editor draws it: its bounding rectangle for a rectangle crop. */
+  private fun automaticCrop(): DoubleArray? =
+    boundState?.snapshot()?.pages?.get(boundId)?.analysis?.candidate?.corners?.let { candidate ->
+      NativeCornerGeometry.coordinates(candidate).let { if (editor.rectangle) CropCornerEditing.boundingRectangle(it) else it }
+    }
 
   override fun onDropView() {
     dropped = true
@@ -247,7 +255,7 @@ open class HybridDocumentCropEditorView(
   }
 }
 
-private fun DoubleArray.toDocumentQuad() = DocumentQuad(
+private fun DoubleArray.toDocumentCorners() = DocumentCorners(
   DocumentPoint(this[0], this[1]),
   DocumentPoint(this[2], this[3]),
   DocumentPoint(this[4], this[5]),

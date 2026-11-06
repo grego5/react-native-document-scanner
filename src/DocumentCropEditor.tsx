@@ -8,7 +8,7 @@ import type {
   DocumentCropEditorMethods,
   DocumentCropEditorProps,
 } from './DocumentCropEditor.nitro'
-import type { DocumentQuad } from './DocumentScannerProcessor.nitro'
+import type { DocumentCorners } from './DocumentScannerProcessor.nitro'
 import type { ScannerFailure } from './ScannerFailure'
 import { ScannerError, scannerOperation } from './ScannerError'
 import DocumentCropEditorViewConfig from '../nitrogen/generated/shared/json/DocumentCropEditorViewConfig.json'
@@ -28,7 +28,7 @@ export interface CropEditorProps
 /** Native crop editing over a captured photo; see `DocumentCropEditorProps`. */
 export interface CropEditorRef {
   submit(): Promise<void>
-  getQuad(): Promise<DocumentQuad>
+  getCorners(): Promise<DocumentCorners>
   setPreset(preset: CropPreset): Promise<void>
 }
 
@@ -36,6 +36,7 @@ export const CropEditor = forwardRef<CropEditorRef, CropEditorProps>(function Cr
   session,
   pageId,
   filter = 'none',
+  rectangle = false,
   onLoad,
   onPresetChange,
   onError,
@@ -70,7 +71,7 @@ export const CropEditor = forwardRef<CropEditorRef, CropEditorProps>(function Cr
         await scannerOperation(() => view().submitResult(), 'input/invalid')
         synchronizeSession(session)
       },
-      getQuad: () => scannerOperation(() => view().getQuadResult(), 'input/invalid'),
+      getCorners: () => scannerOperation(() => view().getCornersResult(), 'input/invalid'),
       setPreset: (preset: CropPreset) => scannerOperation(() => view().setPresetResult(preset), 'input/invalid').then(() => {}),
     }
   }, [])
@@ -81,6 +82,7 @@ export const CropEditor = forwardRef<CropEditorRef, CropEditorProps>(function Cr
       pageId={pageId}
       hybridRef={setRef}
       filter={filter}
+      rectangle={rectangle}
       onPresetChange={native.onPresetChange}
       onLoad={native.onLoad}
       onError={native.onError}

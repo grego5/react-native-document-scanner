@@ -11,7 +11,7 @@ import androidx.exifinterface.media.ExifInterface
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.DocumentRenderOptions
 import com.margelo.nitro.documentscanner.PaperSize
 import java.io.File
@@ -45,8 +45,8 @@ class DocumentRendererTest {
     val originalHash = fixture.readBytes().sha256()
     val result = DocumentRenderer.render(
       Uri.fromFile(fixture).toString(),
-      sourceQuad(),
-      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.94, filter = null, format = null, paperSize = PaperSize(10.0, 15.24), dpi = 100.0, followPageEdges = null),
+      sourceCorners(),
+      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.94, filter = null, format = null, paperSize = PaperSize(10.0, 15.24), dpi = 100.0, simpleDewarp = null),
     )
     val output = File(Uri.parse(result.outputUri).path!!)
     outputs += output
@@ -64,17 +64,17 @@ class DocumentRendererTest {
   }
 
   @Test
-  fun quadCornersMapExactlyToOutputCornersWithoutMargin() {
+  fun cornersMapExactlyToOutputCornersWithoutMargin() {
     // The fixture's white page spans 65..570 x 48..430 on a dark background.
     val result = DocumentRenderer.render(
       Uri.fromFile(fixture).toString(),
-      DocumentQuad(
+      DocumentCorners(
         topLeft = DocumentPoint(65.0 / 640, 48.0 / 480),
         topRight = DocumentPoint(570.0 / 640, 48.0 / 480),
         bottomRight = DocumentPoint(570.0 / 640, 430.0 / 480),
         bottomLeft = DocumentPoint(65.0 / 640, 430.0 / 480),
       ),
-      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.95, filter = null, format = null, paperSize = null, dpi = null, followPageEdges = null),
+      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.95, filter = null, format = null, paperSize = null, dpi = null, simpleDewarp = null),
     )
     val output = File(Uri.parse(result.outputUri).path!!)
     outputs += output
@@ -106,8 +106,8 @@ class DocumentRendererTest {
     val file = createBentPage()
     val result = DocumentRenderer.render(
       Uri.fromFile(file).toString(),
-      BENT_QUAD,
-      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.95, filter = null, format = null, paperSize = null, dpi = null, followPageEdges = null),
+      BENT_CORNERS,
+      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.95, filter = null, format = null, paperSize = null, dpi = null, simpleDewarp = null),
     )
     val output = File(Uri.parse(result.outputUri).path!!)
     outputs += output
@@ -142,11 +142,11 @@ class DocumentRendererTest {
     // The bottom stays bowed between corners in the photo, but with the top-left corner outside it the output must
     // match the straight warp its coverage polygon describes.
     val file = createBentPage()
-    val quad = DocumentQuad(DocumentPoint(-8.0 / 640, 60.0 / 480), BENT_QUAD.topRight, BENT_QUAD.bottomRight, BENT_QUAD.bottomLeft)
+    val corners = DocumentCorners(DocumentPoint(-8.0 / 640, 60.0 / 480), BENT_CORNERS.topRight, BENT_CORNERS.bottomRight, BENT_CORNERS.bottomLeft)
     fun render(follow: Boolean) = DocumentRenderer.render(
       Uri.fromFile(file).toString(),
-      quad,
-      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.95, filter = null, format = null, paperSize = null, dpi = null, followPageEdges = follow),
+      corners,
+      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.95, filter = null, format = null, paperSize = null, dpi = null, simpleDewarp = follow),
     ).let { File(Uri.parse(it.outputUri).path!!).also { output -> outputs += output } }
     assertEquals(render(false).readBytes().sha256(), render(true).readBytes().sha256())
   }
@@ -156,13 +156,13 @@ class DocumentRendererTest {
     // The fixture's page is 505 x 382 px. 10 cm at 100 dpi is 394 px; the page keeps its own proportions.
     fun render(paper: PaperSize, dpi: Double?) = DocumentRenderer.render(
       Uri.fromFile(fixture).toString(),
-      DocumentQuad(
+      DocumentCorners(
         topLeft = DocumentPoint(65.0 / 640, 48.0 / 480),
         topRight = DocumentPoint(570.0 / 640, 48.0 / 480),
         bottomRight = DocumentPoint(570.0 / 640, 430.0 / 480),
         bottomLeft = DocumentPoint(65.0 / 640, 430.0 / 480),
       ),
-      DocumentRenderOptions(removeShadows = false, jpegQuality = null, filter = null, format = null, paperSize = paper, dpi = dpi, followPageEdges = null),
+      DocumentRenderOptions(removeShadows = false, jpegQuality = null, filter = null, format = null, paperSize = paper, dpi = dpi, simpleDewarp = null),
     ).also { outputs += File(Uri.parse(it.outputUri).path!!) }
     val scaled = render(PaperSize(10.0, 7.0), 100.0)
     assertEquals(394.0, scaled.width, 1.0)
@@ -186,13 +186,13 @@ class DocumentRendererTest {
     outputs += large
     val result = DocumentRenderer.render(
       Uri.fromFile(large).toString(),
-      DocumentQuad(
+      DocumentCorners(
         topLeft = DocumentPoint(0.25, 0.25),
         topRight = DocumentPoint(0.5, 0.25),
         bottomRight = DocumentPoint(0.5, 0.5),
         bottomLeft = DocumentPoint(0.25, 0.5),
       ),
-      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.80, filter = null, format = null, paperSize = null, dpi = null, followPageEdges = null),
+      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.80, filter = null, format = null, paperSize = null, dpi = null, simpleDewarp = null),
     )
     outputs += File(Uri.parse(result.outputUri).path!!)
 
@@ -204,13 +204,13 @@ class DocumentRendererTest {
   fun clippedCornerProducesSmallerValidPolygonAndDoesNotInventPixels() {
     val result = DocumentRenderer.render(
       Uri.fromFile(fixture).toString(),
-      DocumentQuad(
+      DocumentCorners(
         topLeft = DocumentPoint(-0.12, -0.08),
         topRight = DocumentPoint(0.87, 0.12),
         bottomRight = DocumentPoint(0.82, 0.90),
         bottomLeft = DocumentPoint(0.08, 0.84),
       ),
-      DocumentRenderOptions(removeShadows = false, jpegQuality = null, filter = null, format = null, paperSize = null, dpi = null, followPageEdges = null),
+      DocumentRenderOptions(removeShadows = false, jpegQuality = null, filter = null, format = null, paperSize = null, dpi = null, simpleDewarp = null),
     )
     outputs += File(Uri.parse(result.outputUri).path!!)
 
@@ -223,13 +223,13 @@ class DocumentRendererTest {
     val rotatedFixture = createFixture(ExifInterface.ORIENTATION_ROTATE_90)
     val result = DocumentRenderer.render(
       Uri.fromFile(rotatedFixture).toString(),
-      DocumentQuad(
+      DocumentCorners(
         topLeft = DocumentPoint(0.0, 0.0),
         topRight = DocumentPoint(1.0, 0.0),
         bottomRight = DocumentPoint(1.0, 1.0),
         bottomLeft = DocumentPoint(0.0, 1.0),
       ),
-      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.92, filter = null, format = null, paperSize = null, dpi = null, followPageEdges = null),
+      DocumentRenderOptions(removeShadows = false, jpegQuality = 0.92, filter = null, format = null, paperSize = null, dpi = null, simpleDewarp = null),
     )
     val output = File(Uri.parse(result.outputUri).path!!)
     outputs += output
@@ -247,7 +247,7 @@ class DocumentRendererTest {
     val original = fixture
     val outputDirectory = File(context.cacheDir, CACHE_DIRECTORY).apply { mkdirs() }
     val before = outputDirectory.list()?.sorted()
-    val excessive = DocumentQuad(
+    val excessive = DocumentCorners(
       topLeft = DocumentPoint(-0.81, 0.1),
       topRight = DocumentPoint(0.9, 0.1),
       bottomRight = DocumentPoint(0.9, 0.9),
@@ -268,14 +268,14 @@ class DocumentRendererTest {
 
   @Test
   fun invalidGeometryRejectsBeforeLoadingTheSource() {
-    val crossed = DocumentQuad(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 1.0),
+    val crossed = DocumentCorners(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 1.0),
       DocumentPoint(1.0, 0.0), DocumentPoint(0.0, 1.0))
     org.junit.Assert.assertThrows(com.margelo.nitro.documentscanner.InvalidInputException::class.java) {
       DocumentRenderer.render("file:///missing-source.jpg", crossed, null)
     }
   }
 
-  private fun sourceQuad() = DocumentQuad(
+  private fun sourceCorners() = DocumentCorners(
     topLeft = DocumentPoint(0.125, 0.10),
     topRight = DocumentPoint(0.875, 0.12),
     bottomRight = DocumentPoint(0.84, 0.90),
@@ -364,7 +364,7 @@ class DocumentRendererTest {
     const val GRID_MARGIN = 20.0
     val GRID_X = List(BENT_WIDTH / GRID_STEP - 1) { (it + 1) * GRID_STEP }
     val GRID_Y = List(BENT_HEIGHT / GRID_STEP - 1) { (it + 1) * GRID_STEP }
-    val BENT_QUAD = DocumentQuad(
+    val BENT_CORNERS = DocumentCorners(
       DocumentPoint(80.0 / 640, 60.0 / 480),
       DocumentPoint(560.0 / 640, 60.0 / 480),
       DocumentPoint(560.0 / 640, 420.0 / 480),

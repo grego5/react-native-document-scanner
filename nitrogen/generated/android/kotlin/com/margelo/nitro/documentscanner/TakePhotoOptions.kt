@@ -20,19 +20,19 @@ import java.util.Objects
 data class TakePhotoOptions(
   @DoNotStrip
   @Keep
-  val skipQualityGate: Boolean?
+  val skipLowQualityControl: Boolean?
 ) {
   /* primary constructor */
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is TakePhotoOptions) return false
-    return Objects.deepEquals(this.skipQualityGate, other.skipQualityGate)
+    return Objects.deepEquals(this.skipLowQualityControl, other.skipLowQualityControl)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
-      skipQualityGate
+      skipLowQualityControl
     ).contentDeepHashCode()
   }
 
@@ -44,8 +44,8 @@ data class TakePhotoOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(skipQualityGate: Boolean?): TakePhotoOptions {
-      return TakePhotoOptions(skipQualityGate)
+    private fun fromCpp(skipLowQualityControl: Boolean?): TakePhotoOptions {
+      return TakePhotoOptions(skipLowQualityControl)
     }
   }
 }

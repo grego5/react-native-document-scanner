@@ -17,8 +17,8 @@ namespace margelo::nitro::documentscanner { enum class CropDraftPreset; }
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentPoint` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentPoint; }
 // Forward declaration of `CropPreset` to properly resolve imports.
@@ -46,9 +46,9 @@ namespace margelo::nitro::documentscanner { enum class CropPreset; }
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
 #include "JVariant_Boolean_ScannerFailure.hpp"
-#include "DocumentQuad.hpp"
-#include "JVariant_ScannerFailure_DocumentQuad.hpp"
-#include "JDocumentQuad.hpp"
+#include "DocumentCorners.hpp"
+#include "JVariant_ScannerFailure_DocumentCorners.hpp"
+#include "JDocumentCorners.hpp"
 #include "DocumentPoint.hpp"
 #include "JDocumentPoint.hpp"
 #include "CropPreset.hpp"
@@ -110,6 +110,15 @@ namespace margelo::nitro::documentscanner {
   void JHybridDocumentCropEditorViewSpec::setFilter(std::optional<DocumentFilter> filter) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JDocumentFilter> /* filter */)>("setFilter");
     method(_javaPart, filter.has_value() ? JDocumentFilter::fromCpp(filter.value()) : nullptr);
+  }
+  std::optional<bool> JHybridDocumentCropEditorViewSpec::getRectangle() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getRectangle");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridDocumentCropEditorViewSpec::setRectangle(std::optional<bool> rectangle) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* rectangle */)>("setRectangle");
+    method(_javaPart, rectangle.has_value() ? jni::JBoolean::valueOf(rectangle.value()) : nullptr);
   }
   std::optional<std::function<void(CropDraftPreset /* preset */)>> JHybridDocumentCropEditorViewSpec::getOnPresetChange() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_CropDraftPreset::javaobject>()>("getOnPresetChange_cxx");
@@ -180,13 +189,13 @@ namespace margelo::nitro::documentscanner {
       return __promise;
     }();
   }
-  std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>> JHybridDocumentCropEditorViewSpec::getQuadResult() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("getQuadResult");
+  std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>> JHybridDocumentCropEditorViewSpec::getCornersResult() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("getCornersResult");
     auto __result = method(_javaPart);
     return [&]() {
-      auto __promise = Promise<std::variant<ScannerFailure, DocumentQuad>>::create();
+      auto __promise = Promise<std::variant<ScannerFailure, DocumentCorners>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
-        auto __result = jni::static_ref_cast<JVariant_ScannerFailure_DocumentQuad>(__boxedResult);
+        auto __result = jni::static_ref_cast<JVariant_ScannerFailure_DocumentCorners>(__boxedResult);
         __promise->resolve(__result->toCpp());
       });
       __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {

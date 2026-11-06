@@ -107,16 +107,16 @@ double elapsed(Clock::time_point start) {
     _preprocessingMs = preprocessing;
     _inferenceMs = inference;
     if (auto decoded = document_scanner::decodeCornerOutput(values)) {
-      const auto quad =
-          transform ? transform->toSource(decoded->quad) : decoded->quad;
-      if (document_scanner::validPredictionQuad(quad)) {
+      const auto corners =
+          transform ? transform->toSource(decoded->corners) : decoded->corners;
+      if (document_scanner::validPredictionCorners(corners)) {
         NSMutableArray<NSNumber *> *points =
             [NSMutableArray arrayWithCapacity:8];
-        for (auto point : quad) {
+        for (auto point : corners) {
           [points addObject:@(point.x)];
           [points addObject:@(point.y)];
         }
-        _quad = [points copy];
+        _corners = [points copy];
       }
     }
   }
@@ -159,13 +159,13 @@ double elapsed(Clock::time_point start) {
     if (seed) {
       if (seed.count != 8)
         throw std::invalid_argument("Expected eight seed coordinates.");
-      const document_scanner::Quad quad{
+      const document_scanner::Corners corners{
           {{seed[0].doubleValue, seed[1].doubleValue},
            {seed[2].doubleValue, seed[3].doubleValue},
            {seed[4].doubleValue, seed[5].doubleValue},
            {seed[6].doubleValue, seed[7].doubleValue}}};
       if (auto crop = document_scanner::geometry::photoInferenceCrop(
-              quad, {width, height})) {
+              corners, {width, height})) {
         // Crop fields are immutable values; reconstruct the view rather than
         // retaining a new buffer.
         auto layout = source.view().layout();
