@@ -1,0 +1,284 @@
+name: iOS simulator validation
+
+# Dispatched by vmac (docscanner profile) on a temporary snapshot branch. Mirrors the
+# Mac package script: an isolated host app links the package with its ScaffoldTests
+# test spec. The pinned official OpenCV framework has no arm64 simulator slice, so
+# this runs on an Intel runner, whose Xcode 26.6 matches the Mac's.
+#
+# With `prebuilt`, vmac has already built the same snapshot on the Mac and attached its
+# test products to a draft release of that name: this run downloads them, selects the
+# Xcode build they were made with, and only runs the tests.
+on:
+  workflow_dispatch:
+    inputs:
+      tests:
+        description: Optional test classes or class/method selectors, one per line
+        required: false
+        type: string
+      prebuilt:
+        description: Draft release holding Mac-built test products (products.zip); empty builds here
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-simulator-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: macos-26-intel
+    timeout-minutes: 120
+    # Draft releases are visible only with write access. The token reaches only the download
+    # step; checkout does not persist it.
+    permissions:
+      contents: write
+    env:
+      CI: '1'
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      IOS_TEST_SELECTORS: ${{ inputs.tests }}
+      IOS_SCHEME: ReactNativeDocumentScanner-Unit-ScaffoldTests
+      PREBUILT: ${{ inputs.prebuilt }}
+
+    steps:
+      - name: Check out source
+        if: inputs.prebuilt == ''
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Download prebuilt test products
+        if: inputs.prebuilt != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$PREBUILT" =~ ^vmac-[a-f0-9-]{36}$ ]]
+          dir="$RUNNER_TEMP/prebuilt"
+          gh release download "$PREBUILT" --repo "$GITHUB_REPOSITORY" --pattern products.zip --dir "$dir"
+          unzip -q "$dir/products.zip" -d "$dir"
+          rm "$dir/products.zip"
+          xctestrun="$(ls "$dir"/*.xctestrun | head -n 1)"
+          test -f "$xctestrun"
+          # Xcode records the simulator screen for the whole run by default; on this runner that
+          # costs minutes of CPU during the tests and to finalize afterwards.
+          plutil -replace "$IOS_SCHEME.PreferredScreenCaptureFormat" -string screenshots "$xctestrun"
+          echo "IOS_XCTESTRUN=$xctestrun" >> "$GITHUB_ENV"
+          cat "$dir/xcode-version.txt"
+
+      - name: Select Node.js
+        if: inputs.prebuilt == ''
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      # Prebuilt products run only under the Xcode build that made them.
+      - name: Select Xcode
+        id: xcode
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_*.app | sort -V | tail -n 1)"
+          if [ -n "$PREBUILT" ]; then
+            wanted="$(sed -nE 's/^Build version (.+)$/\1/p' "$RUNNER_TEMP/prebuilt/xcode-version.txt")"
+            xcode=""
+            for candidate in /Applications/Xcode_*.app; do
+              build="$(/usr/libexec/PlistBuddy -c 'Print :ProductBuildVersion' "$candidate/Contents/version.plist")"
+              if [ "$build" = "$wanted" ]; then xcode="$candidate"; break; fi
+            done
+            if [ -z "$xcode" ]; then
+              echo "No Xcode with build $wanted on this runner" >&2
+              exit 1
+            fi
+          fi
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+          echo "build=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          test "$(uname -m)" = x86_64
+
+      # Start CoreSimulator while dependency restoration/installation runs. Its
+      # first device-list request can otherwise add several minutes after Pods.
+      - name: Start simulator discovery
+        shell: bash
+        run: |
+          nohup python3 - > "$RUNNER_TEMP/ios-simulator.log" 2>&1 <<'PY' &
+          import os, pathlib, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          status = 1
+          try:
+              result = subprocess.run(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'],
+                                      capture_output=True, timeout=300)
+              (root / 'ios-simulators.json').write_bytes(result.stdout)
+              print(result.stderr.decode(errors='replace'), flush=True)
+              status = result.returncode
+          except Exception as error:
+              print(error, flush=True)
+          finally:
+              (root / 'ios-simulator.status').write_text(str(status))
+          PY
+
+      # Snapshot branches can restore default-branch caches, but cannot share
+      # caches with one another. Dispatch this workflow on main once to seed them.
+      # Cache downloaded packages only. Never restore installed Pods, node_modules,
+      # generated projects, lockfiles or Xcode build products.
+      - name: Restore CocoaPods downloads
+        id: dependencies
+        if: inputs.prebuilt == ''
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: ios-downloads-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('package-lock.json', '**/*.podspec', '.github/workflows/ios-validation.yml') }}
+
+      - name: Install React Native and Nitro
+        if: inputs.prebuilt == ''
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate host project
+        if: inputs.prebuilt == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOST_DIR="$RUNNER_TEMP/scanner-host"
+          echo "HOST_DIR=$HOST_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$HOST_DIR"
+          cd "$HOST_DIR"
+          ln -s "$GITHUB_WORKSPACE/node_modules" node_modules
+          rn="$(node -p "require('$GITHUB_WORKSPACE/node_modules/react-native/package.json').version")"
+          nitro="$(node -p "require('$GITHUB_WORKSPACE/node_modules/react-native-nitro-modules/package.json').version")"
+          printf '{"name":"scanner-package-validation","version":"1.0.0","dependencies":{"react-native":"%s","react-native-nitro-modules":"%s"}}\n' "$rn" "$nitro" > package.json
+          ruby -rxcodeproj -e 'p=Xcodeproj::Project.new("ScannerPackageValidation.xcodeproj"); p.new_target(:application,"ScannerPackageValidation",:ios,"18.0"); p.save'
+          cat > Podfile <<'RUBY'
+          require_relative 'node_modules/react-native/scripts/react_native_pods'
+          platform :ios, '18.0'
+          ENV['RCT_USE_RN_DEP'] = '1'
+          ENV['RCT_USE_PREBUILT_RNCORE'] = '1'
+          prepare_react_native_project!
+          target 'ScannerPackageValidation' do
+            scanner = ENV.fetch('GITHUB_WORKSPACE')
+            pod 'DocumentScannerOpenCV', :podspec => File.join(scanner, 'ios/DocumentScannerOpenCV.podspec')
+            pod 'NitroModules', :path => 'node_modules/react-native-nitro-modules'
+            pod 'ReactNativeDocumentScanner', :path => scanner, :testspecs => ['ScaffoldTests']
+            use_react_native!(:path => 'node_modules/react-native', :app_path => File.dirname(__FILE__), :hermes_enabled => true)
+            post_install do |installer|
+              react_native_post_install(installer, 'node_modules/react-native', :mac_catalyst_enabled => false)
+            end
+          end
+          RUBY
+
+      - name: Install CocoaPods
+        if: inputs.prebuilt == ''
+        timeout-minutes: 15
+        working-directory: ${{ runner.temp }}/scanner-host
+        run: pod install
+
+      - name: Save shared CocoaPods downloads
+        if: inputs.prebuilt == '' && github.ref_name == github.event.repository.default_branch && steps.dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: ${{ steps.dependencies.outputs.cache-primary-key }}
+
+      - name: Resolve simulator and tests
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, time
+          status = pathlib.Path(os.environ['RUNNER_TEMP']) / 'ios-simulator.status'
+          deadline = time.monotonic() + 310
+          while not status.exists():
+              if time.monotonic() >= deadline:
+                  raise SystemExit('Simulator discovery did not finish; see ios-simulator.log')
+              time.sleep(1)
+          if status.read_text() != '0':
+              raise SystemExit('Simulator discovery failed; see ios-simulator.log')
+          PY
+          simulator="$(jq -r '
+            [.devices[] | .[] | select(.isAvailable == true and (.name | startswith("iPhone")))] |
+            sort_by(.name) | .[0].udid // empty' "$RUNNER_TEMP/ios-simulators.json")"
+          test -n "$simulator"
+          echo "IOS_DESTINATION=platform=iOS Simulator,id=$simulator,arch=x86_64" >> "$GITHUB_ENV"
+          test_args=""
+          while IFS= read -r selector || [ -n "$selector" ]; do
+            [ -n "$selector" ] || continue
+            if [[ ! "$selector" =~ ^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)?$ ]]; then
+              echo "Invalid test selector: $selector" >&2
+              exit 1
+            fi
+            test_args="$test_args -only-testing:$IOS_SCHEME/$selector"
+          done <<< "$IOS_TEST_SELECTORS"
+          echo "IOS_TEST_ARGS=$test_args" >> "$GITHUB_ENV"
+
+      - name: Build for testing
+        if: inputs.prebuilt == ''
+        timeout-minutes: 30
+        working-directory: ${{ runner.temp }}/scanner-host
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace ScannerPackageValidation.xcworkspace \
+            -scheme "$IOS_SCHEME" \
+            -configuration Debug \
+            -destination "$IOS_DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
+            CODE_SIGNING_ALLOWED=NO \
+            build-for-testing 2>&1 | tee "$RUNNER_TEMP/ios-build.log"
+
+      - name: Run tests
+        if: inputs.prebuilt == ''
+        working-directory: ${{ runner.temp }}/scanner-host
+        run: |
+          set -o pipefail
+          test_args=()
+          if [ -n "$IOS_TEST_ARGS" ]; then
+            read -r -a test_args <<< "$IOS_TEST_ARGS"
+          fi
+          xcodebuild \
+            -workspace ScannerPackageValidation.xcworkspace \
+            -scheme "$IOS_SCHEME" \
+            -configuration Debug \
+            -destination "$IOS_DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/ios-tests.xcresult" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 300 \
+            CODE_SIGNING_ALLOWED=NO \
+            test-without-building "${test_args[@]}" 2>&1 | tee "$RUNNER_TEMP/ios-tests.log"
+
+      - name: Run prebuilt tests
+        if: inputs.prebuilt != ''
+        run: |
+          set -o pipefail
+          test_args=()
+          if [ -n "$IOS_TEST_ARGS" ]; then
+            read -r -a test_args <<< "$IOS_TEST_ARGS"
+          fi
+          xcodebuild \
+            -xctestrun "$IOS_XCTESTRUN" \
+            -destination "$IOS_DESTINATION" \
+            -resultBundlePath "$RUNNER_TEMP/ios-tests.xcresult" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 300 \
+            test-without-building "${test_args[@]}" 2>&1 | tee "$RUNNER_TEMP/ios-tests.log"
+
+      - name: Verify executed test count
+        run: |
+          set -euo pipefail
+          executed="$(sed -nE 's/.*Executed ([0-9]+) tests?,.*/\1/p' "$RUNNER_TEMP/ios-tests.log" | sort -n | tail -n 1)"
+          test -n "$executed"
+          test "$executed" -gt 0
+
+      - name: Upload Xcode diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-validation-diagnostics
+          path: |
+            ${{ runner.temp }}/ios-*.xcresult
+            ${{ runner.temp }}/ios-*.log
+          if-no-files-found: ignore

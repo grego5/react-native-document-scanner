@@ -1,0 +1,12 @@
+{
+  "uiViewClassName": "PageThumbnailView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "session": true,
+    "pageId": true,
+    "resizeMode": true,
+    "hybridRef": true
+  }
+}

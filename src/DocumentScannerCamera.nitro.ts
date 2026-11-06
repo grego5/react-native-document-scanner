@@ -1,0 +1,285 @@
+import type { ScanSession, ScanSessionSnapshot } from './ScanSession.nitro'
+import type { ScannerFailure } from './ScannerFailure'
+import type { DocumentFilter, DocumentImageFormat } from './DocumentScannerProcessor.nitro'
+import type {
+  HybridView,
+  HybridViewMethods,
+  HybridViewProps,
+} from 'react-native-nitro-modules'
+
+/**
+ * `suspended`: no camera is bound (inactive, no permission, hidden, detached or failed); `starting`: binding or waiting for
+ * the first preview frame; `ready`: streaming; `capturing`: a `takePhoto` call is in flight, from its focus and
+ * steady-photo waits until its shot has settled.
+ */
+export type CameraState = 'suspended' | 'starting' | 'ready' | 'capturing'
+
+/**
+ * Camera2 autofocus state: `scan` covers passive and active scans, `unfocused` covers a passive scan that failed and
+ * a lock that did not focus, and `locked` is a tap-to-focus lock that focused.
+ */
+export type AutofocusState = 'inactive' | 'scan' | 'focused' | 'unfocused' | 'locked'
+
+/**
+ * Live guidance: `off` when `guideLiveCorners` is false or no camera is bound, `held` while the last guide is dimmed for
+ * up to 400 ms, and `unavailable` after a runtime failure.
+ */
+export type DocumentState = 'off' | 'searching' | 'tracking' | 'held' | 'unavailable'
+
+/**
+ * CameraX still-capture mode: `quality` favors image quality, also using the slower photo sizes some cameras hold their
+ * full-size stills in, `latency` the time to deliver each photo, and `zsl`
+ * (zero shutter lag) saves a buffered frame from the moment of the request, falling back to `latency` on cameras or
+ * configurations without it.
+ */
+export type CaptureMode = 'quality' | 'latency' | 'zsl'
+
+/**
+ * Back-camera torch: `auto` lights it after about a second of dark frames, judged from the exposure time and ISO
+ * auto-exposure chooses, and keeps it lit until the camera stops or the mode changes, because a lit torch hides the
+ * room's own light. Cameras without a flash unit ignore it.
+ */
+export type TorchMode = 'off' | 'on' | 'auto'
+
+/**
+ * A `takePhoto` call's progress, for telling the user when to hold still: `waiting` for a page, focus, exposure, a
+ * steadier camera or a torch change; `shooting` from the shot's request until it is exposed; then `captured` once the user may
+ * move, or `failed` when the call rejects, which can follow `captured` if saving fails. A call that rejects before it
+ * starts waiting reports nothing.
+ */
+export type CaptureStage = 'waiting' | 'shooting' | 'captured' | 'failed'
+export type CaptureWaitReason = 'document' | 'focus' | 'light' | 'steady'
+
+/** Native readiness/progress; mode off always reports unavailable. */
+export type CameraCaptureState = 'unavailable' | 'ready' | 'waiting' | 'shooting' | 'saving'
+
+/**
+ * Focus and motion settings; motion limits are a percent of frame width, and each field merges with its default. Blur is
+ * measured from the preview's own image motion (optical flow) over the exposure time, so sliding sideways, moving
+ * toward or away from the page and part of the page moving all count, and shake the stabilizer cancels does not.
+ * Unknown flow falls back to a gyroscope rotation estimate over the same frame's exposure; cameras whose timestamps
+ * do not share the gyroscope clock have no fallback. Capture judges the newest frame result, whatever its age. Unknown
+ * motion holds capture until a new estimate arrives or the motion wait times out. A limit of 0 turns that
+ * capture motion check off; guidance still uses flow to pace inference and track the page.
+ * Focus gating is enabled by default while `lowQualityControl.enabled` is not false.
+ */
+export interface LowQualityControl {
+  /** Enables capture quality checks; defaults to true. */
+  enabled?: boolean
+  /**
+   * After focus, `takePhoto` waits up to 1 s for stable framing whose frames each have blur at or below this over
+   * their own exposure (see `lowQualityControl`), and rejects if the camera keeps moving. Every region of the page must stay tracked, so
+   * a moving or smeared part of the page holds the shot; the gyroscope fallback checks that frame's exposure. Defaults to 0.2;
+   * 0 turns off both the blur and the stability check. With `captureMode` `zsl` the saved frame is a buffered one
+   * CameraX picks, close to but not necessarily among the frames checked.
+   */
+  captureBlurPercent?: number
+  /**
+   * `takePhoto` waits for autofocus to finish and shoots only in focus. It waits up to 4 s, and longer while autofocus
+   * is still moving, so a shot never fires or fails halfway through focusing; autofocus that settled without focus by
+   * then rejects the shot. With `guideLiveCorners` the shot also waits up to 4 s for a confirmed page, then rejects. Defaults
+   * to true. False does not wait for focus, and shoots after those 4 s without a page. On Android a `zsl` shot still
+   * waits for a frame the zero-shutter-lag buffer accepts, since the buffer would return an older one, and rejects
+   * with `capture/failed` without one.
+   */
+  requireFocus?: boolean
+}
+
+export interface ImageCorrectionOptions {
+  removeShadows?: boolean
+  filter?: DocumentFilter
+  simpleDewarp?: boolean
+}
+
+export interface ImageOutputOptions {
+  jpegQuality?: number
+  format?: DocumentImageFormat
+  /** Paper width in centimeters; provide both dimensions. */
+  width?: number
+  /** Paper height in centimeters; provide both dimensions. */
+  height?: number
+  /** Output density in dots per inch; requires both paper dimensions. */
+  dpi?: number
+}
+
+/**
+ * The native CameraX session always uses the default back camera. Each callback fires on change only, starting with
+ * the state at the time it is set.
+ */
+export interface DocumentScannerCameraProps extends HybridViewProps {
+  /** Explicit owner of all captures; replacing or closing it invalidates pending publication. */
+  session: ScanSession
+  /** Correction and output defaults for new pages, frozen when capture is admitted. */
+  imageCorrection: ImageCorrectionOptions
+  outputOptions: ImageOutputOptions
+  /** Required local model path/URI. Native prepares it before binding; dimensions come from the tensor. */
+  cornerDetectionModel?: string
+  /** Native camera failure. A model preparation failure keeps the camera suspended until the source changes. */
+  onError?: (error: ScannerFailure) => void
+  /**
+   * Whether the camera runs; defaults to true. False releases preview, capture and analysis use cases and sensors while
+   * keeping the view mounted: a capture in progress finishes first, and new ones reject with `camera/unavailable`. True
+   * resumes once visible, in the foreground and permitted.
+   */
+  active?: boolean
+  /**
+   * Live document detection: DocCornerNet inference and the guide, and the camera tuned for documents; defaults to true.
+   * On, continuous autofocus aims at the centre of the frame, where the guide holds a page, and a capture with the
+   * quality gate waits for a page and accepts only a focus reached after it came into view. Off, autofocus is plain
+   * continuous and captures never wait for a page. Changing it does not rebind the camera; preview, `takePhoto` and the
+   * rest of the quality gate continue. Finite, convex, in-frame candidates are accepted immediately, then optical flow
+   * carries the outline while inference is paused. Camera-derived tilt is diagnostic; it never rejects an outline.
+   */
+  guideLiveCorners?: boolean
+  /**
+   * Crops each new photo to the page its analysis finds; defaults to true. False keeps the whole frame: the page is still
+   * analyzed, for the crop editor's `auto` preset and samples, but its outline is never applied on its own.
+   */
+  autoCrop?: boolean
+  /** Pause inference while optical flow tracks a trusted page outline; defaults to false for live
+   * comparison. Optical flow still runs every analysis frame and carries the guide through movement. Lost tracking,
+   * page-region loss, accumulated scene change restores detection. There are no timed
+   * settling phases. Reliable tracking keeps the guide alive between model confirmations.
+   */
+  inferenceThrottling?: boolean
+  /** Minimum live corner confidence, from 0 to 1; defaults to 0.95. 0 disables score rejection.
+   * Lower scores clear tracking and pause inference until image movement is measured.
+   */
+  minCornerScore?: number
+  /**
+   * Capture focus and motion gating; defaults to true. Detection and tracking run independently of focus state.
+   * `captureMode` `quality` starts a focus scan for each photo, at the page once one is found and otherwise at the
+   * preview's centre, since a dim, blurred page may not be detected before it; `zsl` and `latency` use continuous
+   * autofocus, so they keep their shutter lag. With `guideLiveCorners` on, the call waits for a page, then for a
+   * tap's or its own scan to lock, or for continuous autofocus to report focused, as `lowQualityControl.requireFocus`
+   * describes. Continuous autofocus may still report a focus it reached before the page came into view, on the
+   * background or a hand; that focus does not count. If autofocus is not already refocusing, `zsl` and `latency` then
+   * start one focus scan at the page too. They also scan before the shot, at the page or the preview's centre, in a
+   * dark scene that no lit torch or active `lowLightBoost` brightens, where continuous autofocus can report focus on a
+   * blurred page. In `latency` bound for the light, a press with no page found scans at the preview's centre too. A
+   * capture's scan that fails is retried, once and again while the camera moved during it, and a scan in progress
+   * holds the waits for the page and focus past their 4 s. A
+   * tap's lock still counts while it holds, wherever the page appeared: the
+   * user chose that focus. Supported autofocus ZSL captures then wait for focused,
+   * converged exposure and converged white balance, the states CameraX requires of a buffered frame. With capture
+   * motion checking on, framing must also be stable: four consecutive analyzed frames, each moving under 5% of the
+   * frame width per second with its own smear within `captureBlurPercent`, while the page holds its position, scale and
+   * shape. A focus change restarts that run. Each frame is judged from its own metadata and motion, in order. The shot
+   * fires as soon as everything aligns, with no settling delay; that wait times out 1 s after focus.
+   * CameraX still selects the buffered frame, so the photo is the closest available frame, not necessarily one judged.
+   * Motion limits and focus requirements come from `lowQualityControl`.
+   */
+  lowQualityControl: LowQualityControl
+  /**
+   * Tapping the preview focuses and meters there for 5 s, after which continuous autofocus resumes; defaults to true.
+   * Taps are ignored while a photo is in flight.
+   */
+  tapToFocus?: boolean
+  /**
+   * Auto-exposure bias in EV stops, rounded to the camera's step and clamped to its range; negative values keep white
+   * paper from clipping. Defaults to 0, and cameras without compensation ignore it.
+   */
+  exposureCompensation?: number
+  /**
+   * Lowest frame rate auto-exposure may fall to in dim light, which caps each exposure near 1/minFrameRate s: shorter
+   * exposures blur less but are noisier. Picks the range the camera supports for its bound use cases with the lowest
+   * minimum at or above it (the highest minimum when none reaches it), its maximum nearest 30. Defaults to 0, the
+   * camera's own range. Changing it rebinds the camera, after any photo in flight settles.
+   */
+  minFrameRate?: number
+  /**
+   * Torch mode; defaults to `off`. It applies without rebinding the camera, after any pending photo settles.
+   */
+  torch?: TorchMode
+  /**
+   * Lets the camera brighten dim scenes itself, mainly by lengthening exposures and lowering the frame rate; defaults
+   * to true. The camera engages it only in the dark, so dim pages get enough light for autofocus and detection, at the
+   * cost of more motion blur. Off while `torch` is not `off`. Android 15+ cameras that offer CameraX low-light boost;
+   * elsewhere, and on iOS, it does nothing. It applies without rebinding the camera, after any pending photo settles;
+   * a camera that refuses it, as above 30 fps, counts as unboosted for `captureMode`.
+   */
+  lowLightBoost?: boolean
+  /**
+   * Still-capture mode; defaults to `zsl`. Changing it rebinds the camera, after any photo in flight settles. On
+   * Android, `zsl` binds `latency` while the scene stays dark, the torch mode is `off` and `lowLightBoost` is off,
+   * unsupported or refused: there the zero-shutter-lag buffer can return a frame from before a focus scan or before the page
+   * came into view. It also binds `latency` after a second of white balance searching while exposure holds, as under a
+   * torch and a lamp, since the buffer then takes no new frame, and at once while the torch is lit (`on`, or `auto` once
+   * it lights), where white balance almost always searched. The switch to `latency`
+   * rebinds the camera at once. `latency` then stays, through the camera restarts between shots, until the scene is
+   * neither dark nor searching white balance; the camera's next start then binds `zsl` without a rebind of its own.
+   */
+  captureMode?: CaptureMode
+  /**
+   * The photo size for text, the largest 4:3 within 4096 px and 12.6 MP, as 4032x3024; defaults to true. On Android that
+   * includes the sizes the camera lists as high-resolution (below 20 fps, generally without zero shutter lag) when no
+   * normal 4:3 size has a 2400 px short side, as on limited phones that list their 12 MP size only there. False takes a
+   * standard photo, the smallest 4:3 with a 1080 px short side, as 1440x1080. Changing it rebinds the camera.
+   */
+  highResolutionPhoto?: boolean
+  /**
+   * Time constant in milliseconds of the guide's easing toward each new detection when it moved little, mostly detection
+   * jitter; larger moves ease faster, down to 20 ms by a tenth of the preview's diagonal, as the One Euro filter adapts
+   * to speed, and a corner moving over a fifth of it snaps. Defaults to 80; 0 snaps every move.
+   */
+  guideTransitionDuration?: number
+  /**
+   * Requested width in pixels, before rotation, of the 4:3 frames live detection analyzes; the camera picks the
+   * closest size it supports, and the visible preview keeps its own resolution. Defaults to 640. Changing it rebinds
+   * the camera.
+   */
+  analysisFrameWidth?: number
+  /**
+   * Crops the camera to the centered square of its frame: the preview, live analysis and every photo show only that
+   * square, so the model's square input is not stretched and review shows what the model saw. Defaults to false, the
+   * full 4:3 frame. Changing it rebinds the camera, after any photo in flight settles.
+   */
+  squareAspectRatio?: boolean
+  /** Reserves a fixed strip above the preview for status, model score, timing and blur figures; defaults to false. */
+  showStats?: boolean
+  /** ARGB color of the guide and the searching viewfinder; the Camera wrapper takes a color string. Defaults to teal. */
+  guideColor?: number
+  /**
+   * Animates each `takePhoto` over the preview, around the guide outline or, without one, the viewfinder area: a pulse
+   * while waiting, a line that runs around it while shooting, then a flash and a haptic tick when the user may move, or
+   * a red blink on failure. Defaults to true.
+   */
+  captureFeedback?: boolean
+  /** ARGB color of the capture feedback; the Camera wrapper takes a color string. Defaults to white. */
+  captureColor?: number
+  onCameraStateChange?: (state: CameraState) => void
+  onCaptureStateChange?: (state: CameraCaptureState) => void
+  onAutofocusChange?: (state: AutofocusState) => void
+  onDocumentStateChange?: (state: DocumentState) => void
+  /** Each capture stage and changes to its waiting reason, independent of captureFeedback. Reason is absent outside waiting (and before the first gate decision). Not re-sent when the handler is set. */
+  onCaptureStage?: (stage: CaptureStage, waitReason?: CaptureWaitReason) => void
+}
+
+/** Overrides for one capture; camera settings and later shots are unchanged. */
+export interface TakePhotoOptions {
+  /** Skip document, focus, lighting and motion waits for this shot. Defaults to false.
+   * Camera readiness and permission checks still apply. A tap's scan still in progress is waited for until it settles,
+   * unless `requireFocus` is false; the shot then uses continuous autofocus as it stands, or the tap's lock.
+   */
+  skipLowQualityControl?: boolean
+}
+
+export interface CameraCaptureResult {
+  pageId: string
+  snapshot: ScanSessionSnapshot
+}
+
+export interface DocumentScannerCameraMethods extends HybridViewMethods {
+  /**
+   * Native result transport for public `takePhoto`: the new page ID and a versioned session snapshot, or a failure code. The view shows a frozen
+   * preview frame while the shot saves. Originals remain private session resources: Android captures JPEG;
+   * the iOS source layer uses provisional JPEG backing and can reopen TIFF/JPEG/PNG.
+   */
+  takePhotoResult(options?: TakePhotoOptions): Promise<CameraCaptureResult | ScannerFailure>
+}
+
+export type DocumentScannerCameraView = HybridView<
+  DocumentScannerCameraProps,
+  DocumentScannerCameraMethods,
+  { ios: 'swift'; android: 'kotlin' }
+>

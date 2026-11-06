@@ -1,0 +1,7 @@
+# v1; top-left RGB8 opaque pixels; stride/offset in pixels; padding sentinel magenta; R=(17x+31y)%256 G=(53x+7y)%256 B=(11x+97y)%256; output signed ARGB32 hash, exact; Java int hash defined in README
+id	width	height	stride	offset	targetWidth	targetHeight	hash
+reduce-padded	7	5	11	3	3	2	1805764405
+enlarge-padded	3	2	6	2	7	5	1837232507
+extreme-reduce	15	9	19	1	1	1	-8422243
+identity	224	224	224	0	224	224	1761361665
+camera-odd-padded	641	479	648	5	224	224	952188093

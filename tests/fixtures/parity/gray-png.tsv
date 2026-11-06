@@ -1,0 +1,5 @@
+# v1; 8-bit gray input rows top-left, 4-bit gray output; input=(13x+7y)%256; quantized samples round to nearest multiple of 17; exact sample comparison, max source error 8; odd trailing low nibble zero
+id	width	height
+odd-levels	33	3
+single-pixel	1	1
+even-width	16	2

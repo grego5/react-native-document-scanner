@@ -1,0 +1,12 @@
+{
+  "checkpoint": "best_model_inference.keras",
+  "checkpointSha256": "588ba37986a4f48505b0f163a479f931e2f6f84645bd88ea1d67dcf593deecf6",
+  "adaptation": "mobilenetv3_custom_224_v1",
+  "tfliteSha256": "830ece3373c3ce6ff67a9023f10f56e3576c257de22d662f985ce27b747f3b35",
+  "maximumTensorParityError": 1.4901161193847656e-06,
+  "deployment": "Training mixed_float16 policies converted to float32; trained weights unchanged.",
+  "trainingInputSize": 224,
+  "coordinateBins": 224,
+  "input": "float32 NHWC 1x224x224x3 ImageNet normalized RGB",
+  "output": "float32 1x9 TL.x TL.y TR.x TR.y BR.x BR.y BL.x BL.y sigmoidScore"
+}

@@ -1,0 +1,150 @@
+import Foundation
+
+/// Normalized upright TL/TR/BR/BL x,y pairs; comparable without C++ struct equality.
+typealias CornerCoordinates = [Double]
+
+enum SessionCorners {
+  static let fullFrame: CornerCoordinates = [0, 0, 1, 0, 1, 1, 0, 1]
+
+  static func coordinates(_ corners: DocumentCorners) -> CornerCoordinates {
+    [corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft].flatMap { [$0.x, $0.y] }
+  }
+
+  static func corners(_ value: CornerCoordinates) -> DocumentCorners {
+    DocumentCorners(topLeft: DocumentPoint(x: value[0], y: value[1]), topRight: DocumentPoint(x: value[2], y: value[3]),
+                 bottomRight: DocumentPoint(x: value[4], y: value[5]), bottomLeft: DocumentPoint(x: value[6], y: value[7]))
+  }
+
+  static func renderable(_ value: CornerCoordinates) -> Bool {
+    value.count == 8 && (try? DocumentRenderService.validate(corners(value))) != nil
+  }
+}
+
+/// Effective render options frozen at admission; omitted defaults equal explicit ones.
+struct RenderSettings: Equatable {
+  let removeShadows: Bool
+  let quality: Int
+  let filter: DocumentFilter
+  let format: DocumentImageFormat
+  let paperWidth: Double?
+  let paperHeight: Double?
+  let dpi: Double?
+  let simpleDewarp: Bool
+
+  init(_ options: DocumentRenderOptions?) throws {
+    let effective = try DocumentRenderService.effectiveOptions(options)
+    removeShadows = effective.removeShadows ?? true
+    quality = Int(((effective.jpegQuality ?? 0.92) * 100).rounded())
+    filter = effective.filter ?? DocumentFilter.none
+    format = effective.format ?? .jpeg
+    paperWidth = effective.paperSize?.width
+    paperHeight = effective.paperSize?.height
+    dpi = effective.dpi
+    simpleDewarp = effective.simpleDewarp ?? true
+  }
+
+  var options: DocumentRenderOptions {
+    DocumentRenderOptions(removeShadows: removeShadows, jpegQuality: Double(quality) / 100, filter: filter, format: format,
+      paperSize: paperWidth.flatMap { width in paperHeight.map { PaperSize(width: width, height: $0) } },
+      dpi: dpi, simpleDewarp: simpleDewarp)
+  }
+
+  func with(filter: DocumentFilter? = nil, removeShadows: Bool? = nil) throws -> RenderSettings {
+    let current = options
+    return try RenderSettings(DocumentRenderOptions(removeShadows: removeShadows ?? self.removeShadows,
+      jpegQuality: current.jpegQuality, filter: filter ?? self.filter, format: format,
+      paperSize: current.paperSize, dpi: dpi, simpleDewarp: simpleDewarp))
+  }
+}
+
+struct AnalysisValue: Equatable {
+  let width: Int
+  let height: Int
+  let duration: Double
+  let candidate: CornerCoordinates?
+  let score: Double
+
+  var nitro: DocumentAnalysis {
+    DocumentAnalysis(sourceWidth: Double(width), sourceHeight: Double(height), duration: duration,
+      candidate: candidate.map { DocumentCandidate(corners: SessionCorners.corners($0), score: score) })
+  }
+}
+
+/// Transport metadata only: no paths or artifact objects.
+struct PageMetadata: Equatable {
+  let id: String
+  let revision: Int
+  let readyRevision: Int?
+  let analyzing: Bool
+  let rendering: Bool
+  let analysis: AnalysisValue?
+  let corners: CornerCoordinates
+  let settings: RenderSettings
+  let analysisFailure: ScannerErrorCode?
+  let renderFailure: ScannerErrorCode?
+
+  var nitro: ScanPageMetadata {
+    ScanPageMetadata(id: id, revision: Double(revision), readyRevision: readyRevision.map(Double.init),
+      analyzing: analyzing, rendering: rendering, ready: readyRevision == revision, analysis: analysis?.nitro,
+      corners: SessionCorners.corners(corners), options: settings.options,
+      analysisFailure: analysisFailure.map { ScannerFailure(code: $0) },
+      renderFailure: renderFailure.map { ScannerFailure(code: $0) })
+  }
+}
+
+/// Mutable only under ScanSessionState's lock. Originals are immutable; every render
+/// derives from the original.
+final class ScanPage {
+  struct RenderKey: Equatable {
+    let corners: CornerCoordinates
+    let settings: RenderSettings
+  }
+
+  final class Artifact {
+    let image: SessionResources.Resource
+    let thumbnail: SessionResources.Resource
+    let width: Int
+    let height: Int
+    let validContentPolygon: [DocumentPoint]
+    init(image: SessionResources.Resource, thumbnail: SessionResources.Resource, width: Int, height: Int,
+         validContentPolygon: [DocumentPoint]) {
+      self.image = image; self.thumbnail = thumbnail; self.width = width; self.height = height
+      self.validContentPolygon = validContentPolygon
+    }
+  }
+
+  let id: String
+  let original: SessionResources.Resource
+  let frame: SessionResources.Resource?
+  let selection: CornerInference.Selection?
+  let liveCorners: CornerCoordinates?
+  var settings: RenderSettings
+  var corners = SessionCorners.fullFrame
+  var explicitGeometry = false
+  var requestedRevision = 1
+  var readyRevision: Int?
+  var exportAnalysisPins = 0
+  var analysisResult: Result<AnalysisValue, Error>?
+  var analyzing = true
+  var analysis: AnalysisValue?
+  var analysisFailure: ScannerErrorCode?
+  var renderFailure: ScannerErrorCode?
+  var cache: [(key: RenderKey, artifact: Artifact)] = []
+  var displayed: Artifact?
+
+  init(id: String, original: SessionResources.Resource, frame: SessionResources.Resource?, settings: RenderSettings,
+       selection: CornerInference.Selection?, liveCorners: CornerCoordinates?) {
+    self.id = id; self.original = original; self.frame = frame; self.settings = settings
+    self.selection = selection; self.liveCorners = liveCorners
+  }
+
+  var key: RenderKey { RenderKey(corners: corners, settings: settings) }
+
+  func cached(_ key: RenderKey) -> Artifact? { cache.first { $0.key == key }?.artifact }
+
+  var metadata: PageMetadata {
+    PageMetadata(id: id, revision: requestedRevision, readyRevision: readyRevision, analyzing: analyzing,
+      rendering: !analyzing && readyRevision != requestedRevision && renderFailure == nil,
+      analysis: analysis, corners: corners, settings: settings, analysisFailure: analysisFailure, renderFailure: renderFailure)
+  }
+}
