@@ -30,7 +30,7 @@ Viewer/pager accept URIs and ImageLoader keeps thumbnails, zoomed full decodes a
 
 ## Implementation steps
 
-1. Replace viewer URI with session/pageId and pager URI array with session/pageIds; make CropEditor resolve original pixels by session/pageId while retaining an unsubmitted quad prop.
+1. Replace viewer URI with session/pageId and pager URI array with session/pageIds; make CropEditor resolve original pixels by session/pageId while retaining an unsubmitted corners prop.
 
 2. Introduce native page bindings that lease the current placeholder/thumbnail/render, observe native page revisions and update ImageLoader directly. onLoad reports the page ID rather than an internal URI. No JS snapshot subscription drives image replacement.
 

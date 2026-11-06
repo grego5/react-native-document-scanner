@@ -39,11 +39,11 @@ namespace margelo::nitro::documentscanner {
    */
   struct TakePhotoOptions final {
   public:
-    std::optional<bool> skipQualityGate     SWIFT_PRIVATE;
+    std::optional<bool> skipLowQualityControl     SWIFT_PRIVATE;
 
   public:
     TakePhotoOptions() = default;
-    explicit TakePhotoOptions(std::optional<bool> skipQualityGate): skipQualityGate(skipQualityGate) {}
+    explicit TakePhotoOptions(std::optional<bool> skipLowQualityControl): skipLowQualityControl(skipLowQualityControl) {}
 
   public:
     #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
@@ -61,12 +61,12 @@ namespace margelo::nitro {
     static inline margelo::nitro::documentscanner::TakePhotoOptions fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::documentscanner::TakePhotoOptions(
-        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "skipQualityGate")))
+        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "skipLowQualityControl")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::documentscanner::TakePhotoOptions& arg) {
       jsi::Object obj(runtime);
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "skipQualityGate"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.skipQualityGate));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "skipLowQualityControl"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.skipLowQualityControl));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -77,7 +77,7 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
-      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "skipQualityGate")))) return false;
+      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "skipLowQualityControl")))) return false;
       return true;
     }
   };

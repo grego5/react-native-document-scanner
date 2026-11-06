@@ -19,8 +19,8 @@ namespace margelo::nitro::documentscanner { struct ScanPageMetadata; }
 namespace margelo::nitro::documentscanner { struct DocumentAnalysis; }
 // Forward declaration of `DocumentCandidate` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentCandidate; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentPoint` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentPoint; }
 // Forward declaration of `DocumentRenderOptions` to properly resolve imports.
@@ -62,8 +62,8 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include "JDocumentAnalysis.hpp"
 #include "DocumentCandidate.hpp"
 #include "JDocumentCandidate.hpp"
-#include "DocumentQuad.hpp"
-#include "JDocumentQuad.hpp"
+#include "DocumentCorners.hpp"
+#include "JDocumentCorners.hpp"
 #include "DocumentPoint.hpp"
 #include "JDocumentPoint.hpp"
 #include "DocumentRenderOptions.hpp"
@@ -187,9 +187,9 @@ namespace margelo::nitro::documentscanner {
       return __promise;
     }();
   }
-  std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> JHybridScanSessionSpec::setDocumentCropResult(const std::string& pageId, const DocumentQuad& quad) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* pageId */, jni::alias_ref<JDocumentQuad> /* quad */)>("setDocumentCropResult");
-    auto __result = method(_javaPart, jni::make_jstring(pageId), JDocumentQuad::fromCpp(quad));
+  std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> JHybridScanSessionSpec::setDocumentCropResult(const std::string& pageId, const DocumentCorners& corners) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* pageId */, jni::alias_ref<JDocumentCorners> /* corners */)>("setDocumentCropResult");
+    auto __result = method(_javaPart, jni::make_jstring(pageId), JDocumentCorners::fromCpp(corners));
     return [&]() {
       auto __promise = Promise<std::variant<bool, ScannerFailure>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {

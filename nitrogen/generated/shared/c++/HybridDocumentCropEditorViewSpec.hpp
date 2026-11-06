@@ -21,8 +21,8 @@ namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
 namespace margelo::nitro::documentscanner { enum class CropDraftPreset; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `CropPreset` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CropPreset; }
 
@@ -36,7 +36,7 @@ namespace margelo::nitro::documentscanner { enum class CropPreset; }
 #include "ScannerFailure.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
-#include "DocumentQuad.hpp"
+#include "DocumentCorners.hpp"
 #include "CropPreset.hpp"
 
 namespace margelo::nitro::documentscanner {
@@ -72,6 +72,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setPageId(const std::string& pageId) = 0;
       virtual std::optional<DocumentFilter> getFilter() = 0;
       virtual void setFilter(std::optional<DocumentFilter> filter) = 0;
+      virtual std::optional<bool> getRectangle() = 0;
+      virtual void setRectangle(std::optional<bool> rectangle) = 0;
       virtual std::optional<std::function<void(CropDraftPreset /* preset */)>> getOnPresetChange() = 0;
       virtual void setOnPresetChange(const std::optional<std::function<void(CropDraftPreset /* preset */)>>& onPresetChange) = 0;
       virtual std::optional<std::function<void(double /* width */, double /* height */)>> getOnLoad() = 0;
@@ -82,7 +84,7 @@ namespace margelo::nitro::documentscanner {
     public:
       // Methods
       virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> submitResult() = 0;
-      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>> getQuadResult() = 0;
+      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>> getCornersResult() = 0;
       virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setPresetResult(CropPreset preset) = 0;
 
     protected:

@@ -18,9 +18,9 @@ public extension TakePhotoOptions {
   /**
    * Create a new instance of `TakePhotoOptions`.
    */
-  init(skipQualityGate: Bool?) {
+  init(skipLowQualityControl: Bool?) {
     self.init({ () -> bridge.std__optional_bool_ in
-      if let __unwrappedValue = skipQualityGate {
+      if let __unwrappedValue = skipLowQualityControl {
         return bridge.create_std__optional_bool_(__unwrappedValue)
       } else {
         return .init()
@@ -29,10 +29,10 @@ public extension TakePhotoOptions {
   }
 
   @inline(__always)
-  var skipQualityGate: Bool? {
+  var skipLowQualityControl: Bool? {
     return { () -> Bool? in
-      if bridge.has_value_std__optional_bool_(self.__skipQualityGate) {
-        let __unwrapped = bridge.get_std__optional_bool_(self.__skipQualityGate)
+      if bridge.has_value_std__optional_bool_(self.__skipLowQualityControl) {
+        let __unwrapped = bridge.get_std__optional_bool_(self.__skipLowQualityControl)
         return __unwrapped
       } else {
         return nil

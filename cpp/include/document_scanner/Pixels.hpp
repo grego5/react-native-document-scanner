@@ -17,8 +17,8 @@ size_t bytesPerPixel(PixelFormat format);
 struct Size final { const uint32_t width, height; };
 struct Crop final { const uint32_t left, top, width, height; };
 struct Point final { const double x, y; };
-// Public quads are normalized upright TL/TR/BR/BL; no transform is implied here.
-using Quad = std::array<Point, 4>;
+// Public corners are normalized upright TL/TR/BR/BL; no transform is implied here.
+using Corners = std::array<Point, 4>;
 struct PixelLayout final {
   const PixelFormat format;
   const Size size;

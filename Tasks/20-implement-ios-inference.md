@@ -23,7 +23,7 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/CornerModelSize.kt
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/PhotoAnalysis.kt
 - src/ScanSession.nitro.ts — session/page ownership
-- src/DocumentScannerCamera.nitro.ts — quadTensorModel
+- src/DocumentScannerCamera.nitro.ts — cornerDetectionModel
 
 ## Current behavior and invariants
 
@@ -39,7 +39,7 @@ One serialized CPU interpreter serves live and photo callers; invalid replacemen
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 

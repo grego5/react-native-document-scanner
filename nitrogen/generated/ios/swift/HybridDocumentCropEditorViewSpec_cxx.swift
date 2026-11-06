@@ -167,6 +167,30 @@ open class HybridDocumentCropEditorViewSpec_cxx {
     }
   }
   
+  public final var rectangle: bridge.std__optional_bool_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_bool_ in
+        if let __unwrappedValue = self.__implementation.rectangle {
+          return bridge.create_std__optional_bool_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.rectangle = { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(newValue) {
+          let __unwrapped = bridge.get_std__optional_bool_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
   public final var onPresetChange: bridge.std__optional_std__function_void_CropDraftPreset____preset______ {
     @inline(__always)
     get {
@@ -291,28 +315,28 @@ open class HybridDocumentCropEditorViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func getQuadResult() -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad____ {
+  public final func getCornersResult() -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners____ {
     do {
-      let __result = try self.__implementation.getQuadResult()
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad___ in
-        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad___()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad___(__promise)
+      let __result = try self.__implementation.getCornersResult()
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners___(__promise)
         __result
-          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_ScannerFailure__DocumentQuad_ in
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_ScannerFailure__DocumentCorners_ in
               switch __result {
                 case .first(let __value):
-                  return bridge.create_std__variant_ScannerFailure__DocumentQuad_(__value)
+                  return bridge.create_std__variant_ScannerFailure__DocumentCorners_(__value)
                 case .second(let __value):
-                  return bridge.create_std__variant_ScannerFailure__DocumentQuad_(__value)
+                  return bridge.create_std__variant_ScannerFailure__DocumentCorners_(__value)
               }
             }().variant) })
           .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
         return __promise
       }()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad____(__resultCpp)
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners____(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad____(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners____(__exceptionPtr)
     }
   }
   

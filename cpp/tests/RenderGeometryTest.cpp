@@ -20,7 +20,7 @@ template <class F> void rejects(F f) {
   }
   throw std::runtime_error("Invalid geometric input accepted");
 }
-Quad rect(double l, double t, double r, double b) { return {Point{l, t}, Point{r, t}, Point{r, b}, Point{l, b}}; }
+Corners rect(double l, double t, double r, double b) { return {Point{l, t}, Point{r, t}, Point{r, b}, Point{l, b}}; }
 const auto page = rect(.125, .125, .875, .875);
 bool samePolygon(const std::vector<Point> &a, const std::vector<Point> &b) {
   if (a.size() != b.size())
@@ -153,7 +153,7 @@ void renderFixtures() {
     }
   }
   auto source = fixture("bent");
-  const Quad outside{Point{-.02, .125}, Point{.875, .125}, Point{.875, .875}, Point{.125, .875}};
+  const Corners outside{Point{-.02, .125}, Point{.875, .125}, Point{.875, .875}, Point{.125, .875}};
   const auto a = renderGeometry(source.lease(), outside, 1),
              b = renderGeometry(source.lease(), outside, 1, std::nullopt, false);
   check(!a.curved && samePixels(a.pixels, b.pixels), "Outside corner did not disable bending");

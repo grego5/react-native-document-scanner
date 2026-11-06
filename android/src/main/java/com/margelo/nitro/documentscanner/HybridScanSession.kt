@@ -39,7 +39,7 @@ class HybridScanSession internal constructor(internal val state: ScanSessionStat
     try {
       val context = NitroModules.applicationContext ?: throw ScannerException(ScannerErrorCode.PROCESSOR_UNAVAILABLE)
       val source = state.sampleSource(pageId)
-      SampleCollection.saveCapture(context, source.original, analysis = source.analysis, model = source.model, liveQuad = source.liveQuad).then { name ->
+      SampleCollection.saveCapture(context, source.original, analysis = source.analysis, model = source.model, liveCorners = source.liveCorners).then { name ->
         try { promise.resolve(state.publishExport { name }) } catch (error: Throwable) { promise.reject(error) }
       }.catch { promise.reject(it) }
     } catch (error: Throwable) { promise.reject(error) }
@@ -60,7 +60,7 @@ class HybridScanSession internal constructor(internal val state: ScanSessionStat
 
   private fun cause(error: Throwable): Throwable = if (error is CompletionException) error.cause ?: error else error
 
-  override fun setDocumentCropResult(pageId: String, quad: DocumentQuad) = admit { state.setDocumentCrop(pageId, quad) }
+  override fun setDocumentCropResult(pageId: String, corners: DocumentCorners) = admit { state.setDocumentCrop(pageId, corners) }
   override fun setFilterResult(pageId: String, filter: DocumentFilter) = admit { state.setFilter(pageId, filter) }
   override fun setShadowRemovalResult(pageId: String, enabled: Boolean) =
     admit { state.setShadowRemoval(pageId, enabled) }

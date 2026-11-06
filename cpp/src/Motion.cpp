@@ -221,7 +221,7 @@ std::optional<int64_t> correlated(int64_t t, ClockCorrelation c) {
   return t + d;
 }
 } // namespace
-std::optional<Quad> Transform::warp(const Quad &q) const {
+std::optional<Corners> Transform::warp(const Corners &q) const {
   auto point = [&](Point p) -> std::optional<Point> {
     const double w = px * p.x + py * p.y + 1;
     if (!(w > 0))
@@ -234,7 +234,7 @@ std::optional<Quad> Transform::warp(const Quad &q) const {
   auto a = point(q[0]), b = point(q[1]), c = point(q[2]), d = point(q[3]);
   if (!a || !b || !c || !d)
     return {};
-  return Quad{*a, *b, *c, *d};
+  return Corners{*a, *b, *c, *d};
 }
 std::optional<Transform> fit(std::span<const Track> ps, int width, int height, double area, double tolerance) {
   if (ps.size() < 8 || width <= 0 || height <= 0 || !(area > 0) || !(tolerance > 0))
@@ -263,13 +263,13 @@ void FlowHistory::add(const Estimate &e) {
   while (steps_.size() > 32 || (!steps_.empty() && uint64_t(e.toNs) - uint64_t(steps_.front().from) > 500000000))
     steps_.pop_front();
 }
-std::optional<Quad> FlowHistory::warp(const Quad &q, int64_t from, int64_t to) const {
+std::optional<Corners> FlowHistory::warp(const Corners &q, int64_t from, int64_t to) const {
   if (from == to)
     return q;
   if (from > to)
     return {};
   int64_t time = from;
-  std::optional<Quad> result(q);
+  std::optional<Corners> result(q);
   for (const auto &step : steps_) {
     if (step.to <= time)
       continue;
@@ -338,7 +338,7 @@ FrameGeometry frameGeometry(double focal, int aw, int ah, int sensor, int bw, in
   return {int(turned ? crop.height : crop.width), int(turned ? crop.width : crop.height), focal * scale, cx, cy,
           ((degrees - sensor) % 360 + 360) % 360};
 }
-std::optional<Quad> rotationWarp(const Quad &q, FrameGeometry f, const Matrix &device) {
+std::optional<Corners> rotationWarp(const Corners &q, FrameGeometry f, const Matrix &device) {
   const double a = f.axisRotationDegrees * std::numbers::pi / 180, c = std::cos(a), s = std::sin(a);
   const auto axes = multiply({c, -s, 0, s, c, 0, 0, 0, 1}, {1, 0, 0, 0, -1, 0, 0, 0, -1});
   const auto r = multiply(multiply(axes, transpose(device)), transpose(axes));
@@ -353,7 +353,7 @@ std::optional<Quad> rotationWarp(const Quad &q, FrameGeometry f, const Matrix &d
   auto p = point(q[0]), b = point(q[1]), d = point(q[2]), e = point(q[3]);
   if (!p || !b || !d || !e)
     return {};
-  return Quad{*p, *b, *d, *e};
+  return Corners{*p, *b, *d, *e};
 }
 std::optional<double> gyroBlur(std::span<const GyroSample> samples, double focal, int width, int64_t from, int64_t to,
                                int64_t exposure, std::optional<ClockCorrelation> clock) {

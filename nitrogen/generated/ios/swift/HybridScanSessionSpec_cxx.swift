@@ -223,9 +223,9 @@ open class HybridScanSessionSpec_cxx {
   }
   
   @inline(__always)
-  public final func setDocumentCropResult(pageId: std.string, quad: DocumentQuad) -> bridge.Result_std__shared_ptr_Promise_std__variant_bool__ScannerFailure____ {
+  public final func setDocumentCropResult(pageId: std.string, corners: DocumentCorners) -> bridge.Result_std__shared_ptr_Promise_std__variant_bool__ScannerFailure____ {
     do {
-      let __result = try self.__implementation.setDocumentCropResult(pageId: String(pageId), quad: quad)
+      let __result = try self.__implementation.setDocumentCropResult(pageId: String(pageId), corners: corners)
       let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_bool__ScannerFailure___ in
         let __promise = bridge.create_std__shared_ptr_Promise_std__variant_bool__ScannerFailure___()
         let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_bool__ScannerFailure___(__promise)

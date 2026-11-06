@@ -1,4 +1,4 @@
-import type { DocumentFilter, DocumentQuad } from './DocumentScannerProcessor.nitro'
+import type { DocumentFilter, DocumentCorners } from './DocumentScannerProcessor.nitro'
 import type {
   SessionPdfOptions,
   ScanSessionChange,
@@ -19,6 +19,9 @@ export interface ScanSessionSnapshot {
   readonly pages: Readonly<Record<string, ScanPageMetadata>>
 }
 
+// Pending state can reuse the frozen order from the last publication.
+type PendingSnapshot = Omit<NativeSnapshot, 'pageIds'> & { readonly pageIds: readonly string[] }
+
 /**
  * useSyncExternalStore(session.subscribe, session.getSession) reads immutable publications. Awaited mutations publish accepted settings before resolving.
  * Plain stores read getSession(), then subscribe and read again to reconcile a publication between
@@ -27,7 +30,7 @@ export interface ScanSessionSnapshot {
 export interface ScanSession {
   getSession(): ScanSessionSnapshot
   subscribe(listener: () => void): () => void
-  setDocumentCrop(pageId: string, quad: DocumentQuad): Promise<void>
+  setDocumentCrop(pageId: string, corners: DocumentCorners): Promise<void>
   setFilter(pageId: string, filter: DocumentFilter): Promise<void>
   setShadowRemoval(pageId: string, enabled: boolean): Promise<void>
   removePage(pageId: string): Promise<void>
@@ -66,26 +69,44 @@ function equalValue(a: unknown, b: unknown): boolean {
   // Transport objects are plain value records, with absent optional fields equivalent to undefined.
   const left = a as Record<string, unknown>
   const right = b as Record<string, unknown>
-  const keys = Object.keys(left).filter((key) => left[key] !== undefined)
-  return keys.length === Object.keys(right).filter((key) => right[key] !== undefined).length &&
-    keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && equalValue(left[key], right[key]))
+  let leftCount = 0
+  for (const key in left) {
+    if (!Object.prototype.hasOwnProperty.call(left, key) || left[key] === undefined) continue
+    if (!Object.prototype.hasOwnProperty.call(right, key) || !equalValue(left[key], right[key])) return false
+    leftCount++
+  }
+  let rightCount = 0
+  for (const key in right) {
+    if (Object.prototype.hasOwnProperty.call(right, key) && right[key] !== undefined) rightCount++
+  }
+  return leftCount === rightCount
+}
+
+function freezeInDev<T extends object>(value: T): Readonly<T> {
+  return __DEV__ ? Object.freeze(value) : value
 }
 
 function immutableCopy<T>(value: T): Immutable<T> {
   // These casts retain the relationship between a plain transport value and its recursively copied type.
-  if (Array.isArray(value)) return Object.freeze(value.map((item: unknown) => immutableCopy(item))) as Immutable<T>
+  if (Array.isArray(value)) return freezeInDev(value.map((item: unknown) => immutableCopy(item))) as Immutable<T>
   if (value !== null && typeof value === 'object') {
-    return Object.freeze(Object.fromEntries(
-      Object.entries(value).filter(([, item]) => item !== undefined)
-        .map(([key, item]: [string, unknown]) => [key, immutableCopy(item)]),
-    )) as Immutable<T>
+    const source = value as Record<string, unknown>
+    const copy: Record<string, unknown> = {}
+    for (const key in source) {
+      if (!Object.prototype.hasOwnProperty.call(source, key) || source[key] === undefined) continue
+      const item = immutableCopy(source[key])
+      if (key === '__proto__') {
+        Object.defineProperty(copy, key, { value: item, enumerable: true, writable: true, configurable: true })
+      } else copy[key] = item
+    }
+    return freezeInDev(copy) as Immutable<T>
   }
   return value as Immutable<T>
 }
 
 class SessionStore implements ScanSession {
   private published: ScanSessionSnapshot
-  private pending: NativeSnapshot | undefined
+  private pending: PendingSnapshot | undefined
   private sourceVersion: number
   private readonly incoming: ScanSessionChange[] = []
   private initializing = true
@@ -143,13 +164,28 @@ class SessionStore implements ScanSession {
             continue
           } catch (error) { report(error); continue }
         } else {
-          const base = this.pending ?? { ...this.published, sourceVersion: this.sourceVersion }
-          const pages = Object.assign(Object.create(null), base.pages)
-          for (const id of next.removedPageIds) delete pages[id]
-          for (const [id, page] of Object.entries(next.updatedPages)) pages[id] = page
-          this.pending = { sourceVersion: next.sourceVersion, closed: false, pages,
-            pageIds: next.pageIds ?? [...base.pageIds.filter(id => Object.prototype.hasOwnProperty.call(pages, id)),
-              ...Object.keys(next.updatedPages).filter(id => !base.pageIds.includes(id))] }
+          const base = this.pending ?? this.published
+          const updatedPages = next.updatedPages
+          let pageIds: readonly string[] = next.pageIds ?? base.pageIds
+          if (next.pageIds === undefined) {
+            let changedIds: string[] | undefined
+            if (next.removedPageIds.length !== 0) {
+              const removedIds = new Set(next.removedPageIds)
+              const retainedIds = base.pageIds.filter(id =>
+                !removedIds.has(id) || Object.prototype.hasOwnProperty.call(updatedPages, id))
+              if (retainedIds.length !== base.pageIds.length) changedIds = retainedIds
+            }
+            for (const id of Object.keys(updatedPages)) {
+              if (!Object.prototype.hasOwnProperty.call(base.pages, id)) (changedIds ??= [...base.pageIds]).push(id)
+            }
+            pageIds = changedIds ?? base.pageIds
+          }
+          const pages: Record<string, NativePageMetadata> = Object.create(null)
+          for (const id of pageIds) {
+            pages[id] = Object.prototype.hasOwnProperty.call(updatedPages, id)
+              ? updatedPages[id] : base.pages[id]
+          }
+          this.pending = { sourceVersion: next.sourceVersion, closed: false, pages, pageIds }
         }
         this.sourceVersion = next.sourceVersion
         this.schedule()
@@ -161,7 +197,7 @@ class SessionStore implements ScanSession {
     if (!this.released && this.frame === undefined) this.frame = this.frames.request(this.flush)
   }
 
-  private snapshot(source: NativeSnapshot, version: number): ScanSessionSnapshot {
+  private snapshot(source: PendingSnapshot, version: number): ScanSessionSnapshot {
     const previous = this.initializing ? undefined : this.published
     const pages: Record<string, ScanPageMetadata> = Object.create(null)
     let changed = previous === undefined || Object.keys(previous.pages).length !== Object.keys(source.pages).length
@@ -173,11 +209,11 @@ class SessionStore implements ScanSession {
     const pageIds = previous && equalValue(previous.pageIds, source.pageIds)
       ? previous.pageIds : immutableCopy(source.pageIds)
     if (previous !== undefined && !changed && previous.closed === source.closed && pageIds === previous.pageIds) return previous
-    return Object.freeze({
+    return freezeInDev({
       version,
       closed: source.closed,
       pageIds,
-      pages: !changed && previous !== undefined ? previous.pages : Object.freeze(pages),
+      pages: !changed && previous !== undefined ? previous.pages : freezeInDev(pages),
     })
   }
 
@@ -188,7 +224,7 @@ class SessionStore implements ScanSession {
     this.pending = undefined
     if (next !== undefined) this.published = this.snapshot(next, this.published.version + 1)
     // Install first. New listeners during notification already read this version and are not replayed.
-    for (const entry of [...this.listeners]) {
+    for (const entry of this.listeners) {
       if (!this.listeners.has(entry) || entry.version >= this.published.version) continue
       entry.version = this.published.version
       try { entry.listener() } catch (error) { report(error) }
@@ -208,9 +244,9 @@ class SessionStore implements ScanSession {
   }
 
   /** Command boundary: publish accepted native state before returning control to its caller. */
-  synchronize(): void {
+  synchronize(snapshot?: NativeSnapshot): void {
     if (this.released) return
-    const full = scannerValue(() => this.native.getSession(), 'processor/unavailable')
+    const full = snapshot ?? scannerValue(() => this.native.getSession(), 'processor/unavailable')
     if (full.sourceVersion >= this.sourceVersion) {
       this.sourceVersion = full.sourceVersion
       this.pending = full
@@ -224,8 +260,8 @@ class SessionStore implements ScanSession {
     return scannerOperation(operation, 'processor/unavailable').then(() => { this.synchronize() })
   }
 
-  setDocumentCrop = (pageId: string, quad: DocumentQuad): Promise<void> =>
-    this.runCommand(() => this.native.setDocumentCropResult(pageId, quad))
+  setDocumentCrop = (pageId: string, corners: DocumentCorners): Promise<void> =>
+    this.runCommand(() => this.native.setDocumentCropResult(pageId, corners))
 
   setFilter = (pageId: string, filter: DocumentFilter): Promise<void> =>
     this.runCommand(() => this.native.setFilterResult(pageId, filter))
@@ -288,7 +324,7 @@ export function getNativeScanSession(session: ScanSession): NativeScanSession {
 }
 
 /** Internal: capture uses the same publication boundary as session mutations. */
-export function synchronizeSession(session: ScanSession): void {
+export function synchronizeSession(session: ScanSession, snapshot?: NativeSnapshot): void {
   if (!(session instanceof SessionStore)) throw new ScannerError('input/invalid')
-  session.synchronize()
+  session.synchronize(snapshot)
 }

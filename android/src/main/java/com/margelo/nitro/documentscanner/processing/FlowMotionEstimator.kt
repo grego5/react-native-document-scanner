@@ -1,6 +1,6 @@
 package com.margelo.nitro.documentscanner.processing
 
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import java.nio.ByteBuffer
 
 /** Why an estimate has no speed. Unknown never means still. */
@@ -37,7 +37,7 @@ internal class FlowMotionEstimator(
   fun update(
     pixels: ByteBuffer, rowStride: Int, pixelStride: Int, bufferWidth: Int, bufferHeight: Int,
     cropLeft: Int, cropTop: Int, cropRight: Int, cropBottom: Int, rotationDegrees: Int, sensorTimestampNs: Long,
-    region: DocumentQuad?, fitTransform: Boolean = false,
+    region: DocumentCorners?, fitTransform: Boolean = false,
   ): FlowMotionEstimate = native.update(pixels, rowStride, pixelStride, bufferWidth, bufferHeight,
     cropLeft, cropTop, cropRight, cropBottom, rotationDegrees, sensorTimestampNs, region, fitTransform)
   override fun close() = native.close()

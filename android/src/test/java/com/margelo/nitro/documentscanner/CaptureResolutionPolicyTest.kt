@@ -27,6 +27,35 @@ class CaptureResolutionPolicyTest {
   }
 
   @Test
+  fun aHighResolutionSizeWinsOnlyWhenTheOthersAreTooSmallForText() {
+    fun rankSlow(normal: List<Dimensions>, slow: List<Dimensions>) =
+      CaptureResolutionPolicy.rank(normal + slow, { it.width }, { it.height }, { it in slow }).first()
+    // Samsung SM-A175F: 4080x3060 is listed only as high-resolution.
+    assertEquals(Dimensions(4080, 3060), rankSlow(sizes("2336x1080, 1440x1080, 640x480"), sizes("4080x3060, 4080x2296")))
+    // A text-sized normal 4:3 keeps its capture rate and zero shutter lag over a slightly wider slow one.
+    assertEquals(Dimensions(4000, 3000), rankSlow(sizes("4000x3000, 1920x1080"), sizes("4080x3060")))
+    // Samsung SM-G998U: the slow sizes exceed the cap anyway.
+    assertEquals(Dimensions(4000, 3000), rankSlow(sizes("4000x3000, 3840x2160"), sizes("12000x9000")))
+    // A normal size under the text short side does not hold off a wider slow one.
+    assertEquals(Dimensions(3264, 2448), rankSlow(sizes("2560x1920"), sizes("3264x2448")))
+    assertEquals(Dimensions(2560, 1920), rankSlow(sizes("2560x1920"), sizes("2048x1536")))
+  }
+
+  @Test
+  fun theStandardPhotoIsTheSmallest4By3WithA1080ShortSide() {
+    fun standard(list: String) = CaptureResolutionPolicy.rankStandard(sizes(list), { it.width }, { it.height })
+    // Samsung SM-G998U-like list: 1440x1080 beats the 12 MP size and the wide 1080p one.
+    assertEquals(Dimensions(1440, 1080), standard("4000x3000, 3840x2160, 1920x1080, 1440x1080, 1440x1440, 640x480").first())
+    // Without a 1080 short side 4:3, the next larger wins, then the widest smaller one.
+    assertEquals(Dimensions(1600, 1200), standard("4000x3000, 1600x1200, 1280x960").first())
+    // A larger 4:3 still beats a wider size with a smaller short side.
+    assertEquals(Dimensions(1600, 1200), standard("1920x1080, 1600x1200, 640x480").first())
+    assertEquals(Dimensions(1280, 960), standard("1280x960, 640x480, 960x960").first())
+    assertEquals(Dimensions(1920, 1080), standard("2336x1080, 1920x1080, 1088x1088").first())
+    assertTrue(CaptureResolutionPolicy.rankStandard(emptyList<Dimensions>(), { it.width }, { it.height }).isEmpty())
+  }
+
+  @Test
   fun squareSizesFollowEvenWithAWiderShortSide() {
     // Samsung SM-G998U rear: a square capture would crop the shared viewport, and live analysis with it.
     assertEquals(listOf(Dimensions(4000, 3000), Dimensions(3840, 2160), Dimensions(2992, 2992)),

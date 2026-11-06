@@ -18,16 +18,16 @@ struct GeometricRenderResult final {
 };
 // Borrows an upright RGBA8 buffer (packed pixels, padded rows allowed) only
 // until return. Pixels and coverage are independently owned immutable values.
-// With region set, normalizedQuad refers to the full photo; otherwise to the source buffer.
+// With region set, normalizedCorners refers to the full photo; otherwise to the source buffer.
 // Framing/decode/filters/encoding remain with the caller. Coverage always uses
 // the straight homography; bends are disabled if any submitted corner is outside.
-GeometricRenderResult renderGeometry(const PixelLease &source, const Quad &normalizedQuad, double originalScale,
-                                     std::optional<double> paperLongEdge = std::nullopt, bool followPageEdges = true,
+GeometricRenderResult renderGeometry(const PixelLease &source, const Corners &normalizedCorners, double originalScale,
+                                     std::optional<double> paperLongEdge = std::nullopt, bool simpleDewarp = true,
                                      std::optional<RenderSourceRegion> region = std::nullopt);
 // Same render, writing RGBA8 straight into caller storage. The allocator runs only after coverage
 // checks pass, so a rejected render leaves the caller's storage untouched.
-GeometricRenderInfo renderGeometry(const PixelLease &source, const Quad &normalizedQuad, double originalScale,
-                                   std::optional<double> paperLongEdge, bool followPageEdges,
+GeometricRenderInfo renderGeometry(const PixelLease &source, const Corners &normalizedCorners, double originalScale,
+                                   std::optional<double> paperLongEdge, bool simpleDewarp,
                                    const PixelAllocator &allocate,
                                    std::optional<RenderSourceRegion> region = std::nullopt);
 } // namespace document_scanner

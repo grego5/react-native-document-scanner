@@ -4,7 +4,7 @@ import CoreGraphics
 
 struct CornerPrediction: Sendable, Equatable {
   // Normalized upright TL/TR/BR/BL. Scores are returned unchanged; live policy owns gating.
-  let quad: [Double]?
+  let corners: [Double]?
   let score: Double
   let preprocessingMs: Double
   let inferenceMs: Double
@@ -42,7 +42,7 @@ private final class NativeCornerRuntime: CornerRuntime {
   init(data: Data) throws { runtime = try ScannerCornerRuntime(model: data) }
   func analyzeLive(_ buffer: CVPixelBuffer, orientation: UInt8, crop: CGRect) throws -> CornerPrediction {
     let value = try runtime.analyze(buffer, orientation: orientation, crop: crop)
-    return CornerPrediction(quad: value.quad?.map(\.doubleValue), score: value.score,
+    return CornerPrediction(corners: value.corners?.map(\.doubleValue), score: value.score,
                             preprocessingMs: value.preprocessingMs, inferenceMs: value.inferenceMs)
   }
   func analyze(_ source: SourcePixelLease, seed: [Double]?) throws -> CornerPrediction {
@@ -50,7 +50,7 @@ private final class NativeCornerRuntime: CornerRuntime {
       let value = try runtime.analyzeOwner(source, bytes: bytes.baseAddress!, byteCount: UInt(bytes.count),
         width: UInt32(source.width), height: UInt32(source.height), rowStride: UInt(source.rowStride),
         seed: seed?.map { NSNumber(value: $0) })
-      return CornerPrediction(quad: value.quad?.map(\.doubleValue), score: value.score,
+      return CornerPrediction(corners: value.corners?.map(\.doubleValue), score: value.score,
                               preprocessingMs: value.preprocessingMs, inferenceMs: value.inferenceMs)
     }
   }

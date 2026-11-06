@@ -14,7 +14,7 @@ final class SessionPageProcessing: ScanSessionActions {
     self.inference = inference
   }
 
-  func prepareAnalysis(_ source: SessionResources.Lease, liveQuad: QuadCoordinates?,
+  func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
     { [self] in
       guard let selection else { throw ScannerCodeError(code: .modelLoadFailed) }
@@ -22,8 +22,8 @@ final class SessionPageProcessing: ScanSessionActions {
       let pixels = try store.acquire(source.url)
       let lease = model ?? inference.acquire()
       model = lease
-      let result = try lease.analyze(pixels, seed: liveQuad, selection: selection)
-      let candidate = result.prediction.quad.flatMap { $0.count == 8 ? $0 : nil }
+      let result = try lease.analyze(pixels, seed: liveCorners, selection: selection)
+      let candidate = result.prediction.corners.flatMap { $0.count == 8 ? $0 : nil }
       return AnalysisValue(width: pixels.width, height: pixels.height,
                            duration: Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000,
                            candidate: candidate, score: result.prediction.score)
@@ -37,7 +37,7 @@ final class SessionPageProcessing: ScanSessionActions {
     defer { destination.close() }
     do {
       let pixels = try store.acquire(source.url)
-      let rendered = try DocumentRenderService.render(pixels, quad: SessionQuad.quad(key.quad), options: options,
+      let rendered = try DocumentRenderService.render(pixels, corners: SessionCorners.corners(key.corners), options: options,
         image: destination.image.url, thumbnail: destination.thumbnail.url)
       return ScanPage.Artifact(image: try destination.image.commit(), thumbnail: try destination.thumbnail.commit(),
                                width: rendered.width, height: rendered.height,

@@ -28,10 +28,10 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 
-#include "DocumentQuad.hpp"
+#include "DocumentCorners.hpp"
 
 namespace margelo::nitro::documentscanner {
 
@@ -40,12 +40,12 @@ namespace margelo::nitro::documentscanner {
    */
   struct DocumentCandidate final {
   public:
-    DocumentQuad quad     SWIFT_PRIVATE;
+    DocumentCorners corners     SWIFT_PRIVATE;
     double score     SWIFT_PRIVATE;
 
   public:
     DocumentCandidate() = default;
-    explicit DocumentCandidate(DocumentQuad quad, double score): quad(quad), score(score) {}
+    explicit DocumentCandidate(DocumentCorners corners, double score): corners(corners), score(score) {}
 
   public:
     #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
@@ -63,13 +63,13 @@ namespace margelo::nitro {
     static inline margelo::nitro::documentscanner::DocumentCandidate fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::documentscanner::DocumentCandidate(
-        JSIConverter<margelo::nitro::documentscanner::DocumentQuad>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "quad"))),
+        JSIConverter<margelo::nitro::documentscanner::DocumentCorners>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "corners"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "score")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::documentscanner::DocumentCandidate& arg) {
       jsi::Object obj(runtime);
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "quad"), JSIConverter<margelo::nitro::documentscanner::DocumentQuad>::toJSI(runtime, arg.quad));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "corners"), JSIConverter<margelo::nitro::documentscanner::DocumentCorners>::toJSI(runtime, arg.corners));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "score"), JSIConverter<double>::toJSI(runtime, arg.score));
       return obj;
     }
@@ -81,7 +81,7 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
-      if (!JSIConverter<margelo::nitro::documentscanner::DocumentQuad>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "quad")))) return false;
+      if (!JSIConverter<margelo::nitro::documentscanner::DocumentCorners>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "corners")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "score")))) return false;
       return true;
     }

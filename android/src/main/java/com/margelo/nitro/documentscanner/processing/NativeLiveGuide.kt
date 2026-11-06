@@ -15,7 +15,7 @@ internal class NativeLiveGuide : AutoCloseable {
   @DoNotStrip private external fun initHybrid(): HybridData
   @DoNotStrip external fun configureNative(area: Double, hold: Long)
   @DoNotStrip external fun resetNative()
-  @DoNotStrip external fun updateNative(quad: DoubleArray?, width: Int, height: Int, sensor: Long, arrival: Long,
+  @DoNotStrip external fun updateNative(corners: DoubleArray?, width: Int, height: Int, sensor: Long, arrival: Long,
     retain: Boolean, metadata: LongArray): DoubleArray?
   companion object {
     init { ReactNativeDocumentScannerOnLoad.initializeNative() }

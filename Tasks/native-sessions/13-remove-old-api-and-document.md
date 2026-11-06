@@ -4,7 +4,7 @@
 
 Status: Implemented — build-free verification passed; native/device verification pending
 Complexity: Medium
-Dependencies: [01](01-fix-ink-sharpness.md), [02](02-centralize-quad-validity.md), [03](03-introduce-keyed-queue.md), [04](04-own-session-resources.md), [05](05-own-page-revisions.md), [06](06-expose-native-session.md), [07](07-publish-batched-snapshots.md), [08](08-capture-session-pages.md), [09](09-bind-scanner-views.md), [10](10-add-page-thumbnail.md), [11](11-export-page-snapshots.md), [12](12-migrate-example-session.md)
+Dependencies: [01](01-fix-ink-sharpness.md), [02](02-centralize-corner-validity.md), [03](03-introduce-keyed-queue.md), [04](04-own-session-resources.md), [05](05-own-page-revisions.md), [06](06-expose-native-session.md), [07](07-publish-batched-snapshots.md), [08](08-capture-session-pages.md), [09](09-bind-scanner-views.md), [10](10-add-page-thumbnail.md), [11](11-export-page-snapshots.md), [12](12-migrate-example-session.md)
 
 ## Objective
 

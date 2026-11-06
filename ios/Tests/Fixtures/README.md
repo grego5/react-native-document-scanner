@@ -3,7 +3,7 @@
 These tiny synthetic TFLite v3 FlatBuffers contain an unused input and a constant
 nine-float output. They contain no trained weights or private images.
 
-- `rectangular`: float32 [1,192,320,3] -> [1,9], quad (.1,.2)/(.8,.2)/(.8,.9)/(.1,.9), score .1.
+- `rectangular`: float32 [1,192,320,3] -> [1,9], corners (.1,.2)/(.8,.2)/(.8,.9)/(.1,.9), score .1.
 - `bad-output`: [1,8] output.
 - `two-inputs`: two input indices.
 - `byte-input`: uint8 input instead of float32.

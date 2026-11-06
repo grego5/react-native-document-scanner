@@ -21,7 +21,7 @@ internal enum class StabilityBreak { MOVING, SMEARED, TRACKING_LOST, NO_DOCUMENT
  * unbroken, but does not count toward it. Flow without enough texture falls back to the frame's gyroscope speed. Main thread.
  */
 internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
-  private var reference: DocumentQuad? = null
+  private var reference: DocumentCorners? = null
   /** Frames in the current sequence. */
   var count = 0
     private set
@@ -71,10 +71,10 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
       if (blur == null || blur > blurLimit) return restart(StabilityBreak.SMEARED)
     }
     if (requireDocument) {
-      val quad = frame.guide ?: return restart(StabilityBreak.NO_DOCUMENT)
+      val corners = frame.guide ?: return restart(StabilityBreak.NO_DOCUMENT)
       // The page moved over the sequence though no single step was fast: this frame begins a new one.
-      reference?.let { if (drift(it, quad) != null) restart(StabilityBreak.DOCUMENT_MOVED) }
-      if (reference == null) reference = quad
+      reference?.let { if (drift(it, corners) != null) restart(StabilityBreak.DOCUMENT_MOVED) }
+      if (reference == null) reference = corners
     }
     if (smearUnknown) {
       if (count > 0) chainSensorNs = frame.sensorNs
@@ -108,7 +108,7 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
     const val MAX_SHAPE = 0.02
 
     /** Which of position, scale or shape [to] moved beyond its limit from [from]; null while it holds. */
-    fun drift(from: DocumentQuad, to: DocumentQuad): String? {
+    fun drift(from: DocumentCorners, to: DocumentCorners): String? {
       val a = corners(from)
       val b = corners(to)
       val (ax, ay) = centroid(a)
@@ -126,7 +126,7 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
       return if (shape > MAX_SHAPE) "shape" else null
     }
 
-    private fun corners(q: DocumentQuad) = doubleArrayOf(
+    private fun corners(q: DocumentCorners) = doubleArrayOf(
       q.topLeft.x, q.topLeft.y, q.topRight.x, q.topRight.y, q.bottomRight.x, q.bottomRight.y, q.bottomLeft.x, q.bottomLeft.y,
     )
 
@@ -215,7 +215,7 @@ internal data class CaptureState(
  * deadline, and once it settles they wait up to [settledFrameWaitMs] for a frame exposed since, so the page it brought
  * into focus can be seen. The focus controller's own timeout bounds a scan.
  */
-internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQualityGate: Boolean = false,
+internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLowQualityControl: Boolean = false,
   private val maxScans: Int = 2, private val settledFrameWaitMs: Long = 500) {
   private var focusDeadlineMs = 0L
   private var steadyDeadlineMs = 0L
@@ -244,7 +244,7 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipQu
     lastOwnScan = ownScan
     // Per-shot override: lifecycle and permission checks remain in the camera before gate evaluation. Only a focus scan
     // in progress is waited for, and nothing rejects.
-    if (skipQualityGate) {
+    if (skipLowQualityControl) {
       val until = captureState.focusingUntilMs?.takeIf { captureState.focusCheckEnabled && !captureState.focused && it > now }
       return if (until != null) CaptureDecision.Wait(WaitReason.FOCUS, until) else CaptureDecision.Shoot
     }

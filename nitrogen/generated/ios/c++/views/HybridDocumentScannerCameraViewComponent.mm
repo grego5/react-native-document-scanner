@@ -104,17 +104,23 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.session.hasSameValue(oldViewProps->session)) {
       swiftPart.setSession(newViewProps.session.get());
     }
-    // renderOptions: struct
+    // imageCorrection: struct
     if (oldViewProps == nullptr
-          ? newViewProps.renderOptions.isProvided()
-          : !newViewProps.renderOptions.hasSameValue(oldViewProps->renderOptions)) {
-      swiftPart.setRenderOptions(newViewProps.renderOptions.get());
+          ? newViewProps.imageCorrection.isProvided()
+          : !newViewProps.imageCorrection.hasSameValue(oldViewProps->imageCorrection)) {
+      swiftPart.setImageCorrection(newViewProps.imageCorrection.get());
     }
-    // quadTensorModel: optional
+    // outputOptions: struct
     if (oldViewProps == nullptr
-          ? newViewProps.quadTensorModel.isProvided()
-          : !newViewProps.quadTensorModel.hasSameValue(oldViewProps->quadTensorModel)) {
-      swiftPart.setQuadTensorModel(newViewProps.quadTensorModel.get());
+          ? newViewProps.outputOptions.isProvided()
+          : !newViewProps.outputOptions.hasSameValue(oldViewProps->outputOptions)) {
+      swiftPart.setOutputOptions(newViewProps.outputOptions.get());
+    }
+    // cornerDetectionModel: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.cornerDetectionModel.isProvided()
+          : !newViewProps.cornerDetectionModel.hasSameValue(oldViewProps->cornerDetectionModel)) {
+      swiftPart.setCornerDetectionModel(newViewProps.cornerDetectionModel.get());
     }
     // onError: optional
     if (oldViewProps == nullptr
@@ -122,23 +128,29 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.onError.hasSameValue(oldViewProps->onError)) {
       swiftPart.setOnError(newViewProps.onError.get());
     }
-    // mode: optional
+    // active: optional
     if (oldViewProps == nullptr
-          ? newViewProps.mode.isProvided()
-          : !newViewProps.mode.hasSameValue(oldViewProps->mode)) {
-      swiftPart.setMode(newViewProps.mode.get());
+          ? newViewProps.active.isProvided()
+          : !newViewProps.active.hasSameValue(oldViewProps->active)) {
+      swiftPart.setActive(newViewProps.active.get());
     }
-    // guide: optional
+    // guideLiveCorners: optional
     if (oldViewProps == nullptr
-          ? newViewProps.guide.isProvided()
-          : !newViewProps.guide.hasSameValue(oldViewProps->guide)) {
-      swiftPart.setGuide(newViewProps.guide.get());
+          ? newViewProps.guideLiveCorners.isProvided()
+          : !newViewProps.guideLiveCorners.hasSameValue(oldViewProps->guideLiveCorners)) {
+      swiftPart.setGuideLiveCorners(newViewProps.guideLiveCorners.get());
     }
-    // adaptiveDetection: optional
+    // autoCrop: optional
     if (oldViewProps == nullptr
-          ? newViewProps.adaptiveDetection.isProvided()
-          : !newViewProps.adaptiveDetection.hasSameValue(oldViewProps->adaptiveDetection)) {
-      swiftPart.setAdaptiveDetection(newViewProps.adaptiveDetection.get());
+          ? newViewProps.autoCrop.isProvided()
+          : !newViewProps.autoCrop.hasSameValue(oldViewProps->autoCrop)) {
+      swiftPart.setAutoCrop(newViewProps.autoCrop.get());
+    }
+    // inferenceThrottling: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.inferenceThrottling.isProvided()
+          : !newViewProps.inferenceThrottling.hasSameValue(oldViewProps->inferenceThrottling)) {
+      swiftPart.setInferenceThrottling(newViewProps.inferenceThrottling.get());
     }
     // minCornerScore: optional
     if (oldViewProps == nullptr
@@ -146,17 +158,11 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.minCornerScore.hasSameValue(oldViewProps->minCornerScore)) {
       swiftPart.setMinCornerScore(newViewProps.minCornerScore.get());
     }
-    // qualityGate: optional
+    // lowQualityControl: struct
     if (oldViewProps == nullptr
-          ? newViewProps.qualityGate.isProvided()
-          : !newViewProps.qualityGate.hasSameValue(oldViewProps->qualityGate)) {
-      swiftPart.setQualityGate(newViewProps.qualityGate.get());
-    }
-    // qualityGateConfig: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.qualityGateConfig.isProvided()
-          : !newViewProps.qualityGateConfig.hasSameValue(oldViewProps->qualityGateConfig)) {
-      swiftPart.setQualityGateConfig(newViewProps.qualityGateConfig.get());
+          ? newViewProps.lowQualityControl.isProvided()
+          : !newViewProps.lowQualityControl.hasSameValue(oldViewProps->lowQualityControl)) {
+      swiftPart.setLowQualityControl(newViewProps.lowQualityControl.get());
     }
     // tapToFocus: optional
     if (oldViewProps == nullptr
@@ -194,11 +200,11 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.captureMode.hasSameValue(oldViewProps->captureMode)) {
       swiftPart.setCaptureMode(newViewProps.captureMode.get());
     }
-    // jpegQuality: optional
+    // highResolutionPhoto: optional
     if (oldViewProps == nullptr
-          ? newViewProps.jpegQuality.isProvided()
-          : !newViewProps.jpegQuality.hasSameValue(oldViewProps->jpegQuality)) {
-      swiftPart.setJpegQuality(newViewProps.jpegQuality.get());
+          ? newViewProps.highResolutionPhoto.isProvided()
+          : !newViewProps.highResolutionPhoto.hasSameValue(oldViewProps->highResolutionPhoto)) {
+      swiftPart.setHighResolutionPhoto(newViewProps.highResolutionPhoto.get());
     }
     // guideTransitionDuration: optional
     if (oldViewProps == nullptr
@@ -206,17 +212,17 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.guideTransitionDuration.hasSameValue(oldViewProps->guideTransitionDuration)) {
       swiftPart.setGuideTransitionDuration(newViewProps.guideTransitionDuration.get());
     }
-    // analysisWidth: optional
+    // analysisFrameWidth: optional
     if (oldViewProps == nullptr
-          ? newViewProps.analysisWidth.isProvided()
-          : !newViewProps.analysisWidth.hasSameValue(oldViewProps->analysisWidth)) {
-      swiftPart.setAnalysisWidth(newViewProps.analysisWidth.get());
+          ? newViewProps.analysisFrameWidth.isProvided()
+          : !newViewProps.analysisFrameWidth.hasSameValue(oldViewProps->analysisFrameWidth)) {
+      swiftPart.setAnalysisFrameWidth(newViewProps.analysisFrameWidth.get());
     }
-    // squareFrame: optional
+    // squareAspectRatio: optional
     if (oldViewProps == nullptr
-          ? newViewProps.squareFrame.isProvided()
-          : !newViewProps.squareFrame.hasSameValue(oldViewProps->squareFrame)) {
-      swiftPart.setSquareFrame(newViewProps.squareFrame.get());
+          ? newViewProps.squareAspectRatio.isProvided()
+          : !newViewProps.squareAspectRatio.hasSameValue(oldViewProps->squareAspectRatio)) {
+      swiftPart.setSquareAspectRatio(newViewProps.squareAspectRatio.get());
     }
     // showStats: optional
     if (oldViewProps == nullptr

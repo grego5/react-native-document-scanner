@@ -14,22 +14,20 @@ namespace ReactNativeDocumentScanner { class HybridDocumentScannerCameraViewSpec
 
 // Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
 namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
-// Forward declaration of `DocumentRenderOptions` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
+// Forward declaration of `ImageCorrectionOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageCorrectionOptions; }
 // Forward declaration of `DocumentFilter` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
+// Forward declaration of `ImageOutputOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageOutputOptions; }
 // Forward declaration of `DocumentImageFormat` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentImageFormat; }
-// Forward declaration of `PaperSize` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct PaperSize; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
-// Forward declaration of `CameraMode` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class CameraMode; }
-// Forward declaration of `QualityGateConfig` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct QualityGateConfig; }
+// Forward declaration of `LowQualityControl` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct LowQualityControl; }
 // Forward declaration of `TorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TorchMode; }
 // Forward declaration of `CaptureMode` to properly resolve imports.
@@ -46,22 +44,39 @@ namespace margelo::nitro::documentscanner { enum class DocumentState; }
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
 // Forward declaration of `CaptureWaitReason` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureWaitReason; }
+// Forward declaration of `CameraCaptureResult` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
+// Forward declaration of `ScanSessionSnapshot` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ScanSessionSnapshot; }
+// Forward declaration of `ScanPageMetadata` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ScanPageMetadata; }
+// Forward declaration of `DocumentAnalysis` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentAnalysis; }
+// Forward declaration of `DocumentCandidate` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCandidate; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
+// Forward declaration of `DocumentPoint` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentPoint; }
+// Forward declaration of `DocumentRenderOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
+// Forward declaration of `PaperSize` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct PaperSize; }
 // Forward declaration of `TakePhotoOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 
 #include <memory>
 #include "HybridScanSessionSpec.hpp"
-#include "DocumentRenderOptions.hpp"
+#include "ImageCorrectionOptions.hpp"
 #include <optional>
 #include "DocumentFilter.hpp"
+#include "ImageOutputOptions.hpp"
 #include "DocumentImageFormat.hpp"
-#include "PaperSize.hpp"
 #include <string>
 #include "ScannerFailure.hpp"
 #include <functional>
 #include "ScannerErrorCode.hpp"
-#include "CameraMode.hpp"
-#include "QualityGateConfig.hpp"
+#include "LowQualityControl.hpp"
 #include "TorchMode.hpp"
 #include "CaptureMode.hpp"
 #include "CameraState.hpp"
@@ -70,8 +85,19 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "DocumentState.hpp"
 #include "CaptureStage.hpp"
 #include "CaptureWaitReason.hpp"
+#include "CameraCaptureResult.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
+#include "ScanSessionSnapshot.hpp"
+#include <vector>
+#include "ScanPageMetadata.hpp"
+#include <unordered_map>
+#include "DocumentAnalysis.hpp"
+#include "DocumentCandidate.hpp"
+#include "DocumentCorners.hpp"
+#include "DocumentPoint.hpp"
+#include "DocumentRenderOptions.hpp"
+#include "PaperSize.hpp"
 #include "TakePhotoOptions.hpp"
 
 #include "ReactNativeDocumentScanner-Swift-Cxx-Umbrella.hpp"
@@ -127,18 +153,24 @@ namespace margelo::nitro::documentscanner {
     inline void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) noexcept override {
       _swiftPart.setSession(session);
     }
-    inline DocumentRenderOptions getRenderOptions() noexcept override {
-      return _swiftPart.getRenderOptions();
+    inline ImageCorrectionOptions getImageCorrection() noexcept override {
+      return _swiftPart.getImageCorrection();
     }
-    inline void setRenderOptions(const DocumentRenderOptions& renderOptions) noexcept override {
-      _swiftPart.setRenderOptions(std::forward<decltype(renderOptions)>(renderOptions));
+    inline void setImageCorrection(const ImageCorrectionOptions& imageCorrection) noexcept override {
+      _swiftPart.setImageCorrection(std::forward<decltype(imageCorrection)>(imageCorrection));
     }
-    inline std::optional<std::string> getQuadTensorModel() noexcept override {
-      auto __result = _swiftPart.getQuadTensorModel();
+    inline ImageOutputOptions getOutputOptions() noexcept override {
+      return _swiftPart.getOutputOptions();
+    }
+    inline void setOutputOptions(const ImageOutputOptions& outputOptions) noexcept override {
+      _swiftPart.setOutputOptions(std::forward<decltype(outputOptions)>(outputOptions));
+    }
+    inline std::optional<std::string> getCornerDetectionModel() noexcept override {
+      auto __result = _swiftPart.getCornerDetectionModel();
       return __result;
     }
-    inline void setQuadTensorModel(const std::optional<std::string>& quadTensorModel) noexcept override {
-      _swiftPart.setQuadTensorModel(quadTensorModel);
+    inline void setCornerDetectionModel(const std::optional<std::string>& cornerDetectionModel) noexcept override {
+      _swiftPart.setCornerDetectionModel(cornerDetectionModel);
     }
     inline std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() noexcept override {
       auto __result = _swiftPart.getOnError();
@@ -147,26 +179,33 @@ namespace margelo::nitro::documentscanner {
     inline void setOnError(const std::optional<std::function<void(const ScannerFailure& /* error */)>>& onError) noexcept override {
       _swiftPart.setOnError(onError);
     }
-    inline std::optional<CameraMode> getMode() noexcept override {
-      auto __result = _swiftPart.getMode();
+    inline std::optional<bool> getActive() noexcept override {
+      auto __result = _swiftPart.getActive();
       return __result;
     }
-    inline void setMode(std::optional<CameraMode> mode) noexcept override {
-      _swiftPart.setMode(mode);
+    inline void setActive(std::optional<bool> active) noexcept override {
+      _swiftPart.setActive(active);
     }
-    inline std::optional<bool> getGuide() noexcept override {
-      auto __result = _swiftPart.getGuide();
+    inline std::optional<bool> getGuideLiveCorners() noexcept override {
+      auto __result = _swiftPart.getGuideLiveCorners();
       return __result;
     }
-    inline void setGuide(std::optional<bool> guide) noexcept override {
-      _swiftPart.setGuide(guide);
+    inline void setGuideLiveCorners(std::optional<bool> guideLiveCorners) noexcept override {
+      _swiftPart.setGuideLiveCorners(guideLiveCorners);
     }
-    inline std::optional<bool> getAdaptiveDetection() noexcept override {
-      auto __result = _swiftPart.getAdaptiveDetection();
+    inline std::optional<bool> getAutoCrop() noexcept override {
+      auto __result = _swiftPart.getAutoCrop();
       return __result;
     }
-    inline void setAdaptiveDetection(std::optional<bool> adaptiveDetection) noexcept override {
-      _swiftPart.setAdaptiveDetection(adaptiveDetection);
+    inline void setAutoCrop(std::optional<bool> autoCrop) noexcept override {
+      _swiftPart.setAutoCrop(autoCrop);
+    }
+    inline std::optional<bool> getInferenceThrottling() noexcept override {
+      auto __result = _swiftPart.getInferenceThrottling();
+      return __result;
+    }
+    inline void setInferenceThrottling(std::optional<bool> inferenceThrottling) noexcept override {
+      _swiftPart.setInferenceThrottling(inferenceThrottling);
     }
     inline std::optional<double> getMinCornerScore() noexcept override {
       auto __result = _swiftPart.getMinCornerScore();
@@ -175,19 +214,11 @@ namespace margelo::nitro::documentscanner {
     inline void setMinCornerScore(std::optional<double> minCornerScore) noexcept override {
       _swiftPart.setMinCornerScore(minCornerScore);
     }
-    inline std::optional<bool> getQualityGate() noexcept override {
-      auto __result = _swiftPart.getQualityGate();
-      return __result;
+    inline LowQualityControl getLowQualityControl() noexcept override {
+      return _swiftPart.getLowQualityControl();
     }
-    inline void setQualityGate(std::optional<bool> qualityGate) noexcept override {
-      _swiftPart.setQualityGate(qualityGate);
-    }
-    inline std::optional<QualityGateConfig> getQualityGateConfig() noexcept override {
-      auto __result = _swiftPart.getQualityGateConfig();
-      return __result;
-    }
-    inline void setQualityGateConfig(const std::optional<QualityGateConfig>& qualityGateConfig) noexcept override {
-      _swiftPart.setQualityGateConfig(qualityGateConfig);
+    inline void setLowQualityControl(const LowQualityControl& lowQualityControl) noexcept override {
+      _swiftPart.setLowQualityControl(std::forward<decltype(lowQualityControl)>(lowQualityControl));
     }
     inline std::optional<bool> getTapToFocus() noexcept override {
       auto __result = _swiftPart.getTapToFocus();
@@ -231,12 +262,12 @@ namespace margelo::nitro::documentscanner {
     inline void setCaptureMode(std::optional<CaptureMode> captureMode) noexcept override {
       _swiftPart.setCaptureMode(captureMode);
     }
-    inline std::optional<double> getJpegQuality() noexcept override {
-      auto __result = _swiftPart.getJpegQuality();
+    inline std::optional<bool> getHighResolutionPhoto() noexcept override {
+      auto __result = _swiftPart.getHighResolutionPhoto();
       return __result;
     }
-    inline void setJpegQuality(std::optional<double> jpegQuality) noexcept override {
-      _swiftPart.setJpegQuality(jpegQuality);
+    inline void setHighResolutionPhoto(std::optional<bool> highResolutionPhoto) noexcept override {
+      _swiftPart.setHighResolutionPhoto(highResolutionPhoto);
     }
     inline std::optional<double> getGuideTransitionDuration() noexcept override {
       auto __result = _swiftPart.getGuideTransitionDuration();
@@ -245,19 +276,19 @@ namespace margelo::nitro::documentscanner {
     inline void setGuideTransitionDuration(std::optional<double> guideTransitionDuration) noexcept override {
       _swiftPart.setGuideTransitionDuration(guideTransitionDuration);
     }
-    inline std::optional<double> getAnalysisWidth() noexcept override {
-      auto __result = _swiftPart.getAnalysisWidth();
+    inline std::optional<double> getAnalysisFrameWidth() noexcept override {
+      auto __result = _swiftPart.getAnalysisFrameWidth();
       return __result;
     }
-    inline void setAnalysisWidth(std::optional<double> analysisWidth) noexcept override {
-      _swiftPart.setAnalysisWidth(analysisWidth);
+    inline void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) noexcept override {
+      _swiftPart.setAnalysisFrameWidth(analysisFrameWidth);
     }
-    inline std::optional<bool> getSquareFrame() noexcept override {
-      auto __result = _swiftPart.getSquareFrame();
+    inline std::optional<bool> getSquareAspectRatio() noexcept override {
+      auto __result = _swiftPart.getSquareAspectRatio();
       return __result;
     }
-    inline void setSquareFrame(std::optional<bool> squareFrame) noexcept override {
-      _swiftPart.setSquareFrame(squareFrame);
+    inline void setSquareAspectRatio(std::optional<bool> squareAspectRatio) noexcept override {
+      _swiftPart.setSquareAspectRatio(squareAspectRatio);
     }
     inline std::optional<bool> getShowStats() noexcept override {
       auto __result = _swiftPart.getShowStats();
@@ -325,7 +356,7 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
-    inline std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override {
+    inline std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override {
       auto __result = _swiftPart.takePhotoResult(options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());

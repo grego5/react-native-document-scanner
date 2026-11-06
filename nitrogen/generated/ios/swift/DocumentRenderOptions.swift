@@ -18,7 +18,7 @@ public extension DocumentRenderOptions {
   /**
    * Create a new instance of `DocumentRenderOptions`.
    */
-  init(removeShadows: Bool?, jpegQuality: Double?, filter: DocumentFilter?, format: DocumentImageFormat?, paperSize: PaperSize?, dpi: Double?, followPageEdges: Bool?) {
+  init(removeShadows: Bool?, jpegQuality: Double?, filter: DocumentFilter?, format: DocumentImageFormat?, paperSize: PaperSize?, dpi: Double?, simpleDewarp: Bool?) {
     self.init({ () -> bridge.std__optional_bool_ in
       if let __unwrappedValue = removeShadows {
         return bridge.create_std__optional_bool_(__unwrappedValue)
@@ -56,7 +56,7 @@ public extension DocumentRenderOptions {
         return .init()
       }
     }(), { () -> bridge.std__optional_bool_ in
-      if let __unwrappedValue = followPageEdges {
+      if let __unwrappedValue = simpleDewarp {
         return bridge.create_std__optional_bool_(__unwrappedValue)
       } else {
         return .init()
@@ -116,10 +116,10 @@ public extension DocumentRenderOptions {
   }
   
   @inline(__always)
-  var followPageEdges: Bool? {
+  var simpleDewarp: Bool? {
     return { () -> Bool? in
-      if bridge.has_value_std__optional_bool_(self.__followPageEdges) {
-        let __unwrapped = bridge.get_std__optional_bool_(self.__followPageEdges)
+      if bridge.has_value_std__optional_bool_(self.__simpleDewarp) {
+        let __unwrapped = bridge.get_std__optional_bool_(self.__simpleDewarp)
         return __unwrapped
       } else {
         return nil

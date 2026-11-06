@@ -42,9 +42,9 @@ class CameraValidationActivity : ComponentActivity() {
     camera = HybridDocumentScannerCameraView(ThemedReactContext(reactContext, this, "CameraValidation", -1))
     camera.session = session
     // Tests that exercise the quality gate turn it on; the rest capture and analyze ungated.
-    camera.quadTensorModel = intent.getStringExtra("quadTensorModel") ?: "asset:///doccornernet/model.tflite"
-    camera.qualityGate = false
-    camera.mode = if (intent.getBooleanExtra("cameraActive", true)) CameraMode.SCANNER else CameraMode.OFF
+    camera.cornerDetectionModel = intent.getStringExtra("cornerDetectionModel") ?: "asset:///doccornernet/model.tflite"
+    camera.lowQualityControl = LowQualityControl(false, null, null)
+    camera.active = intent.getBooleanExtra("cameraActive", true)
     camera.afterUpdate()
     val root = FrameLayout(this)
     root.addView(camera.view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -107,7 +107,7 @@ class CameraValidationActivity : ComponentActivity() {
     captureButton.text = text
   }
 
-  /** Main-thread-only trace label and one-shot Stop control for live quad recordings. */
+  /** Main-thread-only trace label and one-shot Stop control for live corners recordings. */
   fun showTraceControls(label: String, onStop: () -> Unit) {
     traceBar.removeAllViews()
     traceBar.addView(TextView(this).apply {

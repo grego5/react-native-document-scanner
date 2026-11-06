@@ -1,5 +1,5 @@
 import type { HybridObject } from 'react-native-nitro-modules'
-import type { DocumentAnalysis, DocumentFilter, DocumentQuad, DocumentRenderOptions, ImageFit } from './DocumentScannerProcessor.nitro'
+import type { DocumentAnalysis, DocumentFilter, DocumentCorners, DocumentRenderOptions, ImageFit } from './DocumentScannerProcessor.nitro'
 import type { ScannerFailure } from './ScannerFailure'
 
 /** PDF placement/encoding options; source pages are supplied as session IDs separately. */
@@ -23,7 +23,7 @@ export interface ScanPageMetadata {
   readonly rendering: boolean
   readonly ready: boolean
   readonly analysis?: DocumentAnalysis
-  readonly quad: DocumentQuad
+  readonly corners: DocumentCorners
   readonly options: DocumentRenderOptions
   readonly analysisFailure?: ScannerFailure
   readonly renderFailure?: ScannerFailure
@@ -58,7 +58,7 @@ export interface ScanSession extends HybridObject<{ ios: 'swift'; android: 'kotl
   createPdfResult(pageIds: string[] | undefined, options: SessionPdfOptions): Promise<string | ScannerFailure>
   exportImagesResult(pageIds: string[] | undefined, outputDirectory: string): Promise<string[] | ScannerFailure>
   saveCaptureSampleResult(pageId: string): Promise<string | ScannerFailure>
-  setDocumentCropResult(pageId: string, quad: DocumentQuad): Promise<boolean | ScannerFailure>
+  setDocumentCropResult(pageId: string, corners: DocumentCorners): Promise<boolean | ScannerFailure>
   setFilterResult(pageId: string, filter: DocumentFilter): Promise<boolean | ScannerFailure>
   setShadowRemovalResult(pageId: string, enabled: boolean): Promise<boolean | ScannerFailure>
   setPageOrderResult(pageIds: string[]): Promise<boolean | ScannerFailure>

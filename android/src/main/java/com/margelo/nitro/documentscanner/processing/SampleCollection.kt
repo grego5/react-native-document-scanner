@@ -11,7 +11,7 @@ import com.margelo.nitro.documentscanner.DocumentAnalysis
 import com.margelo.nitro.documentscanner.DocumentCandidate
 import com.margelo.nitro.documentscanner.SessionResources
 import com.margelo.nitro.documentscanner.requireInput
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.InvalidInputException
 import com.margelo.nitro.documentscanner.SampleFolder
 import com.margelo.nitro.documentscanner.SampleFolders
@@ -33,7 +33,7 @@ import org.json.JSONObject
 private class SamplePhotoAnalysis(
   val durationMs: Double,
   val candidate: DocumentCandidate?,
-  val model: QuadModelStore.Selection,
+  val model: CornerModelStore.Selection,
 )
 
 /** A photo the Camera took while a folder was picked, kept until it is forgotten or pushed out by newer ones. */
@@ -91,7 +91,7 @@ internal class SampleTicket internal constructor(internal val generation: Long, 
  * Sample collection: whether it is on, and the samples written only on request into the top of the picked
  * [SampleFolders] tree. Every change of state goes through [transition]: turning collection off, by a stop, forgetting
  * the folder or finding its grant revoked, forgets pending photos and voids those in flight. Each image is written as
- * `<shutter ms>-<long edge>.png` beside its `.json`, one `tools/label-samples` entry whose quads are normalized to the
+ * `<shutter ms>-<long edge>.png` beside its `.json`, one `tools/label-samples` entry whose corners are normalized to the
  * image, with the model's prediction and how it was made. The last [REMEMBERED] photos taken while collection is on
  * keep their shutter time. Storage work runs in order on one thread, since a picked tree can belong to a slow or
  * remote provider.
@@ -211,21 +211,21 @@ internal object SampleCollection {
 
   /** ID admission has already pinned this original under the session state lock. */
   fun saveCapture(context: Context, lease: SessionResources.Lease, worker: Executor = executor,
-    analysis: DocumentAnalysis? = null, model: QuadModelStore.Selection? = null, liveQuad: DocumentQuad? = null): Promise<String> =
+    analysis: DocumentAnalysis? = null, model: CornerModelStore.Selection? = null, liveCorners: DocumentCorners? = null): Promise<String> =
     try {
       requireInput(analysis != null && model != null) { "Photo analysis is not available for this sample." }
       val provenance = SamplePhotoAnalysis(analysis!!.duration, analysis.candidate, model!!)
       val capture = synchronized(pending) { pending[lease.file.name] }
       val id = capture?.shutterMs ?: System.currentTimeMillis()
       submit(context, Closeable { lease.close() }, worker) { folder ->
-        writePhotoInput(context, folder, Uri.fromFile(lease.file).toString(), id, liveQuad, provenance,
+        writePhotoInput(context, folder, Uri.fromFile(lease.file).toString(), id, liveCorners, provenance,
           capture?.savedIn(folder.tree))
       }
     }
     catch (error: Throwable) { lease.close(); Promise<String>().also { it.reject(error) } }
 
   /** Recreate the lossless upright bitmap passed to photo inference, with the model's prediction on it. */
-  private fun writePhotoInput(context: Context, folder: FolderWriter, uri: String, id: Long, seed: DocumentQuad?,
+  private fun writePhotoInput(context: Context, folder: FolderWriter, uri: String, id: Long, seed: DocumentCorners?,
     analysis: SamplePhotoAnalysis, saved: MutableMap<String, Uri>?): String =
     SourceImageLoader.inspect(uri).let { header ->
       val input = PhotoAnalysis.loadInput(header, seed)
@@ -236,11 +236,11 @@ internal object SampleCollection {
         val stem = "$id-${maxOf(region.width, region.height)}"
         folder.write("$stem.png", "image/png", saved) { it.write(png) }
         val prediction = analysis.candidate
-        val mappedPrediction = prediction?.quad?.let { crop.fromPhoto(it, header.uprightWidth, header.uprightHeight) }
+        val mappedPrediction = prediction?.corners?.let { crop.fromPhoto(it, header.uprightWidth, header.uprightHeight) }
         val info = entry(context, "$stem.png", hex(MessageDigest.getInstance("SHA-256").digest(png)),
           region.width, region.height, mappedPrediction, analysis.model)
           .put("source", "photo-input")
-          .put("prediction", if (mappedPrediction != null) JSONObject().put("quad", quad(mappedPrediction))
+          .put("prediction", if (mappedPrediction != null) JSONObject().put("quad", corners(mappedPrediction))
             .put("score", prediction!!.score) else JSONObject.NULL)
           .put("analysisMs", analysis.durationMs)
         writeJson(folder, "$stem.json", info, saved)
@@ -282,11 +282,11 @@ internal object SampleCollection {
   }
 
   /**
-   * An unlabeled `tools/label-samples` entry; the model's [quad] starts the outline to correct. [model] made the
+   * An unlabeled `tools/label-samples` entry; the model's [corners] starts the outline to correct. [model] made the
    * prediction; null when there is none.
    */
-  private fun entry(context: Context, image: String, sha256: String, width: Int, height: Int, quad: DocumentQuad?,
-    model: QuadModelStore.Selection?): JSONObject {
+  private fun entry(context: Context, image: String, sha256: String, width: Int, height: Int, corners: DocumentCorners?,
+    model: CornerModelStore.Selection?): JSONObject {
     return JSONObject()
       .put("version", 2)
       .put("coordinateSpace", "exifUprightNormalized")
@@ -295,7 +295,7 @@ internal object SampleCollection {
       .put("sourceWidth", width)
       .put("sourceHeight", height)
       .put("status", "unlabeled")
-      .put("quad", quad?.let(::quad) ?: JSONObject.NULL)
+      .put("quad", corners?.let(::corners) ?: JSONObject.NULL)
       .put("savedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date()))
       .put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
       .put("model", model?.let {
@@ -311,9 +311,9 @@ internal object SampleCollection {
 
   private fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
 
-  private fun quad(quad: DocumentQuad) = JSONObject()
-    .put("topLeft", JSONObject().put("x", quad.topLeft.x).put("y", quad.topLeft.y))
-    .put("topRight", JSONObject().put("x", quad.topRight.x).put("y", quad.topRight.y))
-    .put("bottomRight", JSONObject().put("x", quad.bottomRight.x).put("y", quad.bottomRight.y))
-    .put("bottomLeft", JSONObject().put("x", quad.bottomLeft.x).put("y", quad.bottomLeft.y))
+  private fun corners(corners: DocumentCorners) = JSONObject()
+    .put("topLeft", JSONObject().put("x", corners.topLeft.x).put("y", corners.topLeft.y))
+    .put("topRight", JSONObject().put("x", corners.topRight.x).put("y", corners.topRight.y))
+    .put("bottomRight", JSONObject().put("x", corners.bottomRight.x).put("y", corners.bottomRight.y))
+    .put("bottomLeft", JSONObject().put("x", corners.bottomLeft.x).put("y", corners.bottomLeft.y))
 }

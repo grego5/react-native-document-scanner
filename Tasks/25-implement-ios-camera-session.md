@@ -32,13 +32,13 @@ mode=off stops camera and sensors while keeping the view mounted; non-off modes 
 1. Implement ios/HybridDocumentScannerCameraView.swift with one AVFoundation camera owner/serial queue and main-thread preview layer. Borrow the bound Task 21 scan session; camera detach or AVFoundation stop never closes the headless scan-session owner. Observe session replacement/close to invalidate stale camera publication.
 2. Choose the rear physical wide-angle camera. Enumerate supported formats and photo dimensions; prefer largest valid 4:3 still size, then largest valid other aspect, under both 4096-long-edge and 12,582,912-total-pixel bounds.
 3. Configure output and per-shot maxPhotoDimensions using a supported dimension before starting the session; exclude 24/48 MP modes. If no bounded configuration works, remain suspended and reject capture as camera/unavailable.
-4. Add preview and bounded video-data output with analysisWidth default 640; discard late frames and permit no unbounded frame backlog.
+4. Add preview and bounded video-data output with analysisFrameWidth default 640; discard late frames and permit no unbounded frame backlog.
 5. Implement framing/orientation transforms and virtual square presentation independently of model tensor resizing.
 6. Implement basic start/ready/suspended states and deterministic attach/detach/foreground shutdown from the beginning; later interruption tests extend this lifecycle rather than defer resource correctness.
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 
@@ -70,7 +70,7 @@ Changed files:
   4096 and at most 12,582,912 pixels; largest bounded 4:3, then largest bounded other
   aspect; a delivered photo may be smaller in either orientation, never larger) and
   `CameraFormatPolicy` (still first; among formats offering it, 4:3 video, then the
-  video width nearest `analysisWidth` at or above it, then below; `analysisWidth`
+  video width nearest `analysisFrameWidth` at or above it, then below; `analysisFrameWidth`
   clamped 160–1920, default 640, as on Android).
 - `ios/CameraFraming.swift`: sensor-axis buffer → upright framed image: clockwise
   quarter turn from AVFoundation's rotation angle, EXIF orientation for live inference,
@@ -91,7 +91,7 @@ Changed files:
   and permitted (CameraPermissions listener); otherwise stops and keeps the view
   mounted. States `suspended`/`starting`/`ready` (first frame). A failed start stays
   suspended and reports `camera/unavailable` once, retrying only after a mode, request,
-  attachment, foreground or permission change. `squareFrame` changes framing without
+  attachment, foreground or permission change. `squareAspectRatio` changes framing without
   restarting. Borrows the session (prop default is now the placeholder, so a camera no
   longer opens its own session); replacement or close advances `sessionGeneration`;
   unmount stops the camera and never closes the session. `takePhoto` rejects

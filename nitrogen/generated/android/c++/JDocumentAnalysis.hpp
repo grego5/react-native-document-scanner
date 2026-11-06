@@ -11,11 +11,11 @@
 #include "DocumentAnalysis.hpp"
 
 #include "DocumentCandidate.hpp"
+#include "DocumentCorners.hpp"
 #include "DocumentPoint.hpp"
-#include "DocumentQuad.hpp"
 #include "JDocumentCandidate.hpp"
+#include "JDocumentCorners.hpp"
 #include "JDocumentPoint.hpp"
-#include "JDocumentQuad.hpp"
 #include <optional>
 
 namespace margelo::nitro::documentscanner {

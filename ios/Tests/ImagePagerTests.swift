@@ -66,7 +66,7 @@ final class ImagePagerTests: XCTestCase {
   private func admit(_ state: ScanSessionState, _ id: String, width: Int = 480, height: Int = 360) throws -> URL {
     let source = try store.publish(image: picture(width: width, height: height))
     let options = DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: nil, format: nil,
-                                        paperSize: nil, dpi: nil, followPageEdges: nil)
+                                        paperSize: nil, dpi: nil, simpleDewarp: nil)
     try state.admitSource(id: id, source: source, options: options, selection: nil)
     return source
   }

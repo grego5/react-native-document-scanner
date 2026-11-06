@@ -50,6 +50,7 @@ namespace margelo::nitro::documentscanner::views {
     nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>> session;
     nitro::ReactProp<std::string> pageId;
     nitro::ReactProp<std::optional<DocumentFilter>> filter;
+    nitro::ReactProp<std::optional<bool>> rectangle;
     nitro::ReactProp<std::optional<std::function<void(CropDraftPreset /* preset */)>>> onPresetChange;
     nitro::ReactProp<std::optional<std::function<void(double /* width */, double /* height */)>>> onLoad;
     nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* failure */)>>> onError;
@@ -60,6 +61,7 @@ namespace margelo::nitro::documentscanner::views {
       return session.hasSameValue(other.session) &&
              pageId.hasSameValue(other.pageId) &&
              filter.hasSameValue(other.filter) &&
+             rectangle.hasSameValue(other.rectangle) &&
              onPresetChange.hasSameValue(other.onPresetChange) &&
              onLoad.hasSameValue(other.onLoad) &&
              onError.hasSameValue(other.onError) &&
@@ -71,6 +73,7 @@ namespace margelo::nitro::documentscanner::views {
       return session.isProvided() ||
              pageId.isProvided() ||
              filter.isProvided() ||
+             rectangle.isProvided() ||
              onPresetChange.isProvided() ||
              onLoad.isProvided() ||
              onError.isProvided() ||

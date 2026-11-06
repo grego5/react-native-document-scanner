@@ -1,5 +1,5 @@
 export const MAX_PAGES = 50
-export const CAPTURE_PAPER = { paperSize: { width: 21, height: 29.7 }, dpi: 200 }
+export const CAPTURE_PAPER = { width: 21, height: 29.7, dpi: 200 }
 
 export interface PageReview {
   type: 'review'

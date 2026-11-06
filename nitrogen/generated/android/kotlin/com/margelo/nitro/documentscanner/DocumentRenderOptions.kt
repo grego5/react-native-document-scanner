@@ -38,7 +38,7 @@ data class DocumentRenderOptions(
   val dpi: Double?,
   @DoNotStrip
   @Keep
-  val followPageEdges: Boolean?
+  val simpleDewarp: Boolean?
 ) {
   /* primary constructor */
 
@@ -51,7 +51,7 @@ data class DocumentRenderOptions(
       && Objects.deepEquals(this.format, other.format)
       && Objects.deepEquals(this.paperSize, other.paperSize)
       && Objects.deepEquals(this.dpi, other.dpi)
-      && Objects.deepEquals(this.followPageEdges, other.followPageEdges)
+      && Objects.deepEquals(this.simpleDewarp, other.simpleDewarp)
   }
 
   override fun hashCode(): Int {
@@ -62,7 +62,7 @@ data class DocumentRenderOptions(
       format,
       paperSize,
       dpi,
-      followPageEdges
+      simpleDewarp
     ).contentDeepHashCode()
   }
 
@@ -74,8 +74,8 @@ data class DocumentRenderOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(removeShadows: Boolean?, jpegQuality: Double?, filter: DocumentFilter?, format: DocumentImageFormat?, paperSize: PaperSize?, dpi: Double?, followPageEdges: Boolean?): DocumentRenderOptions {
-      return DocumentRenderOptions(removeShadows, jpegQuality, filter, format, paperSize, dpi, followPageEdges)
+    private fun fromCpp(removeShadows: Boolean?, jpegQuality: Double?, filter: DocumentFilter?, format: DocumentImageFormat?, paperSize: PaperSize?, dpi: Double?, simpleDewarp: Boolean?): DocumentRenderOptions {
+      return DocumentRenderOptions(removeShadows, jpegQuality, filter, format, paperSize, dpi, simpleDewarp)
     }
   }
 }

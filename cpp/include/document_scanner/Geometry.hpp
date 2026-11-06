@@ -12,8 +12,8 @@ Point encodedToUpright(Point point, Size encoded, Size sampled, Orientation orie
 Point uprightToEncoded(Point point, Size encoded, Size sampled, Orientation orientation);
 Point toNormalized(Point point, Size image);
 Point toImage(Point point, Size image);
-Quad toNormalized(const Quad &quad, Size image);
-Quad toImage(const Quad &quad, Size image);
+Corners toNormalized(const Corners &corners, Size image);
+Corners toImage(const Corners &corners, Size image);
 
 // Region selection is independent of any subsequent tensor resize. Fractional edges
 // keep square framing centered even when the source dimensions differ by an odd pixel.
@@ -25,8 +25,8 @@ public:
   RegionTransform(Size source, Region region);
   Point toSource(Point normalizedRegion) const;
   Point fromSource(Point normalizedSource) const;
-  Quad toSource(const Quad &normalizedRegion) const;
-  Quad fromSource(const Quad &normalizedSource) const;
+  Corners toSource(const Corners &normalizedRegion) const;
+  Corners fromSource(const Corners &normalizedSource) const;
   const Region &region() const noexcept { return region_; }
 
 private:
@@ -34,23 +34,23 @@ private:
   Region region_;
 };
 RegionTransform centeredSquare(Size source);
-std::optional<Crop> photoInferenceCrop(const Quad &seed, Size photo);
+std::optional<Crop> photoInferenceCrop(const Corners &seed, Size photo);
 
-Quad clampToFrame(const Quad &quad);
-bool validCropQuad(const Quad &quad);
-std::optional<Quad> moveCorner(const Quad &quad, size_t index, Point target);
-std::optional<Quad> moveEdge(const Quad &quad, size_t index, Point displacement);
+Corners clampToFrame(const Corners &corners);
+bool validCropCorners(const Corners &corners);
+std::optional<Corners> moveCorner(const Corners &corners, size_t index, Point target);
+std::optional<Corners> moveEdge(const Corners &corners, size_t index, Point displacement);
 
 // Render validation intentionally permits corners outside the captured image.
 // Throws invalid_argument with the Android public validation message on failure.
-void validateRenderQuad(const Quad &normalizedQuad);
+void validateRenderCorners(const Corners &normalizedCorners);
 struct TargetCanvas final {
   const Size size;
-  const Quad destination;
+  const Corners destination;
 };
-TargetCanvas targetCanvas(const Quad &pixelQuad, double originalScale,
+TargetCanvas targetCanvas(const Corners &pixelCorners, double originalScale,
                           std::optional<double> paperLongEdge = std::nullopt);
-std::vector<Point> clipImageToQuad(const Quad &pixelQuad, Size image);
+std::vector<Point> clipImageToCorners(const Corners &pixelCorners, Size image);
 // Matches OpenCV's existing Point2f input/output rounding at the Android boundary.
 std::vector<Point> normalizedOutputPolygon(std::span<const Point> clipped, const Matrix &homography, Size target);
 } // namespace document_scanner::geometry

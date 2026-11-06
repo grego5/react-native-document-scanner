@@ -4,7 +4,9 @@ import os
 
 /// What the view asks of its camera owner. Equal requests keep the configured session.
 struct CameraRequest: Equatable, Sendable {
-  let analysisWidth: Int
+  let analysisFrameWidth: Int
+  /// The largest bounded still, as `scanner` mode takes; false takes `camera` mode's standard one.
+  var highResolutionPhoto = true
 }
 
 /// The supported configuration a started session runs with.
@@ -410,7 +412,8 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
       CameraFormatOption(video: PixelSize(CMVideoFormatDescriptionGetDimensions(format.formatDescription)),
                          photos: format.supportedMaxPhotoDimensions.map(PixelSize.init))
     }
-    guard let choice = CameraFormatPolicy.choose(options, analysisWidth: request.analysisWidth) else {
+    guard let choice = CameraFormatPolicy.choose(options, analysisFrameWidth: request.analysisFrameWidth,
+                                                     highResolution: request.highResolutionPhoto) else {
       CameraLog.logger.error("camera unavailable: no bounded still size among \(formats.count) formats")
       throw ScannerCodeError(code: .cameraUnavailable)
     }

@@ -23,7 +23,7 @@ private final class FakeCornerRuntime: CornerRuntime {
   deinit { probe.destroy() }
   func analyze(_ source: SourcePixelLease, seed: [Double]?) throws -> CornerPrediction {
     probe.entered?.signal(); probe.proceed?.wait()
-    return CornerPrediction(quad: [0,0,1,0,1,1,0,1], score: 0.1, preprocessingMs: 0, inferenceMs: 0)
+    return CornerPrediction(corners: [0,0,1,0,1,1,0,1], score: 0.1, preprocessingMs: 0, inferenceMs: 0)
   }
 }
 
@@ -115,9 +115,9 @@ final class CornerInferenceTests: XCTestCase {
     let second = try lease.analyzePhoto(store: store, url: url)
     XCTAssertEqual(first.width, 48); XCTAssertEqual(second.height, 32)
     XCTAssertEqual(first.prediction.score, second.prediction.score, accuracy: 0.005)
-    if let a = first.prediction.quad, let b = second.prediction.quad {
+    if let a = first.prediction.corners, let b = second.prediction.corners {
       for (x,y) in zip(a,b) { XCTAssertEqual(x,y,accuracy: 0.015) }
-    } else { XCTAssertEqual(first.prediction.quad == nil, second.prediction.quad == nil) }
+    } else { XCTAssertEqual(first.prediction.corners == nil, second.prediction.corners == nil) }
   }
 
   private func fixtureModel(_ name: String) throws -> Data {
@@ -138,8 +138,8 @@ final class CornerInferenceTests: XCTestCase {
     let unseeded = try lease.analyzePhoto(store: store, url: url)
     let seed = [0.3,0.3,0.7,0.3,0.7,0.7,0.3,0.7]
     let seeded = try lease.analyzePhoto(store: store, url: url, seed: seed)
-    let actual = try XCTUnwrap(seeded.prediction.quad)
-    let raw = try XCTUnwrap(unseeded.prediction.quad)
+    let actual = try XCTUnwrap(seeded.prediction.corners)
+    let raw = try XCTUnwrap(unseeded.prediction.corners)
     // Independent expected crop: 48x32 source -> bounds (12,4)-(36,28).
     for i in 0..<4 {
       XCTAssertEqual(actual[2*i], (12 + raw[2*i]*24)/48, accuracy: 1e-7)
@@ -147,7 +147,7 @@ final class CornerInferenceTests: XCTestCase {
     }
     XCTAssertEqual(seeded.prediction.score, 0.1, accuracy: 1e-7)
     let invalid = try lease.analyzePhoto(store: store, url: url, seed: [0,0,0,0,0,0,0,0])
-    XCTAssertEqual(invalid.prediction.quad, unseeded.prediction.quad)
+    XCTAssertEqual(invalid.prediction.corners, unseeded.prediction.corners)
     XCTAssertThrowsError(try lease.analyzePhoto(store: store, url: url, seed: [0]))
     XCTAssertNoThrow(try lease.analyzePhoto(store: store, url: url))
   }
@@ -172,7 +172,7 @@ final class CornerInferenceTests: XCTestCase {
     let first = try lease.analyzeLive(XCTUnwrap(buffer), orientation: 6,
       crop: CGRect(x: 8,y: 4,width: 24,height: 16))
     XCTAssertEqual(first.width, 16); XCTAssertEqual(first.height, 24)
-    XCTAssertNotNil(first.prediction.quad)
+    XCTAssertNotNil(first.prediction.corners)
     XCTAssertThrowsError(try lease.analyzeLive(XCTUnwrap(buffer), orientation: 0))
     XCTAssertThrowsError(try lease.analyzeLive(XCTUnwrap(buffer), crop: CGRect(x: -1,y: 0,width: 4,height: 4)))
     // Force preprocessing to throw after locking, then recover with the same buffer.
@@ -209,15 +209,15 @@ final class CornerInferenceTests: XCTestCase {
         let expected = try XCTUnwrap(row["tensorflow"] as? [Double])
         let tensor = try Data(contentsOf: root.appendingPathComponent(name + ".input.f32"))
         let output = try runtime.predictTensor(tensor)
-        let quad = try XCTUnwrap(output.quad).map(\.doubleValue)
-        for (actual, wanted) in zip(quad + [output.score], expected) {
+        let tensorCorners = try XCTUnwrap(output.corners).map(\.doubleValue)
+        for (actual, wanted) in zip(tensorCorners + [output.score], expected) {
           maximumTensor = max(maximumTensor, abs(actual-wanted))
           XCTAssertEqual(actual, wanted, accuracy: 2e-5, name)
         }
         for suffix in [".png", ".jpg"] {
           let url = root.appendingPathComponent(name + suffix)
           let result = try lease.analyzePhoto(store: store, url: url)
-          let predicted = try XCTUnwrap(result.prediction.quad, name + suffix)
+          let predicted = try XCTUnwrap(result.prediction.corners, name + suffix)
           for index in 0..<4 {
             let error = hypot(predicted[index*2]-expected[index*2], predicted[index*2+1]-expected[index*2+1])
             maximumImage = max(maximumImage,error); sumImage += error; corners += 1
@@ -228,9 +228,9 @@ final class CornerInferenceTests: XCTestCase {
         let imageSource = try XCTUnwrap(CGImageSourceCreateWithURL(root.appendingPathComponent(name + ".png") as CFURL, nil))
         let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(imageSource, 0, nil))
         let owned = try store.publish(image: image)
-        let resident = try XCTUnwrap(lease.analyzePhoto(store: store, url: owned).prediction.quad)
+        let resident = try XCTUnwrap(lease.analyzePhoto(store: store, url: owned).prediction.corners)
         store.evict()
-        let reloaded = try XCTUnwrap(lease.analyzePhoto(store: store, url: owned).prediction.quad)
+        let reloaded = try XCTUnwrap(lease.analyzePhoto(store: store, url: owned).prediction.corners)
         for index in 0..<4 {
           let error = hypot(resident[2*index]-reloaded[2*index], resident[2*index+1]-reloaded[2*index+1])
           reloadWorst = max(reloadWorst, error); reloadSum += error; reloadCorners += 1

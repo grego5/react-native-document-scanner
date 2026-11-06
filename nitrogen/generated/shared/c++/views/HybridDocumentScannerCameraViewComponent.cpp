@@ -21,25 +21,26 @@ namespace margelo::nitro::documentscanner::views {
                                                                              const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
     session(nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>>::fromRawValue("DocumentScannerCameraView", "session", rawProps, sourceProps.session)),
-    renderOptions(nitro::ReactProp<DocumentRenderOptions>::fromRawValue("DocumentScannerCameraView", "renderOptions", rawProps, sourceProps.renderOptions)),
-    quadTensorModel(nitro::ReactProp<std::optional<std::string>>::fromRawValue("DocumentScannerCameraView", "quadTensorModel", rawProps, sourceProps.quadTensorModel)),
+    imageCorrection(nitro::ReactProp<ImageCorrectionOptions>::fromRawValue("DocumentScannerCameraView", "imageCorrection", rawProps, sourceProps.imageCorrection)),
+    outputOptions(nitro::ReactProp<ImageOutputOptions>::fromRawValue("DocumentScannerCameraView", "outputOptions", rawProps, sourceProps.outputOptions)),
+    cornerDetectionModel(nitro::ReactProp<std::optional<std::string>>::fromRawValue("DocumentScannerCameraView", "cornerDetectionModel", rawProps, sourceProps.cornerDetectionModel)),
     onError(nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* error */)>>>::fromRawValue("DocumentScannerCameraView", "onError", rawProps, sourceProps.onError)),
-    mode(nitro::ReactProp<std::optional<CameraMode>>::fromRawValue("DocumentScannerCameraView", "mode", rawProps, sourceProps.mode)),
-    guide(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "guide", rawProps, sourceProps.guide)),
-    adaptiveDetection(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "adaptiveDetection", rawProps, sourceProps.adaptiveDetection)),
+    active(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "active", rawProps, sourceProps.active)),
+    guideLiveCorners(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "guideLiveCorners", rawProps, sourceProps.guideLiveCorners)),
+    autoCrop(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "autoCrop", rawProps, sourceProps.autoCrop)),
+    inferenceThrottling(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "inferenceThrottling", rawProps, sourceProps.inferenceThrottling)),
     minCornerScore(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "minCornerScore", rawProps, sourceProps.minCornerScore)),
-    qualityGate(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "qualityGate", rawProps, sourceProps.qualityGate)),
-    qualityGateConfig(nitro::ReactProp<std::optional<QualityGateConfig>>::fromRawValue("DocumentScannerCameraView", "qualityGateConfig", rawProps, sourceProps.qualityGateConfig)),
+    lowQualityControl(nitro::ReactProp<LowQualityControl>::fromRawValue("DocumentScannerCameraView", "lowQualityControl", rawProps, sourceProps.lowQualityControl)),
     tapToFocus(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "tapToFocus", rawProps, sourceProps.tapToFocus)),
     exposureCompensation(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "exposureCompensation", rawProps, sourceProps.exposureCompensation)),
     minFrameRate(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "minFrameRate", rawProps, sourceProps.minFrameRate)),
     torch(nitro::ReactProp<std::optional<TorchMode>>::fromRawValue("DocumentScannerCameraView", "torch", rawProps, sourceProps.torch)),
     lowLightBoost(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "lowLightBoost", rawProps, sourceProps.lowLightBoost)),
     captureMode(nitro::ReactProp<std::optional<CaptureMode>>::fromRawValue("DocumentScannerCameraView", "captureMode", rawProps, sourceProps.captureMode)),
-    jpegQuality(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "jpegQuality", rawProps, sourceProps.jpegQuality)),
+    highResolutionPhoto(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "highResolutionPhoto", rawProps, sourceProps.highResolutionPhoto)),
     guideTransitionDuration(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "guideTransitionDuration", rawProps, sourceProps.guideTransitionDuration)),
-    analysisWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "analysisWidth", rawProps, sourceProps.analysisWidth)),
-    squareFrame(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "squareFrame", rawProps, sourceProps.squareFrame)),
+    analysisFrameWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "analysisFrameWidth", rawProps, sourceProps.analysisFrameWidth)),
+    squareAspectRatio(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "squareAspectRatio", rawProps, sourceProps.squareAspectRatio)),
     showStats(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "showStats", rawProps, sourceProps.showStats)),
     guideColor(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "guideColor", rawProps, sourceProps.guideColor)),
     captureFeedback(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "captureFeedback", rawProps, sourceProps.captureFeedback)),
@@ -54,25 +55,26 @@ namespace margelo::nitro::documentscanner::views {
   bool HybridDocumentScannerCameraViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
       case hashString("session"): return true;
-      case hashString("renderOptions"): return true;
-      case hashString("quadTensorModel"): return true;
+      case hashString("imageCorrection"): return true;
+      case hashString("outputOptions"): return true;
+      case hashString("cornerDetectionModel"): return true;
       case hashString("onError"): return true;
-      case hashString("mode"): return true;
-      case hashString("guide"): return true;
-      case hashString("adaptiveDetection"): return true;
+      case hashString("active"): return true;
+      case hashString("guideLiveCorners"): return true;
+      case hashString("autoCrop"): return true;
+      case hashString("inferenceThrottling"): return true;
       case hashString("minCornerScore"): return true;
-      case hashString("qualityGate"): return true;
-      case hashString("qualityGateConfig"): return true;
+      case hashString("lowQualityControl"): return true;
       case hashString("tapToFocus"): return true;
       case hashString("exposureCompensation"): return true;
       case hashString("minFrameRate"): return true;
       case hashString("torch"): return true;
       case hashString("lowLightBoost"): return true;
       case hashString("captureMode"): return true;
-      case hashString("jpegQuality"): return true;
+      case hashString("highResolutionPhoto"): return true;
       case hashString("guideTransitionDuration"): return true;
-      case hashString("analysisWidth"): return true;
-      case hashString("squareFrame"): return true;
+      case hashString("analysisFrameWidth"): return true;
+      case hashString("squareAspectRatio"): return true;
       case hashString("showStats"): return true;
       case hashString("guideColor"): return true;
       case hashString("captureFeedback"): return true;

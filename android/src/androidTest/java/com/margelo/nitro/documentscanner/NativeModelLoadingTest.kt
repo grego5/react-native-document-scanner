@@ -30,7 +30,7 @@ class NativeModelLoadingTest {
 
   private fun scenario() = ActivityScenario.launch<CameraValidationActivity>(
     Intent(context, CameraValidationActivity::class.java)
-      .putExtra("cameraActive", false).putExtra("quadTensorModel", ""))
+      .putExtra("cameraActive", false).putExtra("cornerDetectionModel", ""))
 
   @Test fun missingAndInvalidSourcesReportErrorsAndValidSourceRecovers() {
     scenario().use { host ->
@@ -42,7 +42,7 @@ class NativeModelLoadingTest {
       val failed = CountDownLatch(1)
       host.onActivity { activity ->
         activity.camera.onError = { if (it.code == ScannerErrorCode.INPUT_INVALID) failed.countDown() }
-        activity.camera.quadTensorModel = "/missing-native-model.tflite"
+        activity.camera.cornerDetectionModel = "/missing-native-model.tflite"
         activity.camera.afterUpdate()
       }
       assertTrue(failed.await(10, TimeUnit.SECONDS))
@@ -50,7 +50,7 @@ class NativeModelLoadingTest {
       host.onActivity { activity ->
         camera.set(activity.camera)
         assertFalse(readyField.getBoolean(activity.camera))
-        activity.camera.quadTensorModel = "asset:///doccornernet/model.tflite"
+        activity.camera.cornerDetectionModel = "asset:///doccornernet/model.tflite"
         activity.camera.afterUpdate()
       }
       val deadline = SystemClock.uptimeMillis() + 10_000
@@ -60,7 +60,7 @@ class NativeModelLoadingTest {
         if (!ready) SystemClock.sleep(20)
       }
       assertTrue("A source-only change must prepare even when other props are unchanged", ready)
-      host.onActivity { activity -> assertEquals(CameraMode.OFF, activity.camera.mode) }
+      host.onActivity { activity -> assertEquals(false, activity.camera.active) }
     }
   }
 
@@ -69,9 +69,9 @@ class NativeModelLoadingTest {
       val failed = CountDownLatch(1)
       host.onActivity { activity ->
         activity.camera.onError = { if (it.code == ScannerErrorCode.INPUT_INVALID) failed.countDown() }
-        activity.camera.quadTensorModel = "asset:///doccornernet/model.tflite"
+        activity.camera.cornerDetectionModel = "asset:///doccornernet/model.tflite"
         activity.camera.afterUpdate()
-        activity.camera.quadTensorModel = "/missing-replacement-model.tflite"
+        activity.camera.cornerDetectionModel = "/missing-replacement-model.tflite"
         activity.camera.afterUpdate()
       }
       assertTrue(failed.await(10, TimeUnit.SECONDS))

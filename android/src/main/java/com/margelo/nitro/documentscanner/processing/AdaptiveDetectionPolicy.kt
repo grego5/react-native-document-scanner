@@ -1,7 +1,7 @@
 package com.margelo.nitro.documentscanner.processing
 
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import kotlin.math.hypot
 
 /**
@@ -10,7 +10,7 @@ import kotlin.math.hypot
  * the model to confirm again. Swift implements the same policy; both pass `tests/fixtures/parity/adaptive.tsv`.
  */
 internal class AdaptiveDetectionPolicy {
-  private var reference: DocumentQuad? = null
+  private var reference: DocumentCorners? = null
   private var revalidate = false
   /** Why the latest decision was made: acquiring, paused, revalidating or a wake reason. */
   var status = "acquiring"
@@ -31,7 +31,7 @@ internal class AdaptiveDetectionPolicy {
   }
 
   /** The model's latest result, or null when it found no tracked page. */
-  fun reference(quad: DocumentQuad?) { reference = quad }
+  fun reference(corners: DocumentCorners?) { reference = corners }
 
   /** The model confirmed the reference; a pending revalidation is satisfied. */
   fun confirmed() { revalidate = false }
@@ -41,7 +41,7 @@ internal class AdaptiveDetectionPolicy {
    * a page, [reliable] that flow carried it to this frame as [current], [degraded] that some page region lost its
    * features. [width] and [height] are the upright frame in pixels.
    */
-  fun next(tracking: Boolean, reliable: Boolean, degraded: Boolean, current: DocumentQuad?, width: Int, height: Int): Long {
+  fun next(tracking: Boolean, reliable: Boolean, degraded: Boolean, current: DocumentCorners?, width: Int, height: Int): Long {
     val trusted = tracking && reference != null
     val wake = reference?.takeIf { reliable && current != null && changed(it, current, width, height) }
       ?.let { "scene changed" }
@@ -63,7 +63,7 @@ internal class AdaptiveDetectionPolicy {
   companion object {
     const val REVALIDATE_GAP_NS = 60_000_000L
     /** Any corner moved more than 5% of the upright frame width; translation counts. */
-    fun changed(a: DocumentQuad, b: DocumentQuad, width: Int, height: Int): Boolean {
+    fun changed(a: DocumentCorners, b: DocumentCorners, width: Int, height: Int): Boolean {
       fun moved(p: DocumentPoint, q: DocumentPoint) = hypot((p.x - q.x) * width, (p.y - q.y) * height) > width * .05
       return moved(a.topLeft, b.topLeft) || moved(a.topRight, b.topRight) ||
         moved(a.bottomRight, b.bottomRight) || moved(a.bottomLeft, b.bottomLeft)

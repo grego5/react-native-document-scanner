@@ -39,7 +39,7 @@ One accepted takePhoto starts one physical shot. Admission freezes the bound ses
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 
@@ -79,7 +79,7 @@ Decisions and limits:
 Executed checks:
 
 - `npm run check`: passed.
-- Mac VM build-for-testing (Xcode 26.6, 17F113): succeeded after two Swift 6.3 sending fixes (`QuadModelLoader`, `AVCameraSession.perform`).
+- Mac VM build-for-testing (Xcode 26.6, 17F113): succeeded after two Swift 6.3 sending fixes (`CornerModelLoader`, `AVCameraSession.perform`).
 - Simulator suite, built on the Mac VM and run by `ios-validation.yml` on `macos-26-intel` with the same Xcode build: 165 executed, 1 skipped, 0 failures.
 - Review fixes (any camera stop invalidates the shot; focus/torch controls follow the shot; only a guide in the current framing seeds it): `CameraSessionTests` and `CameraControlsTests`, split run, 36 executed, 0 failures.
 - Shutter frame straightened only when its orientation matches the frozen guide (a half turn after acceptance keeps the size): `StillCaptureTests` and `CameraSessionTests`, split run, 38 executed, 0 failures.

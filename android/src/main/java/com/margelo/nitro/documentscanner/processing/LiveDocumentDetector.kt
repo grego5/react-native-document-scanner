@@ -1,6 +1,6 @@
 package com.margelo.nitro.documentscanner.processing
 
-import com.margelo.nitro.documentscanner.NativeQuadGeometry
+import com.margelo.nitro.documentscanner.NativeCornerGeometry
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.PixelFormat
@@ -13,28 +13,28 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.camera.view.transform.OutputTransform
 import com.margelo.nitro.documentscanner.DocumentCandidate
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
 internal enum class LiveGuideStatus { SEARCHING, DETECTED, TRACKING, HELD, UNAVAILABLE }
 
-/** Main-thread focus hint without image ownership; the quad is upright and normalized to [source]. [confirmed]: the
+/** Main-thread focus hint without image ownership; the corners are upright and normalized to [source]. [confirmed]: the
  * outline is TRACKING, past the score threshold and shape check, rather than provisional. [sensorNs]: the analyzed
  * frame's sensor timestamp. */
 internal data class LiveFocusCandidate(
-  val quad: DocumentQuad?, val source: OutputTransform, val width: Int, val height: Int, val confirmed: Boolean,
+  val corners: DocumentCorners?, val source: OutputTransform, val width: Int, val height: Int, val confirmed: Boolean,
   val sensorNs: Long,
 )
 
-/** [quad] and the [source] transform and dimensions captured at its acceptance are set for DETECTED, TRACKING and HELD; DETECTED is visible but not confirmed for focus or capture;
+/** [corners] and the [source] transform and dimensions captured at its acceptance are set for DETECTED, TRACKING and HELD; DETECTED is visible but not confirmed for focus or capture;
  * [score] is this frame's
  * guide inference score, null for a frame without one, such as one optical flow alone carried.
  */
 internal data class LiveDetectionResult(
   val status: LiveGuideStatus,
-  val quad: DocumentQuad? = null,
+  val corners: DocumentCorners? = null,
   val source: OutputTransform? = null,
   val width: Int = 0,
   val height: Int = 0,
@@ -79,7 +79,7 @@ private data class FlowResult(
 internal class LiveDocumentDetector(
   context: Context,
   private val debugLogging: Boolean,
-  private val modelFactory: ((Context) -> LiveQuadModel)? = null,
+  private val modelFactory: ((Context) -> LiveCornerModel)? = null,
   private val gyro: GyroHistory? = null,
   onResult: (LiveDetectionResult) -> Unit,
 ) : ImageAnalysis.Analyzer, AutoCloseable {
@@ -96,22 +96,22 @@ internal class LiveDocumentDetector(
   /** Optics of the bound back camera when its timestamps share the gyroscope clock; null disables motion compensation. */
   @Volatile internal var cameraOptics: LiveCameraOptics? = null
   /** Test-harness trace hook; observations are allocated only while it is set. */
-  @Volatile internal var traceObserver: LiveQuadTraceObserver? = null
+  @Volatile internal var traceObserver: LiveGuideTraceObserver? = null
   /** Main-thread receiver of one-second [LiveDetectionStats] for on-device tuning; null skips them. */
   @Volatile internal var statsListener: ((LiveDetectionStats) -> Unit)? = null
   /** Independent main-thread focus owner receives document targets; focus never gates detection. */
   @Volatile internal var focusCandidateListener: ((LiveFocusCandidate) -> Unit)? = null
   /** Checks for the next analyzed frame; a change starts a fresh stabilizer, dropping its history. */
-  @Volatile internal var stabilizerConfig = LiveQuadStabilizerConfig()
+  @Volatile internal var stabilizerConfig = GuideStabilizerConfig()
   /** Estimates image motion on every analysis frame, guide or not, before inference throttling and gating. */
   @Volatile internal var flowMotionEnabled = false
   /** Use image flow for capture motion records, with the gyroscope as fallback. */
   @Volatile internal var flowGate = false
-  @Volatile internal var adaptiveDetection = false
+  @Volatile internal var inferenceThrottling = false
   /** Raw predictions remain available for samples; this threshold only gates live acceptance. */
   @Volatile internal var minCornerScore = 0.95
   /** Experiment switch: disable pacing/adaptive pauses, preserving frame validity gates. */
-  @Volatile internal var inferenceThrottling = true
+  @Volatile internal var pacingEnabled = true
   /** Pause inference above this framing speed, independent of exposure or autofocus. */
   @Volatile internal var maxInferenceSpeedFraction = .05
   private val frameRequest = AtomicReference<((LiveFrame) -> Unit)?>(null)
@@ -134,19 +134,19 @@ internal class LiveDocumentDetector(
   private val frameResultsToken = Any()
   // Executor-confined: the confirmed in-frame outline as of the last published result, and when its hold expires on
   // the System.nanoTime() clock of frame arrival, as main expires the guide; 0 holds it.
-  private var captureGuide: DocumentQuad? = null
+  private var captureGuide: DocumentCorners? = null
   private var captureGuideDeadlineNs = 0L
   // Main-thread-only acceptance delivery.
   private var deliveredAcceptanceId = 0L
   private var expiredAcceptanceId = 0L
   // Executor-confined from here down.
-  private var session: LiveQuadModel? = null
-  private var modelSelection = QuadModelStore.selected
-  private val stabilizer = LiveQuadStabilizer()
+  private var session: LiveCornerModel? = null
+  private var modelSelection = CornerModelStore.selected
+  private val stabilizer = GuideStabilizer()
   private var lastToken = -1L
   private val lastCrop = Rect()
   private var lastRotation = -1
-  private var lastObserver: LiveQuadTraceObserver? = null
+  private var lastObserver: LiveGuideTraceObserver? = null
   private var acceptedId = 0L
   private var acceptedSource: OutputTransform? = null
   private var acceptedWidth = 0
@@ -183,9 +183,9 @@ internal class LiveDocumentDetector(
   private var flowEstimator: FlowMotionEstimator? = null
   private var flowFailed = false
   private var flowSeenGeneration = -1L
-  private val pageMotion = FlowQuadMotion()
-  /** The last accepted quad, with the crop and rotation it is normalized to; only selects where features are sought. */
-  private var flowRegion: DocumentQuad? = null
+  private val pageMotion = FlowDocumentMotion()
+  /** The last accepted corners, with the crop and rotation it is normalized to; only selects where features are sought. */
+  private var flowRegion: DocumentCorners? = null
   private val flowRegionCrop = Rect()
   private var flowRegionRotation = -1
 
@@ -291,7 +291,7 @@ internal class LiveDocumentDetector(
       resetTracking()
       releaseFlow()
     }
-    val selected = QuadModelStore.current
+    val selected = CornerModelStore.current
     if (selected !== modelSelection) {
       releaseSession()
       releaseFlow()
@@ -320,7 +320,7 @@ internal class LiveDocumentDetector(
     val motion = frame?.let { gateMotion(flow?.estimate, it.exposureNs, gyroBlur) }
     val blur = if (flowGate) motion?.blur else gyroBlur
     if (blur != null) peakBlur = maxOf(peakBlur ?: 0.0, blur)
-    val adaptive = adaptiveDetection && inferenceThrottling
+    val adaptive = inferenceThrottling && pacingEnabled
     if (adaptive != adaptiveWasEnabled) {
       adaptivePolicy.reset()
       adaptiveWasEnabled = adaptive
@@ -341,9 +341,9 @@ internal class LiveDocumentDetector(
     val turned = image.imageInfo.rotationDegrees % 180 != 0
     val gap = if (adaptive) adaptivePolicy.next(tracking, reliable, (estimate?.lostRegions ?: 0) > 0, flowRegion,
       if (turned) currentCrop.height() else currentCrop.width(), if (turned) currentCrop.width() else currentCrop.height())
-      else if (inferenceThrottling && tracking) LiveDetectionState.TRACKING_GAP_NS else 0L
+      else if (pacingEnabled && tracking) LiveDetectionState.TRACKING_GAP_NS else 0L
     val doubt = if (adaptive) adaptivePolicy.doubt else null
-    val moving = inferenceThrottling && maxInferenceSpeedFraction > 0 && estimate?.status == FlowMotionStatus.MEASURED &&
+    val moving = pacingEnabled && maxInferenceSpeedFraction > 0 && estimate?.status == FlowMotionStatus.MEASURED &&
       (estimate.lostRegions > 0 || estimate.speedPxPerSecond?.let { it / image.width > maxInferenceSpeedFraction } == true)
     val unstable = moving
     // Provisional focus inference cannot override a tracking pause; tracked outlines drive focus instead.
@@ -365,7 +365,7 @@ internal class LiveDocumentDetector(
           else -> "inference"
         },
         inferenceGapNs = gap, flowReliable = reliable,
-        predictedQuad = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) },
+        predictedCorners = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) },
         adaptiveDoubt = doubt, focusing = frame?.outOfFocus == true, blur = blur,
       ))
       if (token == null) {
@@ -378,7 +378,7 @@ internal class LiveDocumentDetector(
           val width = if (rotation % 180 != 0) currentCrop.height() else currentCrop.width()
           val height = if (rotation % 180 != 0) currentCrop.width() else currentCrop.height()
           val retainStarted = System.nanoTime()
-          val held = stabilizer.retainTracked(LiveQuadInput(predicted, width, height, sensorTimestampNs, startedAt))
+          val held = stabilizer.retainTracked(GuideInput(predicted, width, height, sensorTimestampNs, startedAt))
           totalChecksNs += System.nanoTime() - retainStarted
           if (held != null) {
             val source = transformFactory.getOutputTransform(image)
@@ -388,7 +388,7 @@ internal class LiveDocumentDetector(
             acceptedHeight = height
             flowRegion = held.accepted
             trackedRegionSensorNs = sensorTimestampNs
-            traceObserver?.onObservation(LiveQuadObservation(lastToken, sensorTimestampNs, startedAt, width, height,
+            traceObserver?.onObservation(LiveDocumentObservation(lastToken, sensorTimestampNs, startedAt, width, height,
               currentCrop.left, currentCrop.top, currentCrop.right, currentCrop.bottom, rotation, held.accepted, null,
               held.status, held.decision, held.chainLength, false, held.accepted, held.acceptanceId, held.holdDeadlineNs,
               0.0, 0.0, 0, guideEligible = false, trackingOnly = true,
@@ -441,31 +441,31 @@ internal class LiveDocumentDetector(
       val stabilizerStartedNs = System.nanoTime()
       val flowHeld = if (!scoreRejected && reliable && estimate?.lostRegions == 0) {
         val predicted = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) }
-        stabilizer.retainTracked(LiveQuadInput(predicted, width, height, sensorTimestampNs, startedAt))
+        stabilizer.retainTracked(GuideInput(predicted, width, height, sensorTimestampNs, startedAt))
       } else null
       val validated = stabilizer.update(
-        LiveQuadInput(candidate?.quad, width, height, sensorTimestampNs, startedAt),
+        GuideInput(candidate?.corners, width, height, sensorTimestampNs, startedAt),
       )
       // A rejected model prediction cannot expire an independently tracked, shape-valid page.
       // Keep the validation decision in the trace; flow retention is not a model confirmation.
-      val flowRetained = flowHeld != null && validated.status != LiveQuadStatus.TRACKING
-      val output = if (flowRetained) validated.copy(status = LiveQuadStatus.TRACKING) else validated
+      val flowRetained = flowHeld != null && validated.status != GuideTrackingStatus.TRACKING
+      val output = if (flowRetained) validated.copy(status = GuideTrackingStatus.TRACKING) else validated
       val stabilizerNs = System.nanoTime() - stabilizerStartedNs
       totalChecksNs += stabilizerNs
       if (observer != null) {
-        observer.onObservation(LiveQuadObservation(
+        observer.onObservation(LiveDocumentObservation(
           token, sensorTimestampNs, startedAt, width, height, crop.left, crop.top, crop.right, crop.bottom, rotation,
-          prediction?.quad, score, output.status, output.decision, output.chainLength, output.expiredBeforeInput,
+          prediction?.corners, score, output.status, output.decision, output.chainLength, output.expiredBeforeInput,
           output.accepted, output.acceptanceId, output.holdDeadlineNs, preprocessingMs, inferenceMs,
           stabilizerNs,
           guideEligible = !scoreRejected, flowRetained = flowRetained,
         ))
       }
       postFocusCandidate(token, startedAt,
-        LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.quad, sourceTransform, width, height,
-          output.status == LiveQuadStatus.TRACKING, sensorTimestampNs))
-      tracking = output.status != LiveQuadStatus.SEARCHING
-      if (!flowRetained) adaptivePolicy.reference(output.accepted.takeIf { output.status == LiveQuadStatus.TRACKING })
+        LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.corners, sourceTransform, width, height,
+          output.status == GuideTrackingStatus.TRACKING, sensorTimestampNs))
+      tracking = output.status != GuideTrackingStatus.SEARCHING
+      if (!flowRetained) adaptivePolicy.reference(output.accepted.takeIf { output.status == GuideTrackingStatus.TRACKING })
       if (adaptive && !flowRetained && adaptivePolicy.hasReference) adaptivePolicy.confirmed()
       flowRegion = output.accepted
       trackedRegionSensorNs = sensorTimestampNs
@@ -486,17 +486,17 @@ internal class LiveDocumentDetector(
       lastWidth = width
       lastHeight = height
       publish(when (output.status) {
-        LiveQuadStatus.SEARCHING -> if (candidate != null &&
-          (output.decision == LiveQuadDecision.ACQUIRING || output.decision == LiveQuadDecision.GAP_RESTART)) {
-          LiveDetectionResult(LiveGuideStatus.DETECTED, candidate.quad, sourceTransform, width, height,
+        GuideTrackingStatus.SEARCHING -> if (candidate != null &&
+          (output.decision == GuideDecision.ACQUIRING || output.decision == GuideDecision.GAP_RESTART)) {
+          LiveDetectionResult(LiveGuideStatus.DETECTED, candidate.corners, sourceTransform, width, height,
             holdDeadlineNs = startedAt + config.holdNs, generation = token, analysisStartedNs = startedAt,
             score = candidate.score)
         } else LiveDetectionResult(
           LiveGuideStatus.SEARCHING, source = sourceTransform, width = width, height = height, generation = token,
           analysisStartedNs = startedAt, score = score,
         )
-        LiveQuadStatus.TRACKING, LiveQuadStatus.HELD -> LiveDetectionResult(
-          if (output.status == LiveQuadStatus.TRACKING) LiveGuideStatus.TRACKING else LiveGuideStatus.HELD,
+        GuideTrackingStatus.TRACKING, GuideTrackingStatus.HELD -> LiveDetectionResult(
+          if (output.status == GuideTrackingStatus.TRACKING) LiveGuideStatus.TRACKING else LiveGuideStatus.HELD,
           output.accepted, acceptedSource, acceptedWidth, acceptedHeight,
           output.acceptanceId, output.holdDeadlineNs, token, startedAt,
           score,
@@ -619,8 +619,8 @@ internal class LiveDocumentDetector(
 
   private fun publish(result: LiveDetectionResult) {
     // Capture's page is the guide main shows: a confirmed outline with every corner inside the frame.
-    captureGuide = result.quad?.takeIf {
-      result.status == LiveGuideStatus.TRACKING && NativeQuadGeometry.prediction(NativeQuadGeometry.coordinates(it))
+    captureGuide = result.corners?.takeIf {
+      result.status == LiveGuideStatus.TRACKING && NativeCornerGeometry.prediction(NativeCornerGeometry.coordinates(it))
     }
     captureGuideDeadlineNs = result.holdDeadlineNs
     handler.removeCallbacksAndMessages(callbackToken)
@@ -642,7 +642,7 @@ internal class LiveDocumentDetector(
       onResult?.invoke(result)
       return
     }
-    if (result.quad != null) {
+    if (result.corners != null) {
       // A frame analyzed before the deadline must not resurrect guidance that already expired.
       if (result.acceptanceId <= expiredAcceptanceId) return
       // An inference or main-thread stall can deliver a result after its deadline; never draw it.
@@ -704,7 +704,7 @@ internal class LiveDocumentDetector(
         if (cameraOptics != null && inferred > 0) totalCameraMs / frames else null, lastWidth, lastHeight,
         peakBlur?.let { it * 100 }, gated, unmatched,
         totalChecksNs / 1_000_000.0 / received.coerceAtLeast(1),
-        if (adaptiveDetection && inferenceThrottling) "${adaptivePolicy.status}; reset: ${adaptivePolicy.lastReset}" else "off",
+        if (inferenceThrottling && pacingEnabled) "${adaptivePolicy.status}; reset: ${adaptivePolicy.lastReset}" else "off",
       )
       handler.post { if (statsListener === listener) listener(stats) }
     }

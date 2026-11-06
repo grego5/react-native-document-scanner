@@ -8,7 +8,7 @@ Dependencies: [05](05-share-image-geometry.md), [08](08-share-document-filters.m
 
 ## Objective
 
-Edit normalized upright quads with native handles and filter previews.
+Edit normalized upright corners with native handles and filter previews.
 
 ## Non-goals
 
@@ -22,23 +22,23 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 - src/DocumentCropEditor.tsx
 - src/ScanSession.nitro.ts and Task 21's native page-binding/mutation contract
 - android/src/main/java/com/margelo/nitro/documentscanner/CropEditorView.kt
-- android/src/main/java/com/margelo/nitro/documentscanner/CropQuadEditing.kt
+- android/src/main/java/com/margelo/nitro/documentscanner/CropCornerEditing.kt
 - android/src/androidTest/java/com/margelo/nitro/documentscanner/CropEditorViewTest.kt
 
 ## Current behavior and invariants
 
-Bind a native session/page ID and initialize the local draft from its saved quad when the bound page changes. Drags and none/auto presets change only that draft; getQuad reads it and submit validates/applies it through the session. Cancel/unmount sends no page mutation. Emit initial and changed none/auto/custom classification, with full frame taking precedence over an equal auto candidate. Invalid submitted quads are rejected, not silently repaired.
+Bind a native session/page ID and initialize the local draft from its saved corners when the bound page changes. Drags and none/auto presets change only that draft; getCorners reads it and submit validates/applies it through the session. Cancel/unmount sends no page mutation. Emit initial and changed none/auto/custom classification, with full frame taking precedence over an equal auto candidate. Invalid submitted corners are rejected, not silently repaired.
 
 ## Implementation steps
 
 1. Implement native handle/edge dragging through shared crop geometry, constant-screen-size handles, magnifier, pinch/pan up to 5×, and double-tap fit.
 2. Read TIFF/JPEG/PNG originals through Task 21's leased session-page binding over Task 19; keep normalized upright coordinates independent of display transform. Removal/close invalidates the binding and draft operations.
 3. Compute full-photo filter previews off main at the existing 2400-pixel cap; retain current image and discard outdated filter/photo results.
-4. Keep onLoad dimensions and error behavior consistent; release images/observers and invalidate work on detach/disposal. Implement current submitResult/getQuadResult/setPresetResult transport without adding quad props or JS draft ownership.
+4. Keep onLoad dimensions and error behavior consistent; release images/observers and invalidate work on detach/disposal. Implement current submitResult/getCornersResult/setPresetResult transport without adding corners props or JS draft ownership.
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 
@@ -69,7 +69,7 @@ Changed files:
 - `ios/CropEditorView.swift`: UIKit editor over a contain-fitted upright photo. The
   photo is a `UIImageView` and the outline, handles, edge grips and magnifier are
   layers, so a drag only moves layers. Corner and edge drags snap the grabbed handle
-  under the finger, keep the last valid quad and publish once on release. The first
+  under the finger, keep the last valid corners and publish once on release. The first
   finger picks handle or viewport for the whole sequence. Two-finger pinch and pan
   count translation once, up to 5x, and the pan stops at the photo's edges. A double
   tap fits again, and a handle press breaks the tap sequence. Handles keep their
@@ -77,9 +77,9 @@ Changed files:
   nearer edge, glides on a display link, and scales `max(3 / zoom, 1.5)`. Touch
   entry points take IDs and times, so tests drive them without synthesized
   `UITouch`es.
-- `ios/CropQuadEditing.swift` and `ScannerCropGeometry` (in
+- `ios/CropCornerEditing.swift` and `ScannerCropGeometry` (in
   `ios/ScannerDocumentRender.h/.mm`): move, clamp and editor validity through the
-  shared `moveCorner`, `moveEdge`, `clampToFrame` and `validCropQuad`. Validity also
+  shared `moveCorner`, `moveEdge`, `clampToFrame` and `validCropCorners`. Validity also
   requires finite coordinates inside the photo, matching Android's editor check.
 - `ScannerDocumentRenderer.filterPreview`: draws the photo into opaque RGBA8 at most
   2400 on its long side, runs the shared `filterDocument` without shadow removal, and
@@ -94,7 +94,7 @@ Changed files:
   operations; only `submit` mutates the page.
 - `ios/DocumentRenderService.swift`: `filterIndex` is internal for the preview.
 - `ios/Tests/CropEditorTests.swift`: 17 tests covering:
-  - corner snap and clamp, edge clamp and last-valid quad, invalid drags and quads,
+  - corner snap and clamp, edge clamp and last-valid corners, invalid drags and corners,
     and replacement cancelling a drag
   - touches that start before the photo is shown
   - two-finger pan, simultaneous pinch and pan, the zoom cap, and double tap with a
@@ -113,7 +113,7 @@ Changed files:
 Decision: a saved crop outside the photo, which renders allow, is invalid input, as
 on Android. A Swift `afterUpdate` cannot throw, so iOS reports it through `onError`
 and shows the clamp (or the full frame when even that is invalid) as a suggestion.
-`getQuad` and `submit` reject, and no preset is classified, until an edit or preset
+`getCorners` and `submit` reject, and no preset is classified, until an edit or preset
 replaces it, so opening the editor never changes the saved crop on its own.
 
 Review follow-up (same day):
@@ -121,7 +121,7 @@ Review follow-up (same day):
 - The out-of-frame crop handling above replaced an earlier version in which the clamp
   became the draft and `submit` could save it without any user choice.
 - Clearing the photo (detach, unmount, removal) now cancels the touch sequence in
-  progress: a drag returns to its starting quad, the magnifier's display link stops,
+  progress: a drag returns to its starting corners, the magnifier's display link stops,
   and further moves are ignored until every finger lifts. Handle moves also ignore an
   empty content rect.
 - A touch held longer than 0.5 s is not a tap, so a long press never starts a double

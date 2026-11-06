@@ -10,10 +10,10 @@
 // Forward declarations of C++ defined types
 // Forward declaration of `AutofocusState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class AutofocusState; }
+// Forward declaration of `CameraCaptureResult` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
 // Forward declaration of `CameraCaptureState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraCaptureState; }
-// Forward declaration of `CameraMode` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class CameraMode; }
 // Forward declaration of `CameraPermissionStatus` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraPermissionStatus; }
 // Forward declaration of `CameraPermissionValue` to properly resolve imports.
@@ -32,14 +32,14 @@ namespace margelo::nitro::documentscanner { enum class CropDraftPreset; }
 namespace margelo::nitro::documentscanner { struct DocumentAnalysis; }
 // Forward declaration of `DocumentCandidate` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentCandidate; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentFilter` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
 // Forward declaration of `DocumentImageFormat` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentImageFormat; }
 // Forward declaration of `DocumentPoint` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentPoint; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
 // Forward declaration of `DocumentRenderOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
 // Forward declaration of `DocumentState` to properly resolve imports.
@@ -68,8 +68,6 @@ namespace margelo::nitro::documentscanner { enum class ImagePagerDirection; }
 namespace margelo::nitro::documentscanner { enum class PageThumbnailResizeMode; }
 // Forward declaration of `PaperSize` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct PaperSize; }
-// Forward declaration of `QualityGateConfig` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct QualityGateConfig; }
 // Forward declaration of `SampleFolder` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct SampleFolder; }
 // Forward declaration of `ScanPageMetadata` to properly resolve imports.
@@ -109,8 +107,8 @@ namespace ReactNativeDocumentScanner { class HybridScanSessionSpec_cxx; }
 
 // Include C++ defined types
 #include "AutofocusState.hpp"
+#include "CameraCaptureResult.hpp"
 #include "CameraCaptureState.hpp"
-#include "CameraMode.hpp"
 #include "CameraPermissionStatus.hpp"
 #include "CameraPermissionValue.hpp"
 #include "CameraState.hpp"
@@ -120,10 +118,10 @@ namespace ReactNativeDocumentScanner { class HybridScanSessionSpec_cxx; }
 #include "CropDraftPreset.hpp"
 #include "DocumentAnalysis.hpp"
 #include "DocumentCandidate.hpp"
+#include "DocumentCorners.hpp"
 #include "DocumentFilter.hpp"
 #include "DocumentImageFormat.hpp"
 #include "DocumentPoint.hpp"
-#include "DocumentQuad.hpp"
 #include "DocumentRenderOptions.hpp"
 #include "DocumentState.hpp"
 #include "HybridCameraPermissionSpec.hpp"
@@ -138,7 +136,6 @@ namespace ReactNativeDocumentScanner { class HybridScanSessionSpec_cxx; }
 #include "ImagePagerDirection.hpp"
 #include "PageThumbnailResizeMode.hpp"
 #include "PaperSize.hpp"
-#include "QualityGateConfig.hpp"
 #include "SampleFolder.hpp"
 #include "ScanPageMetadata.hpp"
 #include "ScanSessionChange.hpp"
@@ -361,6 +358,21 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::optional<bool>
+  /**
+   * Specialized version of `std::optional<bool>`.
+   */
+  using std__optional_bool_ = std::optional<bool>;
+  inline std::optional<bool> create_std__optional_bool_(const bool& value) noexcept {
+    return std::optional<bool>(value);
+  }
+  inline bool has_value_std__optional_bool_(const std::optional<bool>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline bool get_std__optional_bool_(const std::optional<bool>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::function<void(CropDraftPreset /* preset */)>
   /**
    * Specialized version of `std::function<void(CropDraftPreset)>`.
@@ -535,16 +547,16 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return Func_void_std__variant_bool__ScannerFailure__Wrapper(std::move(value));
   }
   
-  // pragma MARK: std::variant<ScannerFailure, DocumentQuad>
+  // pragma MARK: std::variant<ScannerFailure, DocumentCorners>
   /**
-   * Wrapper struct for `std::variant<ScannerFailure, DocumentQuad>`.
+   * Wrapper struct for `std::variant<ScannerFailure, DocumentCorners>`.
    * std::variant cannot be used in Swift because of a Swift bug.
    * Not even specializing it works. So we create a wrapper struct.
    */
-  struct std__variant_ScannerFailure__DocumentQuad_ final {
-    std::variant<ScannerFailure, DocumentQuad> variant;
-    std__variant_ScannerFailure__DocumentQuad_(std::variant<ScannerFailure, DocumentQuad> variant): variant(variant) { }
-    operator std::variant<ScannerFailure, DocumentQuad>() const noexcept {
+  struct std__variant_ScannerFailure__DocumentCorners_ final {
+    std::variant<ScannerFailure, DocumentCorners> variant;
+    std__variant_ScannerFailure__DocumentCorners_(std::variant<ScannerFailure, DocumentCorners> variant): variant(variant) { }
+    operator std::variant<ScannerFailure, DocumentCorners>() const noexcept {
       return variant;
     }
     inline size_t index() const noexcept {
@@ -553,49 +565,49 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     inline ScannerFailure get_0() const noexcept {
       return std::get<0>(variant);
     }
-    inline DocumentQuad get_1() const noexcept {
+    inline DocumentCorners get_1() const noexcept {
       return std::get<1>(variant);
     }
   };
-  inline std__variant_ScannerFailure__DocumentQuad_ create_std__variant_ScannerFailure__DocumentQuad_(const ScannerFailure& value) noexcept {
-    return std__variant_ScannerFailure__DocumentQuad_(value);
+  inline std__variant_ScannerFailure__DocumentCorners_ create_std__variant_ScannerFailure__DocumentCorners_(const ScannerFailure& value) noexcept {
+    return std__variant_ScannerFailure__DocumentCorners_(value);
   }
-  inline std__variant_ScannerFailure__DocumentQuad_ create_std__variant_ScannerFailure__DocumentQuad_(const DocumentQuad& value) noexcept {
-    return std__variant_ScannerFailure__DocumentQuad_(value);
-  }
-  
-  // pragma MARK: std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>>
-  /**
-   * Specialized version of `std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>>`.
-   */
-  using std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad___ = std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>>;
-  inline std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>> create_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad___() noexcept {
-    return Promise<std::variant<ScannerFailure, DocumentQuad>>::create();
-  }
-  inline PromiseHolder<std::variant<ScannerFailure, DocumentQuad>> wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad___(std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>> promise) noexcept {
-    return PromiseHolder<std::variant<ScannerFailure, DocumentQuad>>(std::move(promise));
+  inline std__variant_ScannerFailure__DocumentCorners_ create_std__variant_ScannerFailure__DocumentCorners_(const DocumentCorners& value) noexcept {
+    return std__variant_ScannerFailure__DocumentCorners_(value);
   }
   
-  // pragma MARK: std::function<void(const std::variant<ScannerFailure, DocumentQuad>& /* result */)>
+  // pragma MARK: std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>>
   /**
-   * Specialized version of `std::function<void(const std::variant<ScannerFailure, DocumentQuad>&)>`.
+   * Specialized version of `std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>>`.
    */
-  using Func_void_std__variant_ScannerFailure__DocumentQuad_ = std::function<void(const std::variant<ScannerFailure, DocumentQuad>& /* result */)>;
+  using std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners___ = std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>>;
+  inline std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>> create_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners___() noexcept {
+    return Promise<std::variant<ScannerFailure, DocumentCorners>>::create();
+  }
+  inline PromiseHolder<std::variant<ScannerFailure, DocumentCorners>> wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners___(std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>> promise) noexcept {
+    return PromiseHolder<std::variant<ScannerFailure, DocumentCorners>>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::variant<ScannerFailure, DocumentCorners>& /* result */)>
   /**
-   * Wrapper class for a `std::function<void(const std::variant<ScannerFailure, DocumentQuad>& / * result * /)>`, this can be used from Swift.
+   * Specialized version of `std::function<void(const std::variant<ScannerFailure, DocumentCorners>&)>`.
    */
-  class Func_void_std__variant_ScannerFailure__DocumentQuad__Wrapper final {
+  using Func_void_std__variant_ScannerFailure__DocumentCorners_ = std::function<void(const std::variant<ScannerFailure, DocumentCorners>& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::variant<ScannerFailure, DocumentCorners>& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__variant_ScannerFailure__DocumentCorners__Wrapper final {
   public:
-    explicit Func_void_std__variant_ScannerFailure__DocumentQuad__Wrapper(std::function<void(const std::variant<ScannerFailure, DocumentQuad>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::variant<ScannerFailure, DocumentQuad>& /* result */)>>(std::move(func))) {}
-    inline void call(std::variant<ScannerFailure, DocumentQuad> result) const noexcept {
+    explicit Func_void_std__variant_ScannerFailure__DocumentCorners__Wrapper(std::function<void(const std::variant<ScannerFailure, DocumentCorners>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::variant<ScannerFailure, DocumentCorners>& /* result */)>>(std::move(func))) {}
+    inline void call(std::variant<ScannerFailure, DocumentCorners> result) const noexcept {
       _function->operator()(result);
     }
   private:
-    std::unique_ptr<std::function<void(const std::variant<ScannerFailure, DocumentQuad>& /* result */)>> _function;
+    std::unique_ptr<std::function<void(const std::variant<ScannerFailure, DocumentCorners>& /* result */)>> _function;
   } SWIFT_NONCOPYABLE;
-  Func_void_std__variant_ScannerFailure__DocumentQuad_ create_Func_void_std__variant_ScannerFailure__DocumentQuad_(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_std__variant_ScannerFailure__DocumentQuad__Wrapper wrap_Func_void_std__variant_ScannerFailure__DocumentQuad_(Func_void_std__variant_ScannerFailure__DocumentQuad_ value) noexcept {
-    return Func_void_std__variant_ScannerFailure__DocumentQuad__Wrapper(std::move(value));
+  Func_void_std__variant_ScannerFailure__DocumentCorners_ create_Func_void_std__variant_ScannerFailure__DocumentCorners_(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__variant_ScannerFailure__DocumentCorners__Wrapper wrap_Func_void_std__variant_ScannerFailure__DocumentCorners_(Func_void_std__variant_ScannerFailure__DocumentCorners_ value) noexcept {
+    return Func_void_std__variant_ScannerFailure__DocumentCorners__Wrapper(std::move(value));
   }
   
   // pragma MARK: std::shared_ptr<HybridDocumentCropEditorViewSpec>
@@ -619,28 +631,13 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return Result<std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>>>::withError(error);
   }
   
-  // pragma MARK: Result<std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>>>
-  using Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad____ = Result<std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>>>;
-  inline Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad____ create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad____(const std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>>& value) noexcept {
-    return Result<std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>>>::withValue(value);
+  // pragma MARK: Result<std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>>>
+  using Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners____ = Result<std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>>>;
+  inline Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners____ create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners____(const std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>>>::withValue(value);
   }
-  inline Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad____ create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentQuad____(const std::exception_ptr& error) noexcept {
-    return Result<std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>>>::withError(error);
-  }
-  
-  // pragma MARK: std::optional<bool>
-  /**
-   * Specialized version of `std::optional<bool>`.
-   */
-  using std__optional_bool_ = std::optional<bool>;
-  inline std::optional<bool> create_std__optional_bool_(const bool& value) noexcept {
-    return std::optional<bool>(value);
-  }
-  inline bool has_value_std__optional_bool_(const std::optional<bool>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline bool get_std__optional_bool_(const std::optional<bool>& optional) noexcept {
-    return optional.value();
+  inline Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners____ create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__DocumentCorners____(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>>>::withError(error);
   }
   
   // pragma MARK: std::optional<double>
@@ -673,21 +670,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::optional<PaperSize>
-  /**
-   * Specialized version of `std::optional<PaperSize>`.
-   */
-  using std__optional_PaperSize_ = std::optional<PaperSize>;
-  inline std::optional<PaperSize> create_std__optional_PaperSize_(const PaperSize& value) noexcept {
-    return std::optional<PaperSize>(value);
-  }
-  inline bool has_value_std__optional_PaperSize_(const std::optional<PaperSize>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline PaperSize get_std__optional_PaperSize_(const std::optional<PaperSize>& optional) noexcept {
-    return optional.value();
-  }
-  
   // pragma MARK: std::optional<std::string>
   /**
    * Specialized version of `std::optional<std::string>`.
@@ -715,36 +697,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return optional.has_value();
   }
   inline std::function<void(const ScannerFailure& /* error */)> get_std__optional_std__function_void_const_ScannerFailure_____error______(const std::optional<std::function<void(const ScannerFailure& /* error */)>>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<CameraMode>
-  /**
-   * Specialized version of `std::optional<CameraMode>`.
-   */
-  using std__optional_CameraMode_ = std::optional<CameraMode>;
-  inline std::optional<CameraMode> create_std__optional_CameraMode_(const CameraMode& value) noexcept {
-    return std::optional<CameraMode>(value);
-  }
-  inline bool has_value_std__optional_CameraMode_(const std::optional<CameraMode>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline CameraMode get_std__optional_CameraMode_(const std::optional<CameraMode>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<QualityGateConfig>
-  /**
-   * Specialized version of `std::optional<QualityGateConfig>`.
-   */
-  using std__optional_QualityGateConfig_ = std::optional<QualityGateConfig>;
-  inline std::optional<QualityGateConfig> create_std__optional_QualityGateConfig_(const QualityGateConfig& value) noexcept {
-    return std::optional<QualityGateConfig>(value);
-  }
-  inline bool has_value_std__optional_QualityGateConfig_(const std::optional<QualityGateConfig>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline QualityGateConfig get_std__optional_QualityGateConfig_(const std::optional<QualityGateConfig>& optional) noexcept {
     return optional.value();
   }
   
@@ -978,67 +930,163 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::variant<std::string, ScannerFailure>
+  // pragma MARK: std::vector<std::string>
   /**
-   * Wrapper struct for `std::variant<std::string, ScannerFailure>`.
+   * Specialized version of `std::vector<std::string>`.
+   */
+  using std__vector_std__string_ = std::vector<std::string>;
+  inline std::vector<std::string> create_std__vector_std__string_(size_t size) noexcept {
+    std::vector<std::string> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  
+  // pragma MARK: std::optional<DocumentCandidate>
+  /**
+   * Specialized version of `std::optional<DocumentCandidate>`.
+   */
+  using std__optional_DocumentCandidate_ = std::optional<DocumentCandidate>;
+  inline std::optional<DocumentCandidate> create_std__optional_DocumentCandidate_(const DocumentCandidate& value) noexcept {
+    return std::optional<DocumentCandidate>(value);
+  }
+  inline bool has_value_std__optional_DocumentCandidate_(const std::optional<DocumentCandidate>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline DocumentCandidate get_std__optional_DocumentCandidate_(const std::optional<DocumentCandidate>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<DocumentAnalysis>
+  /**
+   * Specialized version of `std::optional<DocumentAnalysis>`.
+   */
+  using std__optional_DocumentAnalysis_ = std::optional<DocumentAnalysis>;
+  inline std::optional<DocumentAnalysis> create_std__optional_DocumentAnalysis_(const DocumentAnalysis& value) noexcept {
+    return std::optional<DocumentAnalysis>(value);
+  }
+  inline bool has_value_std__optional_DocumentAnalysis_(const std::optional<DocumentAnalysis>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline DocumentAnalysis get_std__optional_DocumentAnalysis_(const std::optional<DocumentAnalysis>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<PaperSize>
+  /**
+   * Specialized version of `std::optional<PaperSize>`.
+   */
+  using std__optional_PaperSize_ = std::optional<PaperSize>;
+  inline std::optional<PaperSize> create_std__optional_PaperSize_(const PaperSize& value) noexcept {
+    return std::optional<PaperSize>(value);
+  }
+  inline bool has_value_std__optional_PaperSize_(const std::optional<PaperSize>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline PaperSize get_std__optional_PaperSize_(const std::optional<PaperSize>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<ScannerFailure>
+  /**
+   * Specialized version of `std::optional<ScannerFailure>`.
+   */
+  using std__optional_ScannerFailure_ = std::optional<ScannerFailure>;
+  inline std::optional<ScannerFailure> create_std__optional_ScannerFailure_(const ScannerFailure& value) noexcept {
+    return std::optional<ScannerFailure>(value);
+  }
+  inline bool has_value_std__optional_ScannerFailure_(const std::optional<ScannerFailure>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline ScannerFailure get_std__optional_ScannerFailure_(const std::optional<ScannerFailure>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::unordered_map<std::string, ScanPageMetadata>
+  /**
+   * Specialized version of `std::unordered_map<std::string, ScanPageMetadata>`.
+   */
+  using std__unordered_map_std__string__ScanPageMetadata_ = std::unordered_map<std::string, ScanPageMetadata>;
+  inline std::unordered_map<std::string, ScanPageMetadata> create_std__unordered_map_std__string__ScanPageMetadata_(size_t size) noexcept {
+    std::unordered_map<std::string, ScanPageMetadata> map;
+    map.reserve(size);
+    return map;
+  }
+  inline std::vector<std::string> get_std__unordered_map_std__string__ScanPageMetadata__keys(const std__unordered_map_std__string__ScanPageMetadata_& map) noexcept {
+    std::vector<std::string> keys;
+    keys.reserve(map.size());
+    for (const auto& entry : map) {
+      keys.push_back(entry.first);
+    }
+    return keys;
+  }
+  inline ScanPageMetadata get_std__unordered_map_std__string__ScanPageMetadata__value(const std__unordered_map_std__string__ScanPageMetadata_& map, const std::string& key) noexcept {
+    return map.find(key)->second;
+  }
+  inline void emplace_std__unordered_map_std__string__ScanPageMetadata_(std__unordered_map_std__string__ScanPageMetadata_& map, const std::string& key, const ScanPageMetadata& value) noexcept {
+    map.emplace(key, value);
+  }
+  
+  // pragma MARK: std::variant<ScannerFailure, CameraCaptureResult>
+  /**
+   * Wrapper struct for `std::variant<ScannerFailure, CameraCaptureResult>`.
    * std::variant cannot be used in Swift because of a Swift bug.
    * Not even specializing it works. So we create a wrapper struct.
    */
-  struct std__variant_std__string__ScannerFailure_ final {
-    std::variant<std::string, ScannerFailure> variant;
-    std__variant_std__string__ScannerFailure_(std::variant<std::string, ScannerFailure> variant): variant(variant) { }
-    operator std::variant<std::string, ScannerFailure>() const noexcept {
+  struct std__variant_ScannerFailure__CameraCaptureResult_ final {
+    std::variant<ScannerFailure, CameraCaptureResult> variant;
+    std__variant_ScannerFailure__CameraCaptureResult_(std::variant<ScannerFailure, CameraCaptureResult> variant): variant(variant) { }
+    operator std::variant<ScannerFailure, CameraCaptureResult>() const noexcept {
       return variant;
     }
     inline size_t index() const noexcept {
       return variant.index();
     }
-    inline std::string get_0() const noexcept {
+    inline ScannerFailure get_0() const noexcept {
       return std::get<0>(variant);
     }
-    inline ScannerFailure get_1() const noexcept {
+    inline CameraCaptureResult get_1() const noexcept {
       return std::get<1>(variant);
     }
   };
-  inline std__variant_std__string__ScannerFailure_ create_std__variant_std__string__ScannerFailure_(const std::string& value) noexcept {
-    return std__variant_std__string__ScannerFailure_(value);
+  inline std__variant_ScannerFailure__CameraCaptureResult_ create_std__variant_ScannerFailure__CameraCaptureResult_(const ScannerFailure& value) noexcept {
+    return std__variant_ScannerFailure__CameraCaptureResult_(value);
   }
-  inline std__variant_std__string__ScannerFailure_ create_std__variant_std__string__ScannerFailure_(const ScannerFailure& value) noexcept {
-    return std__variant_std__string__ScannerFailure_(value);
-  }
-  
-  // pragma MARK: std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>
-  /**
-   * Specialized version of `std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>`.
-   */
-  using std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___ = std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>;
-  inline std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> create_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___() noexcept {
-    return Promise<std::variant<std::string, ScannerFailure>>::create();
-  }
-  inline PromiseHolder<std::variant<std::string, ScannerFailure>> wrap_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___(std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> promise) noexcept {
-    return PromiseHolder<std::variant<std::string, ScannerFailure>>(std::move(promise));
+  inline std__variant_ScannerFailure__CameraCaptureResult_ create_std__variant_ScannerFailure__CameraCaptureResult_(const CameraCaptureResult& value) noexcept {
+    return std__variant_ScannerFailure__CameraCaptureResult_(value);
   }
   
-  // pragma MARK: std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>
+  // pragma MARK: std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>
   /**
-   * Specialized version of `std::function<void(const std::variant<std::string, ScannerFailure>&)>`.
+   * Specialized version of `std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>`.
    */
-  using Func_void_std__variant_std__string__ScannerFailure_ = std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>;
+  using std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult___ = std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>;
+  inline std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> create_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult___() noexcept {
+    return Promise<std::variant<ScannerFailure, CameraCaptureResult>>::create();
+  }
+  inline PromiseHolder<std::variant<ScannerFailure, CameraCaptureResult>> wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult___(std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> promise) noexcept {
+    return PromiseHolder<std::variant<ScannerFailure, CameraCaptureResult>>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::variant<ScannerFailure, CameraCaptureResult>& /* result */)>
   /**
-   * Wrapper class for a `std::function<void(const std::variant<std::string, ScannerFailure>& / * result * /)>`, this can be used from Swift.
+   * Specialized version of `std::function<void(const std::variant<ScannerFailure, CameraCaptureResult>&)>`.
    */
-  class Func_void_std__variant_std__string__ScannerFailure__Wrapper final {
+  using Func_void_std__variant_ScannerFailure__CameraCaptureResult_ = std::function<void(const std::variant<ScannerFailure, CameraCaptureResult>& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::variant<ScannerFailure, CameraCaptureResult>& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__variant_ScannerFailure__CameraCaptureResult__Wrapper final {
   public:
-    explicit Func_void_std__variant_std__string__ScannerFailure__Wrapper(std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>>(std::move(func))) {}
-    inline void call(std::variant<std::string, ScannerFailure> result) const noexcept {
+    explicit Func_void_std__variant_ScannerFailure__CameraCaptureResult__Wrapper(std::function<void(const std::variant<ScannerFailure, CameraCaptureResult>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::variant<ScannerFailure, CameraCaptureResult>& /* result */)>>(std::move(func))) {}
+    inline void call(std::variant<ScannerFailure, CameraCaptureResult> result) const noexcept {
       _function->operator()(result);
     }
   private:
-    std::unique_ptr<std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>> _function;
+    std::unique_ptr<std::function<void(const std::variant<ScannerFailure, CameraCaptureResult>& /* result */)>> _function;
   } SWIFT_NONCOPYABLE;
-  Func_void_std__variant_std__string__ScannerFailure_ create_Func_void_std__variant_std__string__ScannerFailure_(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_std__variant_std__string__ScannerFailure__Wrapper wrap_Func_void_std__variant_std__string__ScannerFailure_(Func_void_std__variant_std__string__ScannerFailure_ value) noexcept {
-    return Func_void_std__variant_std__string__ScannerFailure__Wrapper(std::move(value));
+  Func_void_std__variant_ScannerFailure__CameraCaptureResult_ create_Func_void_std__variant_ScannerFailure__CameraCaptureResult_(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__variant_ScannerFailure__CameraCaptureResult__Wrapper wrap_Func_void_std__variant_ScannerFailure__CameraCaptureResult_(Func_void_std__variant_ScannerFailure__CameraCaptureResult_ value) noexcept {
+    return Func_void_std__variant_ScannerFailure__CameraCaptureResult__Wrapper(std::move(value));
   }
   
   // pragma MARK: std::optional<TakePhotoOptions>
@@ -1068,13 +1116,13 @@ namespace margelo::nitro::documentscanner::bridge::swift {
   using std__weak_ptr_HybridDocumentScannerCameraViewSpec_ = std::weak_ptr<HybridDocumentScannerCameraViewSpec>;
   inline std__weak_ptr_HybridDocumentScannerCameraViewSpec_ weakify_std__shared_ptr_HybridDocumentScannerCameraViewSpec_(const std::shared_ptr<HybridDocumentScannerCameraViewSpec>& strong) noexcept { return strong; }
   
-  // pragma MARK: Result<std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>>
-  using Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____ = Result<std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>>;
-  inline Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____ create_Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____(const std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>& value) noexcept {
-    return Result<std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>>::withValue(value);
+  // pragma MARK: Result<std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>>
+  using Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____ = Result<std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>>;
+  inline Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____ create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____(const std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>>::withValue(value);
   }
-  inline Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____ create_Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____(const std::exception_ptr& error) noexcept {
-    return Result<std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>>::withError(error);
+  inline Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____ create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>>::withError(error);
   }
   
   // pragma MARK: std::variant<std::shared_ptr<HybridScanSessionSpec>, ScannerFailure>
@@ -1215,17 +1263,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
   }
   inline Result_void_ create_Result_void_(const std::exception_ptr& error) noexcept {
     return Result<void>::withError(error);
-  }
-  
-  // pragma MARK: std::vector<std::string>
-  /**
-   * Specialized version of `std::vector<std::string>`.
-   */
-  using std__vector_std__string_ = std::vector<std::string>;
-  inline std::vector<std::string> create_std__vector_std__string_(size_t size) noexcept {
-    std::vector<std::string> vector;
-    vector.reserve(size);
-    return vector;
   }
   
   // pragma MARK: std::optional<std::vector<std::string>>
@@ -1392,6 +1429,69 @@ namespace margelo::nitro::documentscanner::bridge::swift {
   using std__weak_ptr_HybridPageThumbnailViewSpec_ = std::weak_ptr<HybridPageThumbnailViewSpec>;
   inline std__weak_ptr_HybridPageThumbnailViewSpec_ weakify_std__shared_ptr_HybridPageThumbnailViewSpec_(const std::shared_ptr<HybridPageThumbnailViewSpec>& strong) noexcept { return strong; }
   
+  // pragma MARK: std::variant<std::string, ScannerFailure>
+  /**
+   * Wrapper struct for `std::variant<std::string, ScannerFailure>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
+   */
+  struct std__variant_std__string__ScannerFailure_ final {
+    std::variant<std::string, ScannerFailure> variant;
+    std__variant_std__string__ScannerFailure_(std::variant<std::string, ScannerFailure> variant): variant(variant) { }
+    operator std::variant<std::string, ScannerFailure>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline std::string get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline ScannerFailure get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_std__string__ScannerFailure_ create_std__variant_std__string__ScannerFailure_(const std::string& value) noexcept {
+    return std__variant_std__string__ScannerFailure_(value);
+  }
+  inline std__variant_std__string__ScannerFailure_ create_std__variant_std__string__ScannerFailure_(const ScannerFailure& value) noexcept {
+    return std__variant_std__string__ScannerFailure_(value);
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>`.
+   */
+  using std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___ = std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>;
+  inline std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> create_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___() noexcept {
+    return Promise<std::variant<std::string, ScannerFailure>>::create();
+  }
+  inline PromiseHolder<std::variant<std::string, ScannerFailure>> wrap_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___(std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> promise) noexcept {
+    return PromiseHolder<std::variant<std::string, ScannerFailure>>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const std::variant<std::string, ScannerFailure>&)>`.
+   */
+  using Func_void_std__variant_std__string__ScannerFailure_ = std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::variant<std::string, ScannerFailure>& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__variant_std__string__ScannerFailure__Wrapper final {
+  public:
+    explicit Func_void_std__variant_std__string__ScannerFailure__Wrapper(std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>>(std::move(func))) {}
+    inline void call(std::variant<std::string, ScannerFailure> result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__variant_std__string__ScannerFailure_ create_Func_void_std__variant_std__string__ScannerFailure_(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__variant_std__string__ScannerFailure__Wrapper wrap_Func_void_std__variant_std__string__ScannerFailure_(Func_void_std__variant_std__string__ScannerFailure_ value) noexcept {
+    return Func_void_std__variant_std__string__ScannerFailure__Wrapper(std::move(value));
+  }
+  
   // pragma MARK: std::optional<ImageFit>
   /**
    * Specialized version of `std::optional<ImageFit>`.
@@ -1470,76 +1570,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return Func_void_std__variant_std__vector_std__string___ScannerFailure__Wrapper(std::move(value));
   }
   
-  // pragma MARK: std::optional<DocumentCandidate>
-  /**
-   * Specialized version of `std::optional<DocumentCandidate>`.
-   */
-  using std__optional_DocumentCandidate_ = std::optional<DocumentCandidate>;
-  inline std::optional<DocumentCandidate> create_std__optional_DocumentCandidate_(const DocumentCandidate& value) noexcept {
-    return std::optional<DocumentCandidate>(value);
-  }
-  inline bool has_value_std__optional_DocumentCandidate_(const std::optional<DocumentCandidate>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline DocumentCandidate get_std__optional_DocumentCandidate_(const std::optional<DocumentCandidate>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<DocumentAnalysis>
-  /**
-   * Specialized version of `std::optional<DocumentAnalysis>`.
-   */
-  using std__optional_DocumentAnalysis_ = std::optional<DocumentAnalysis>;
-  inline std::optional<DocumentAnalysis> create_std__optional_DocumentAnalysis_(const DocumentAnalysis& value) noexcept {
-    return std::optional<DocumentAnalysis>(value);
-  }
-  inline bool has_value_std__optional_DocumentAnalysis_(const std::optional<DocumentAnalysis>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline DocumentAnalysis get_std__optional_DocumentAnalysis_(const std::optional<DocumentAnalysis>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<ScannerFailure>
-  /**
-   * Specialized version of `std::optional<ScannerFailure>`.
-   */
-  using std__optional_ScannerFailure_ = std::optional<ScannerFailure>;
-  inline std::optional<ScannerFailure> create_std__optional_ScannerFailure_(const ScannerFailure& value) noexcept {
-    return std::optional<ScannerFailure>(value);
-  }
-  inline bool has_value_std__optional_ScannerFailure_(const std::optional<ScannerFailure>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline ScannerFailure get_std__optional_ScannerFailure_(const std::optional<ScannerFailure>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::unordered_map<std::string, ScanPageMetadata>
-  /**
-   * Specialized version of `std::unordered_map<std::string, ScanPageMetadata>`.
-   */
-  using std__unordered_map_std__string__ScanPageMetadata_ = std::unordered_map<std::string, ScanPageMetadata>;
-  inline std::unordered_map<std::string, ScanPageMetadata> create_std__unordered_map_std__string__ScanPageMetadata_(size_t size) noexcept {
-    std::unordered_map<std::string, ScanPageMetadata> map;
-    map.reserve(size);
-    return map;
-  }
-  inline std::vector<std::string> get_std__unordered_map_std__string__ScanPageMetadata__keys(const std__unordered_map_std__string__ScanPageMetadata_& map) noexcept {
-    std::vector<std::string> keys;
-    keys.reserve(map.size());
-    for (const auto& entry : map) {
-      keys.push_back(entry.first);
-    }
-    return keys;
-  }
-  inline ScanPageMetadata get_std__unordered_map_std__string__ScanPageMetadata__value(const std__unordered_map_std__string__ScanPageMetadata_& map, const std::string& key) noexcept {
-    return map.find(key)->second;
-  }
-  inline void emplace_std__unordered_map_std__string__ScanPageMetadata_(std__unordered_map_std__string__ScanPageMetadata_& map, const std::string& key, const ScanPageMetadata& value) noexcept {
-    map.emplace(key, value);
-  }
-  
   // pragma MARK: std::variant<ScanSessionObservation, ScannerFailure>
   /**
    * Wrapper struct for `std::variant<ScanSessionObservation, ScannerFailure>`.
@@ -1589,6 +1619,15 @@ namespace margelo::nitro::documentscanner::bridge::swift {
   Func_void_ScanSessionChange create_Func_void_ScanSessionChange(void* NON_NULL swiftClosureWrapper) noexcept;
   inline Func_void_ScanSessionChange_Wrapper wrap_Func_void_ScanSessionChange(Func_void_ScanSessionChange value) noexcept {
     return Func_void_ScanSessionChange_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>>
+  using Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____ = Result<std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>>;
+  inline Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____ create_Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____(const std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____ create_Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>>>::withError(error);
   }
   
   // pragma MARK: Result<std::shared_ptr<Promise<std::variant<std::vector<std::string>, ScannerFailure>>>>

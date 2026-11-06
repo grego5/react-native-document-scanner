@@ -1,7 +1,7 @@
 package com.margelo.nitro.documentscanner.processing
 
 import android.hardware.camera2.CaptureResult
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 
 /**
  * Analysis results used to check capture readiness for one frame. [sensorNs] is its exposure start;
@@ -21,7 +21,7 @@ internal data class FrameRecord(
   val flow: FlowMotionEstimate?,
   val motion: GateMotion?,
   val gyroSpeed: Double?,
-  val guide: DocumentQuad?,
+  val guide: DocumentCorners?,
 ) {
   /** Age of the image itself: from exposure on REALTIME cameras, otherwise from arrival at analysis. */
   fun ageNanos(nowNs: Long, nowRealtimeNs: Long): Long = realtimeSensorNs?.let { nowRealtimeNs - it } ?: (nowNs - arrivalNs)

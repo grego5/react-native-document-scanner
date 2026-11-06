@@ -1,14 +1,14 @@
 package com.margelo.nitro.documentscanner
 
 import com.margelo.nitro.documentscanner.processing.DocumentRenderer
-import com.margelo.nitro.documentscanner.processing.QuadModelStore
+import com.margelo.nitro.documentscanner.processing.CornerModelStore
 import java.util.UUID
 
 /** Reserves one physical capture's immutable destinations and keeps writer pins through its last callback. */
 internal class SessionCapture private constructor(
   val session: ScanSessionState,
   val options: DocumentRenderOptions,
-  private val selection: QuadModelStore.Selection?,
+  private val selection: CornerModelStore.Selection?,
   val original: SessionResources.Output,
   val frame: SessionResources.Output,
 ) : AutoCloseable {
@@ -19,10 +19,10 @@ internal class SessionCapture private constructor(
   fun invalidate() { invalidated = true }
 
   /** Call only after original/frame saving and the view generation's publication claim succeed. */
-  fun publish(frameResource: SessionResources.Resource?, liveQuad: DocumentQuad?): String {
+  fun publish(frameResource: SessionResources.Resource?, liveCorners: DocumentCorners?, autoCrop: Boolean = true): String {
     check(!ended && !kept)
     if (invalidated) throw ScannerException(ScannerErrorCode.PROCESSOR_SUPERSEDED)
-    session.admit(pageId, original.resource, frameResource, liveQuad, options, selection)
+    session.admit(pageId, original.resource, frameResource, liveCorners, options, selection, autoCrop)
     kept = true
     return pageId
   }
@@ -39,7 +39,7 @@ internal class SessionCapture private constructor(
     fun reserve(session: ScanSessionState, options: DocumentRenderOptions?): SessionCapture {
       if (session.snapshot().closed) throw ScannerException(ScannerErrorCode.PROCESSOR_DISPOSED)
       val effective = DocumentRenderer.effectiveOptions(options)
-      val selection = QuadModelStore.selected
+      val selection = CornerModelStore.selected
       val original = session.resources.output(SessionResources.Kind.ORIGINAL)
       try {
         return SessionCapture(session, effective, selection, original, session.resources.output(SessionResources.Kind.FRAME))

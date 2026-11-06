@@ -43,7 +43,7 @@ struct RenderArtifacts: Sendable {
 }
 
 /// Synchronous engine entry for the session's native image worker: rectifies the
-/// upright original so the quad's corners land exactly on the output corners.
+/// upright original so the document corners land exactly on the output corners.
 enum DocumentRenderService {
   static let thumbnailLongSide = 640
   private static let defaultQuality = 92
@@ -59,7 +59,7 @@ enum DocumentRenderService {
     let filter: DocumentFilter
     /// Resolved: never `auto`.
     let format: DocumentImageFormat
-    let followPageEdges: Bool
+    let simpleDewarp: Bool
   }
 
   static func outputFormat(_ options: DocumentRenderOptions?) -> DocumentImageFormat {
@@ -96,7 +96,7 @@ enum DocumentRenderService {
     let filter = options?.filter ?? DocumentFilter.none
     guard format != .png || filter == .grayscale || filter == .blackwhite else { throw ScannerCodeError.inputInvalid }
     return Config(removeShadows: options?.removeShadows ?? true, quality: quality, paperLongEdge: paperLongEdge,
-                  filter: filter, format: format, followPageEdges: options?.followPageEdges ?? true)
+                  filter: filter, format: format, simpleDewarp: options?.simpleDewarp ?? true)
   }
 
   /// Validated at command admission, so omitted defaults compare equal to explicit defaults.
@@ -104,15 +104,15 @@ enum DocumentRenderService {
     let config = try validate(options)
     return DocumentRenderOptions(removeShadows: config.removeShadows, jpegQuality: Double(config.quality) / 100,
       filter: config.filter, format: options?.format ?? .jpeg, paperSize: options?.paperSize,
-      dpi: options?.paperSize.map { _ in options?.dpi ?? defaultDpi }, followPageEdges: config.followPageEdges)
+      dpi: options?.paperSize.map { _ in options?.dpi ?? defaultDpi }, simpleDewarp: config.simpleDewarp)
   }
 
-  static func coordinates(_ quad: DocumentQuad) -> [NSNumber] {
-    [quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft].flatMap { [NSNumber(value: $0.x), NSNumber(value: $0.y)] }
+  static func coordinates(_ corners: DocumentCorners) -> [NSNumber] {
+    [corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft].flatMap { [NSNumber(value: $0.x), NSNumber(value: $0.y)] }
   }
 
-  static func validate(_ quad: DocumentQuad) throws {
-    do { try ScannerDocumentRenderer.validateQuad(coordinates(quad)) }
+  static func validate(_ corners: DocumentCorners) throws {
+    do { try ScannerDocumentRenderer.validateCorners(coordinates(corners)) }
     catch { throw ScannerCodeError.bridged(error, failure: .inputInvalid) }
   }
 
@@ -120,7 +120,7 @@ enum DocumentRenderService {
 
   /// Writes `image` and its JPEG `thumbnail` from the leased original; both are
   /// removed on failure. The original's bytes are only borrowed.
-  static func render(_ source: SourcePixelLease, quad: DocumentQuad, options: DocumentRenderOptions?,
+  static func render(_ source: SourcePixelLease, corners: DocumentCorners, options: DocumentRenderOptions?,
                      image: URL, thumbnail: URL) throws -> RenderArtifacts {
     let config = try validate(options)
     guard image.isFileURL, thumbnail.isFileURL, image != thumbnail,
@@ -131,8 +131,8 @@ enum DocumentRenderService {
       let page = try source.withUnsafeBytes { bytes in
         try ScannerDocumentRenderer.renderOwner(source, bytes: bytes.baseAddress!, byteCount: UInt(bytes.count),
           width: UInt32(source.width), height: UInt32(source.height), rowStride: UInt(source.rowStride),
-          quad: coordinates(quad), paperLongEdge: config.paperLongEdge ?? -1,
-          followPageEdges: config.followPageEdges, filter: filterIndex(config.filter),
+          corners: coordinates(corners), paperLongEdge: config.paperLongEdge ?? -1,
+          simpleDewarp: config.simpleDewarp, filter: filterIndex(config.filter),
           removeShadows: config.removeShadows, grayPng: config.format == .png,
           jpegQuality: Double(config.quality) / 100, image: image, thumbnail: thumbnail,
           thumbnailLongSide: thumbnailLongSide)

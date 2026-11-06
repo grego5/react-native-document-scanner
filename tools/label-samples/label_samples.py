@@ -31,7 +31,7 @@ def save_manifest(path, manifest):
 
 
 def read_sample(path, digest):
-    """Status and quad from a scanner sample saved beside [path] as `<stem>.json`, or None without one."""
+    """Status and corners from a scanner sample saved beside [path] as `<stem>.json`, or None without one."""
     sidecar = path.with_suffix('.json')
     if not sidecar.is_file():
         return None
@@ -44,7 +44,7 @@ def read_sample(path, digest):
 
 
 def write_sample(path, sample):
-    """Records [sample]'s status and quad in the scanner sample beside [path], keeping its other fields."""
+    """Records [sample]'s status and corners in the scanner sample beside [path], keeping its other fields."""
     sidecar = Path(path).with_suffix('.json')
     if not sidecar.is_file():
         return
@@ -87,16 +87,16 @@ def initialize(images, annotations):
 def validate_sample(sample):
     if sample['status'] == 'no-document':
         if sample.get('quad') is not None:
-            raise ValueError('A no-document image cannot have a document quad')
+            raise ValueError('A no-document image cannot have document corners')
         return
     if sample['status'] != 'document':
         raise ValueError('Image has not been labeled')
-    quad = sample.get('quad')
-    if not isinstance(quad, dict) or set(quad) != set(CORNERS):
+    corners = sample.get('quad')
+    if not isinstance(corners, dict) or set(corners) != set(CORNERS):
         raise ValueError('Mark four corners: TL, TR, BR, BL')
-    if not all(isinstance(quad[corner], dict) for corner in CORNERS):
+    if not all(isinstance(corners[corner], dict) for corner in CORNERS):
         raise ValueError('Each corner must contain x and y coordinates')
-    points = [[quad[corner].get('x'), quad[corner].get('y')] for corner in CORNERS]
+    points = [[corners[corner].get('x'), corners[corner].get('y')] for corner in CORNERS]
     for point in points:
         if len(point) != 2 or not all(isinstance(v, (int, float)) and math.isfinite(v) and 0 <= v <= 1 for v in point):
             raise ValueError('Corner coordinates must be finite and inside the image')
@@ -189,8 +189,8 @@ class Labeler:
             self.image.close()
         self.image = upright(Path(self.manifest['imageRoot']) / name)
         sample = self.manifest['images'][name]
-        quad = sample.get('quad')
-        self.points = [(quad[c]['x'] * self.image.width, quad[c]['y'] * self.image.height) for c in CORNERS] if quad else []
+        corners = sample.get('quad')
+        self.points = [(corners[c]['x'] * self.image.width, corners[c]['y'] * self.image.height) for c in CORNERS] if corners else []
         self.dirty = False
         self.selected = None
         self.fit()

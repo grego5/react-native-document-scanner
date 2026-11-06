@@ -42,8 +42,8 @@ export const styles = StyleSheet.create({
   optionsPanel: {
     backgroundColor: colors.panel,
     borderRadius: 20,
-    gap: 16,
-    padding: 16,
+    gap: 8,
+    padding: 8,
     flexShrink: 1,
   },
   tuningRow: {
@@ -51,6 +51,39 @@ export const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     justifyContent: 'center',
+  },
+  optionGrid: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  optionSpacer: {
+    flex: 1,
+  },
+  optionCell: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    height: 44,
+    paddingHorizontal: 10,
+  },
+  optionLabel: {
+    color: '#e8f3f8',
+    flex: 1,
+    fontSize: 13,
+  },
+  optionValue: {
+    color: '#9fd3ea',
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
   },
   tuningSwitch: {
     backgroundColor: colors.surface,
@@ -60,6 +93,13 @@ export const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     paddingHorizontal: 14,
+  },
+  headerButton: {
+    alignItems: 'center',
+    width: 112,
+  },
+  centeredLabel: {
+    textAlign: 'center',
   },
   tuningLabel: {
     color: '#e8f3f8',
@@ -230,7 +270,8 @@ export const styles = StyleSheet.create({
     gap: 8,
   },
   reviewTool: {
-    flex: 1,
+    flexBasis: 0,
+    flexGrow: 1,
     minWidth: 0,
     paddingHorizontal: 8,
     alignItems: 'center',

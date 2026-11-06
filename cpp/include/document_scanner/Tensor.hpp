@@ -10,9 +10,9 @@ namespace document_scanner {
 Size validateCornerTensors(int inputCount, int outputCount, bool inputFloat32, bool outputFloat32,
                            std::span<const int> inputShape, std::span<const int> outputShape);
 size_t cornerInputBytes(Size target);
-bool validPredictionQuad(const Quad &quad);
+bool validPredictionCorners(const Corners &corners);
 struct CornerPrediction final {
-  const Quad quad;
+  const Corners corners;
   const double score;
 };
 std::optional<CornerPrediction> decodeCornerOutput(std::span<const float> values);

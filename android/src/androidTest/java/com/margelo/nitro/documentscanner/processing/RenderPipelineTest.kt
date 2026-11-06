@@ -44,18 +44,18 @@ class RenderPipelineTest {
         try { it.setTo(Scalar(70.0, 150.0, 210.0, 255.0)) } finally { it.release() }
       }
       val before = source.clone()
-      val quad = if (kind == "outside") doubleArrayOf(-.02,.125,.875,.125,.875,.875,.125,.875)
+      val corners = if (kind == "outside") doubleArrayOf(-.02,.125,.875,.125,.875,.875,.125,.875)
         else doubleArrayOf(.125,.125,.875,.125,.875,.875,.125,.875)
       val scale = if (kind == "scaled") 2.0 else 1.0
       val paper = if (kind == "scaled") 720.0 else null
       val warped = Mat()
       try {
-        val expectedMetadata = NativeRenderGeometry.render(source, warped, quad, scale, paper, true)
+        val expectedMetadata = NativeRenderGeometry.render(source, warped, corners, scale, paper, true)
         for (shadows in listOf(false, true)) for (filter in DocumentFilter.entries) {
           val expected = DocumentFilters.apply(warped, filter, shadows)
           val actual = Mat()
           try {
-            val actualMetadata = NativeRenderGeometry.render(source, actual, quad, scale, paper, true, filter, shadows)
+            val actualMetadata = NativeRenderGeometry.render(source, actual, corners, scale, paper, true, filter, shadows)
             assertEquals("$kind metadata", expectedMetadata, actualMetadata)
             assertEquals(expected.type(), actual.type())
             assertEquals(expected.size(), actual.size())

@@ -53,11 +53,11 @@ namespace margelo::nitro::documentscanner {
     std::optional<DocumentImageFormat> format     SWIFT_PRIVATE;
     std::optional<PaperSize> paperSize     SWIFT_PRIVATE;
     std::optional<double> dpi     SWIFT_PRIVATE;
-    std::optional<bool> followPageEdges     SWIFT_PRIVATE;
+    std::optional<bool> simpleDewarp     SWIFT_PRIVATE;
 
   public:
     DocumentRenderOptions() = default;
-    explicit DocumentRenderOptions(std::optional<bool> removeShadows, std::optional<double> jpegQuality, std::optional<DocumentFilter> filter, std::optional<DocumentImageFormat> format, std::optional<PaperSize> paperSize, std::optional<double> dpi, std::optional<bool> followPageEdges): removeShadows(removeShadows), jpegQuality(jpegQuality), filter(filter), format(format), paperSize(paperSize), dpi(dpi), followPageEdges(followPageEdges) {}
+    explicit DocumentRenderOptions(std::optional<bool> removeShadows, std::optional<double> jpegQuality, std::optional<DocumentFilter> filter, std::optional<DocumentImageFormat> format, std::optional<PaperSize> paperSize, std::optional<double> dpi, std::optional<bool> simpleDewarp): removeShadows(removeShadows), jpegQuality(jpegQuality), filter(filter), format(format), paperSize(paperSize), dpi(dpi), simpleDewarp(simpleDewarp) {}
 
   public:
     #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
@@ -81,7 +81,7 @@ namespace margelo::nitro {
         JSIConverter<std::optional<margelo::nitro::documentscanner::DocumentImageFormat>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "format"))),
         JSIConverter<std::optional<margelo::nitro::documentscanner::PaperSize>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "paperSize"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "dpi"))),
-        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "followPageEdges")))
+        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "simpleDewarp")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::documentscanner::DocumentRenderOptions& arg) {
@@ -92,7 +92,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "format"), JSIConverter<std::optional<margelo::nitro::documentscanner::DocumentImageFormat>>::toJSI(runtime, arg.format));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "paperSize"), JSIConverter<std::optional<margelo::nitro::documentscanner::PaperSize>>::toJSI(runtime, arg.paperSize));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "dpi"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.dpi));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "followPageEdges"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.followPageEdges));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "simpleDewarp"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.simpleDewarp));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -109,7 +109,7 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<margelo::nitro::documentscanner::DocumentImageFormat>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "format")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::documentscanner::PaperSize>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "paperSize")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "dpi")))) return false;
-      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "followPageEdges")))) return false;
+      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "simpleDewarp")))) return false;
       return true;
     }
   };

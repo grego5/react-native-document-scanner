@@ -12,7 +12,7 @@ class CaptureGateTest {
   )
 
   @Test
-  fun publicWaitReasonTracksTheChangingQualityGateBlocker() {
+  fun publicWaitReasonTracksTheChangingLowQualityControlBlocker() {
     val gate = CaptureGate(1_500)
     val states = listOf(
       ready.copy(documentFound = false, focused = false),
@@ -29,19 +29,19 @@ class CaptureGateTest {
   fun perShotOverrideBypassesEveryWaitWithoutChangingTheNextShotsGate() {
     val blocked = ready.copy(documentFound = false, focused = false, zslReady = false, lightReady = false, steady = false)
     // Without a focus scan to wait for, nothing blocks the overridden shot.
-    assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipQualityGate = true).next(blocked.copy(focusCheckEnabled = false)))
+    assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipLowQualityControl = true).next(blocked.copy(focusCheckEnabled = false)))
     assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 2_000), CaptureGate(1_500).next(blocked))
   }
 
   @Test
   fun perShotOverrideWaitsOnlyForItsFocusScanToSettle() {
-    val gate = CaptureGate(1_500, skipQualityGate = true)
+    val gate = CaptureGate(1_500, skipLowQualityControl = true)
     val scanning = ready.copy(documentFound = false, focused = false, zslReady = false, steady = false,
       focusingUntilMs = Long.MAX_VALUE)
     // A pending scan wakes the gate by settling, not by a timer.
     assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, Long.MAX_VALUE), gate.next(scanning))
     assertEquals(CaptureDecision.Shoot, gate.next(scanning.copy(nowMs = 2_000, focused = true, focusingUntilMs = null)))
-    assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipQualityGate = true).next(scanning.copy(focusingUntilMs = null)))
+    assertEquals(CaptureDecision.Shoot, CaptureGate(1_500, skipLowQualityControl = true).next(scanning.copy(focusingUntilMs = null)))
   }
 
   @Test
@@ -188,7 +188,7 @@ class CaptureGateTest {
     assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_000),
       CaptureGate(1_500).next(late.copy(scanAvailable = false, scanTrigger = ScanTrigger.DARK)))
     assertEquals(CaptureDecision.Shoot,
-      CaptureGate(1_500, skipQualityGate = true).next(late.copy(focusCheckEnabled = false, scanTrigger = ScanTrigger.DARK)))
+      CaptureGate(1_500, skipLowQualityControl = true).next(late.copy(focusCheckEnabled = false, scanTrigger = ScanTrigger.DARK)))
   }
 
   @Test

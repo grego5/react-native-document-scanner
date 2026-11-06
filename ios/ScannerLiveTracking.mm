@@ -8,15 +8,15 @@
 namespace {
 using namespace document_scanner;
 
-std::optional<Quad> quad(NSArray<NSNumber *> *_Nullable values) {
+std::optional<Corners> corners(NSArray<NSNumber *> *_Nullable values) {
   if (values.count != 8)
     return std::nullopt;
   auto at = [&](NSUInteger i) { return values[i].doubleValue; };
   using P = document_scanner::Point;
-  return Quad{P{at(0), at(1)}, P{at(2), at(3)}, P{at(4), at(5)}, P{at(6), at(7)}};
+  return Corners{P{at(0), at(1)}, P{at(2), at(3)}, P{at(4), at(5)}, P{at(6), at(7)}};
 }
 
-NSArray<NSNumber *> *numbers(const Quad &q) {
+NSArray<NSNumber *> *numbers(const Corners &q) {
   return @[ @(q[0].x), @(q[0].y), @(q[1].x), @(q[1].y), @(q[2].x), @(q[2].y), @(q[3].x), @(q[3].y) ];
 }
 
@@ -54,20 +54,20 @@ void failure(NSError **error, const std::exception &cause) {
 - (void)reset {
   _stabilizer.reset();
 }
-- (ScannerGuideOutput *)updateQuad:(NSArray<NSNumber *> *)values
+- (ScannerGuideOutput *)updateCorners:(NSArray<NSNumber *> *)values
                              width:(NSInteger)width
                             height:(NSInteger)height
                           sensorNs:(int64_t)sensorNs
                          arrivalNs:(int64_t)arrivalNs {
-  const auto output = _stabilizer.update({quad(values), int(width), int(height), sensorNs, arrivalNs});
+  const auto output = _stabilizer.update({corners(values), int(width), int(height), sensorNs, arrivalNs});
   return [[ScannerGuideOutput alloc] initWithOutput:output];
 }
-- (ScannerGuideOutput *)retainQuad:(NSArray<NSNumber *> *)values
+- (ScannerGuideOutput *)retainCorners:(NSArray<NSNumber *> *)values
                              width:(NSInteger)width
                             height:(NSInteger)height
                           sensorNs:(int64_t)sensorNs
                          arrivalNs:(int64_t)arrivalNs {
-  const auto output = _stabilizer.retain({quad(values), int(width), int(height), sensorNs, arrivalNs});
+  const auto output = _stabilizer.retain({corners(values), int(width), int(height), sensorNs, arrivalNs});
   return output ? [[ScannerGuideOutput alloc] initWithOutput:*output] : nil;
 }
 + (BOOL)scoreRejected:(NSNumber *)score minimum:(double)minimum {
@@ -136,7 +136,7 @@ void failure(NSError **error, const std::exception &cause) {
          4,
          {uint32_t(crop.origin.x), uint32_t(crop.origin.y), uint32_t(crop.size.width), uint32_t(crop.size.height)},
          static_cast<Orientation>(orientation)});
-    const auto estimate = _estimator->update(lease, sensorNs, quad(region), fitTransform);
+    const auto estimate = _estimator->update(lease, sensorNs, corners(region), fitTransform);
     _history.add(estimate);
     return [[ScannerFlowEstimate alloc] initWithEstimate:estimate];
   } catch (const std::exception &cause) {
@@ -145,8 +145,8 @@ void failure(NSError **error, const std::exception &cause) {
     return nil;
   }
 }
-- (NSArray<NSNumber *> *)warpQuad:(NSArray<NSNumber *> *)values fromNs:(int64_t)fromNs toNs:(int64_t)toNs {
-  const auto q = quad(values);
+- (NSArray<NSNumber *> *)warpCorners:(NSArray<NSNumber *> *)values fromNs:(int64_t)fromNs toNs:(int64_t)toNs {
+  const auto q = corners(values);
   if (!q)
     return nil;
   const auto warped = _history.warp(*q, fromNs, toNs);

@@ -39,6 +39,23 @@ enum CameraStillPolicy {
     (size.isFourByThree ? 1 : 0, size.pixels, size.longSide, size.width)
   }
 
+  /// A short side of 1080 px, as 1440x1080: enough for an ordinary photo at a fraction of the file size.
+  static let standardShortSide = 1080
+
+  /// `camera` mode's standard photo, as Android's: among bounded sizes, 4:3 ones if any, the smallest with a short
+  /// side of at least `standardShortSide`, else the widest smaller one; nil when nothing fits.
+  static func selectStandard(_ sizes: [PixelSize]) -> PixelSize? {
+    let bounded = sizes.filter(isBounded)
+    let fourByThree = bounded.filter(\.isFourByThree)
+    let pool = fourByThree.isEmpty ? bounded : fourByThree
+    func key(_ size: PixelSize) -> (Int, Int) { (size.shortSide, size.pixels) }
+    return pool.filter { $0.shortSide >= standardShortSide }.min { key($0) < key($1) } ?? pool.max { key($0) < key($1) }
+  }
+
+  static func select(_ sizes: [PixelSize], highResolution: Bool) -> PixelSize? {
+    highResolution ? select(sizes) : selectStandard(sizes)
+  }
+
   /// A delivered photo may be smaller than the requested maximum, in either orientation, but
   /// never larger or outside the ceiling.
   static func accepts(_ delivered: PixelSize, requested: PixelSize) -> Bool {
@@ -64,27 +81,30 @@ struct CameraFormatChoice: Equatable, Sendable {
 enum CameraFormatPolicy {
   static let defaultAnalysisWidth = 640
 
-  /// Still size first: the best bounded still any format offers. Among the formats offering
+  /// Still size first: the best bounded still any format offers, the largest or, without `highResolution`, the
+  /// standard one. Among the formats offering
   /// it, a 4:3 video stream comes first, so preview and analysis show what the photo shows;
-  /// then the video width closest to `analysisWidth` at or above it, then below it; then the
+  /// then the video width closest to `analysisFrameWidth` at or above it, then below it; then the
   /// first advertised format.
-  static func choose(_ formats: [CameraFormatOption], analysisWidth: Int) -> CameraFormatChoice? {
+  static func choose(_ formats: [CameraFormatOption], analysisFrameWidth: Int,
+                     highResolution: Bool = true) -> CameraFormatChoice? {
     let candidates = formats.enumerated().compactMap { index, format in
-      CameraStillPolicy.select(format.photos).map { CameraFormatChoice(index: index, photo: $0, video: format.video) }
+      CameraStillPolicy.select(format.photos, highResolution: highResolution)
+        .map { CameraFormatChoice(index: index, photo: $0, video: format.video) }
     }
-    guard let photo = CameraStillPolicy.select(candidates.map(\.photo)) else { return nil }
+    guard let photo = CameraStillPolicy.select(candidates.map(\.photo), highResolution: highResolution) else { return nil }
     return candidates.filter { $0.photo == photo && !$0.video.isEmpty }.min {
-      videoRank($0.video, analysisWidth) < videoRank($1.video, analysisWidth)
+      videoRank($0.video, analysisFrameWidth) < videoRank($1.video, analysisFrameWidth)
     }
   }
 
   /// The camera's own width before rotation is the long side of its sensor-axis video size.
-  private static func videoRank(_ video: PixelSize, _ analysisWidth: Int) -> (Int, Int, Int) {
-    (video.isFourByThree ? 0 : 1, video.longSide >= analysisWidth ? 0 : 1, abs(video.longSide - analysisWidth))
+  private static func videoRank(_ video: PixelSize, _ analysisFrameWidth: Int) -> (Int, Int, Int) {
+    (video.isFourByThree ? 0 : 1, video.longSide >= analysisFrameWidth ? 0 : 1, abs(video.longSide - analysisFrameWidth))
   }
 
-  /// Same bounds as Android's `analysisWidth`.
-  static func analysisWidth(_ requested: Double?) -> Int {
+  /// Same bounds as Android's `analysisFrameWidth`.
+  static func analysisFrameWidth(_ requested: Double?) -> Int {
     guard let requested, requested.isFinite else { return defaultAnalysisWidth }
     return min(max(Int(requested), 160), 1920)
   }

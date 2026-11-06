@@ -31,7 +31,8 @@ interface ReviewProps {
   session: ScanReview;
   /** A sample folder is picked, so a new photo can be saved as a sample. */
   sampling: boolean;
-  onOptions: () => void;
+  /** Photo sessions use upright rectangle cropping. */
+  rectangle: boolean;
   onNewScan: () => void;
 }
 
@@ -48,7 +49,8 @@ export function ReviewPanel(props: ReviewProps) {
       style={[StyleSheet.absoluteFill, !props.visible && styles.hiddenOverlay]}>
       <PreviewMode {...props} visible={props.visible && !cropping} />
       {props.visible && review && cropping && (
-        <CropMode pageId={review.pageId} session={props.session} />
+        <CropMode pageId={review.pageId} session={props.session} sampling={props.sampling}
+          rectangle={props.rectangle} />
       )}
     </View>
   );
@@ -58,7 +60,6 @@ function PreviewMode({
   visible,
   session,
   sampling,
-  onOptions,
   onNewScan,
 }: ReviewProps) {
   const review = session.screen.type === 'review' ? session.screen : null;
@@ -81,18 +82,6 @@ function PreviewMode({
     },
     [canNavigate, pageIds, session.select],
   );
-  const saveSample = () => {
-    if (!page || !session.native) return;
-    void session.run(async () => {
-      try {
-        const name = await session.native.saveCaptureSample(page.id);
-        Alert.alert('Sample saved', name);
-      } catch (error) {
-        Alert.alert('Sample', errorMessage(error, 'Could not save the sample.'));
-      }
-    });
-  };
-
   const confirmDelete = () => {
     Alert.alert(newPhoto ? 'Delete this photo?' : `Delete page ${index + 1}?`, undefined, [
       { text: 'Cancel', style: 'cancel' },
@@ -118,11 +107,20 @@ function PreviewMode({
         (!visible) && styles.hiddenOverlay,
       ]}>
       <View style={styles.reviewHeader}>
-        <ActionButton label="New scan" disabled={working} onPress={onNewScan} />
+        <ActionButton label="New scan" style={styles.headerButton} disabled={working} onPress={onNewScan} />
         <Text style={styles.pageCounter}>
           {index + 1} / {pageIds.length}
         </Text>
-        <ActionButton label="Options" disabled={working} onPress={onOptions} />
+        {/* Export keeps a new photo: it leaves its review for the pages, where back no longer discards it. */}
+        <ActionButton
+          label="Export"
+          style={styles.headerButton}
+          disabled={blocked}
+          onPress={() => {
+            if (review != null) session.navigate('summary');
+            setExportOpen(true);
+          }}
+        />
       </View>
       <View style={styles.imageEditor}>
         <ImagePager
@@ -155,12 +153,21 @@ function PreviewMode({
       />
       <View style={styles.actions}>
         <View style={styles.reviewTools}>
+          <ActionButton
+            label={`Filter · ${FILTERS.find((item) => item.value === filter)!.label}`}
+            style={styles.reviewTool}
+            disabled={editBlocked}
+            onPress={() => setFiltersOpen(true)}
+          />
           <Toggle
             label="Shadow"
             checked={shadow}
             disabled={editBlocked}
             onPress={() => session.setShadowRemoval(!shadow)}
           />
+        </View>
+        <View style={styles.reviewTools}>
+          <ActionButton label="Delete" style={styles.reviewTool} disabled={working} onPress={confirmDelete} />
           <ActionButton
             label="Crop"
             style={styles.reviewTool}
@@ -168,50 +175,11 @@ function PreviewMode({
             onPress={session.startCrop}
           />
           <ActionButton
-            label={`Filter · ${FILTERS.find((item) => item.value === filter)!.label}`}
-            style={styles.reviewTool}
-            disabled={editBlocked}
-            onPress={() => setFiltersOpen(true)}
-          />
-          {sampling && newPhoto && (
-            <ActionButton
-              label="Sample"
-              style={styles.reviewTool}
-              disabled={editBlocked || page?.analyzing}
-              onPress={saveSample}
-            />
-          )}
-        </View>
-        <View style={styles.actionRow}>
-          <PrimaryButton
-            label="Delete"
-            variant="secondary"
-            style={styles.actionButton}
-            disabled={working}
-            onPress={confirmDelete}
-          />
-          <PrimaryButton
             label="Add page"
-            variant="secondary"
-            style={styles.actionButton}
+            style={styles.reviewTool}
             disabled={blocked || pageIds.length >= MAX_PAGES}
             onPress={() => session.navigate('camera')}
           />
-          {review != null ? (
-            <PrimaryButton
-              label={newPhoto ? 'Done' : 'Save'}
-              style={styles.actionButton}
-              disabled={blocked}
-              onPress={() => session.navigate('summary')}
-            />
-          ) : (
-            <PrimaryButton
-              label="Export"
-              style={styles.actionButton}
-              disabled={blocked}
-              onPress={() => setExportOpen(true)}
-            />
-          )}
         </View>
       </View>
       <SheetModal visible={filtersOpen} onClose={() => setFiltersOpen(false)}>
@@ -276,8 +244,8 @@ function Toggle({
         checked && styles.activeTool,
         disabled && styles.buttonDisabled,
       ]}>
-      <Text style={styles.tuningLabel}>
-        {label} {checked ? '●' : '○'}
+      <Text style={[styles.tuningLabel, styles.centeredLabel]} numberOfLines={1} adjustsFontSizeToFit>
+        {label}
       </Text>
     </Pressable>
   );
@@ -287,11 +255,28 @@ function Toggle({
 function CropMode({
   pageId,
   session,
+  sampling,
+  rectangle,
 }: {
   pageId: string;
   session: ScanReview;
+  sampling: boolean;
+  rectangle: boolean;
 }) {
   const editor = useRef<CropEditorRef>(null);
+  const page = session.page;
+  // A sample keeps the original photo, the model's analysis and the live outline, not this editor's corners.
+  const saveSample = () => {
+    if (!page || !session.native) return;
+    void session.run(async () => {
+      try {
+        const name = await session.native.saveCaptureSample(page.id);
+        Alert.alert('Sample saved', name);
+      } catch (error) {
+        Alert.alert('Sample', errorMessage(error, 'Could not save the sample.'));
+      }
+    });
+  };
   const autoCrop = session.page?.analysis?.candidate != null;
   const setPreset = (preset: 'none' | 'auto') => {
     void session.run(async () => {
@@ -305,6 +290,7 @@ function CropMode({
         <CropEditor
           session={session.native}
           pageId={pageId}
+          rectangle={rectangle}
           ref={editor}
           onError={(error) =>
             Alert.alert(
@@ -315,7 +301,7 @@ function CropMode({
           style={StyleSheet.absoluteFill}
         />
       </View>
-      <Text style={styles.diagnostics}>Drag the corners onto the page's edges.</Text>
+      <Text style={styles.diagnostics}>{rectangle ? 'Drag the corners to crop.' : "Drag the corners onto the page's edges."}</Text>
       <View style={styles.actions}>
         <View style={styles.reviewTools}>
           <ActionButton
@@ -331,6 +317,14 @@ function CropMode({
               setPreset('auto');
             }}
           />
+          {sampling && (
+            <ActionButton
+              label="Sample"
+              style={styles.reviewTool}
+              disabled={session.working || !page || page.analyzing}
+              onPress={saveSample}
+            />
+          )}
         </View>
         <View style={styles.actionRow}>
           <PrimaryButton

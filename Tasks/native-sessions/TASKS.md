@@ -23,7 +23,7 @@ Execute numbered tasks in order; dependencies below identify the minimum prerequ
 | Task | Outcome | Complexity | Depends on |
 | --- | --- | --- | --- |
 | [01](01-fix-ink-sharpness.md) | Fix depth-changing Laplacian aliasing | Low | — |
-| [02](02-centralize-quad-validity.md) | Centralize native quad validation | Medium | — |
+| [02](02-centralize-corner-validity.md) | Centralize native corners validation | Medium | — |
 | [03](03-introduce-keyed-queue.md) | Introduce the shared keyed FIFO worker | High | — |
 | [04](04-own-session-resources.md) | Own session directories and leased files | High | 03 |
 | [05](05-own-page-revisions.md) | Own native page state, analysis and rendering | High | 02, 03, 04 |

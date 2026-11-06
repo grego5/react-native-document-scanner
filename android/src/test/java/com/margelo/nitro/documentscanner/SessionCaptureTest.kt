@@ -1,6 +1,6 @@
 package com.margelo.nitro.documentscanner
 
-import com.margelo.nitro.documentscanner.processing.QuadModelStore
+import com.margelo.nitro.documentscanner.processing.CornerModelStore
 import java.io.File
 import java.io.IOException
 import java.util.ArrayDeque
@@ -36,7 +36,7 @@ class SessionCaptureTest {
     override fun removeDirectory(cache: File, directory: File) { directories.remove(directory) }
   }
 
-  private val previousModel = QuadModelStore.selected
+  private val previousModel = CornerModelStore.selected
   private val worker = Worker()
   private val cleanup = Worker()
   private val files = Files()
@@ -44,13 +44,13 @@ class SessionCaptureTest {
   private val queue = ScannerWorkQueue(worker) { errors.add(it) }
   private val registry = ScanSessionRegistry(files, queue, cleanup, {}, { errors.add(it) })
   private val resources = registry.open(File("capture-state-test").absoluteFile)
-  private var preparedSelection: QuadModelStore.Selection? = null
-  private var preparedQuad: DocumentQuad? = null
+  private var preparedSelection: CornerModelStore.Selection? = null
+  private var preparedCorners: DocumentCorners? = null
   private val renders = mutableListOf<ScanPage.RenderKey>()
   private val actions = object : ScanSessionState.Actions {
-    override fun prepareAnalysis(original: SessionResources.Resource, liveQuad: DocumentQuad?, selection: QuadModelStore.Selection?): () -> DocumentAnalysis {
+    override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: CornerModelStore.Selection?): () -> DocumentAnalysis {
       preparedSelection = selection
-      preparedQuad = liveQuad
+      preparedCorners = liveCorners
       return { DocumentAnalysis(320.0, 240.0, 1.0, null) }
     }
     override fun render(original: SessionResources.Resource, key: ScanPage.RenderKey): ScanPage.Artifact {
@@ -63,7 +63,7 @@ class SessionCaptureTest {
     override fun close() {}
   }
   private val state = ScanSessionState(resources, actions)
-  @After fun restoreModel() { QuadModelStore.activate(previousModel) }
+  @After fun restoreModel() { CornerModelStore.activate(previousModel) }
 
   private fun save(output: SessionResources.Output): SessionResources.Resource {
     files.existing.add(output.file)
@@ -72,11 +72,11 @@ class SessionCaptureTest {
   private fun finish() { worker.drain(); cleanup.drain(); assertTrue(errors.toString(), errors.isEmpty()) }
 
   @Test fun reservesSourcePinsThenPublishesOnlySavedSourcesWithCapturedDefaultsAndModel() {
-    val model = QuadModelStore.Selection(byteArrayOf(1))
-    QuadModelStore.activate(model)
+    val model = CornerModelStore.Selection(byteArrayOf(1))
+    CornerModelStore.activate(model)
     val options = DocumentRenderOptions(false, null, DocumentFilter.GRAYSCALE, null, null, null, false)
     val capture = SessionCapture.reserve(state, options)
-    QuadModelStore.activate(QuadModelStore.Selection(byteArrayOf(2)))
+    CornerModelStore.activate(CornerModelStore.Selection(byteArrayOf(2)))
     assertTrue(state.snapshot().pages.isEmpty())
     val original = save(capture.original)
     val frame = save(capture.frame)
@@ -84,7 +84,7 @@ class SessionCaptureTest {
     capture.close()
     assertEquals(capture.pageId, id)
     assertSame(model, preparedSelection)
-    assertEquals(ScanPage.fullFrame(), preparedQuad)
+    assertEquals(ScanPage.fullFrame(), preparedCorners)
     assertTrue(requireNotNull(state.snapshot().pages[id]).analyzing)
     assertTrue(renders.isEmpty())
     finish()

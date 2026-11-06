@@ -9,22 +9,20 @@
 
 // Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
 namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
-// Forward declaration of `DocumentRenderOptions` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
+// Forward declaration of `ImageCorrectionOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageCorrectionOptions; }
 // Forward declaration of `DocumentFilter` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
+// Forward declaration of `ImageOutputOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageOutputOptions; }
 // Forward declaration of `DocumentImageFormat` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class DocumentImageFormat; }
-// Forward declaration of `PaperSize` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct PaperSize; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
-// Forward declaration of `CameraMode` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class CameraMode; }
-// Forward declaration of `QualityGateConfig` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct QualityGateConfig; }
+// Forward declaration of `LowQualityControl` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct LowQualityControl; }
 // Forward declaration of `TorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TorchMode; }
 // Forward declaration of `CaptureMode` to properly resolve imports.
@@ -41,21 +39,39 @@ namespace margelo::nitro::documentscanner { enum class DocumentState; }
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
 // Forward declaration of `CaptureWaitReason` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureWaitReason; }
+// Forward declaration of `CameraCaptureResult` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
+// Forward declaration of `ScanSessionSnapshot` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ScanSessionSnapshot; }
+// Forward declaration of `ScanPageMetadata` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ScanPageMetadata; }
+// Forward declaration of `DocumentAnalysis` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentAnalysis; }
+// Forward declaration of `DocumentCandidate` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCandidate; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
+// Forward declaration of `DocumentPoint` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentPoint; }
+// Forward declaration of `DocumentRenderOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
+// Forward declaration of `PaperSize` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct PaperSize; }
 // Forward declaration of `TakePhotoOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 
 #include <memory>
 #include "HybridScanSessionSpec.hpp"
 #include "JHybridScanSessionSpec.hpp"
-#include "DocumentRenderOptions.hpp"
-#include "JDocumentRenderOptions.hpp"
+#include "ImageCorrectionOptions.hpp"
+#include "JImageCorrectionOptions.hpp"
 #include <optional>
 #include "DocumentFilter.hpp"
 #include "JDocumentFilter.hpp"
+#include "ImageOutputOptions.hpp"
+#include "JImageOutputOptions.hpp"
 #include "DocumentImageFormat.hpp"
 #include "JDocumentImageFormat.hpp"
-#include "PaperSize.hpp"
-#include "JPaperSize.hpp"
 #include <string>
 #include "ScannerFailure.hpp"
 #include <functional>
@@ -64,10 +80,8 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "JScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
 #include "JScannerErrorCode.hpp"
-#include "CameraMode.hpp"
-#include "JCameraMode.hpp"
-#include "QualityGateConfig.hpp"
-#include "JQualityGateConfig.hpp"
+#include "LowQualityControl.hpp"
+#include "JLowQualityControl.hpp"
 #include "TorchMode.hpp"
 #include "JTorchMode.hpp"
 #include "CaptureMode.hpp"
@@ -89,10 +103,30 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "JFunc_void_CaptureStage_std__optional_CaptureWaitReason_.hpp"
 #include "JCaptureStage.hpp"
 #include "JCaptureWaitReason.hpp"
+#include "CameraCaptureResult.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
-#include "JVariant_String_ScannerFailure.hpp"
+#include "JVariant_ScannerFailure_CameraCaptureResult.hpp"
+#include "JCameraCaptureResult.hpp"
+#include "ScanSessionSnapshot.hpp"
+#include "JScanSessionSnapshot.hpp"
+#include <vector>
+#include "ScanPageMetadata.hpp"
+#include <unordered_map>
+#include "JScanPageMetadata.hpp"
+#include "DocumentAnalysis.hpp"
+#include "JDocumentAnalysis.hpp"
+#include "DocumentCandidate.hpp"
+#include "JDocumentCandidate.hpp"
+#include "DocumentCorners.hpp"
+#include "JDocumentCorners.hpp"
+#include "DocumentPoint.hpp"
+#include "JDocumentPoint.hpp"
+#include "DocumentRenderOptions.hpp"
+#include "JDocumentRenderOptions.hpp"
+#include "PaperSize.hpp"
+#include "JPaperSize.hpp"
 #include "TakePhotoOptions.hpp"
 #include "JTakePhotoOptions.hpp"
 
@@ -135,23 +169,32 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JHybridScanSessionSpec::JavaPart> /* session */)>("setSession");
     method(_javaPart, std::dynamic_pointer_cast<JHybridScanSessionSpec>(session)->getJavaPart());
   }
-  DocumentRenderOptions JHybridDocumentScannerCameraViewSpec::getRenderOptions() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JDocumentRenderOptions>()>("getRenderOptions");
+  ImageCorrectionOptions JHybridDocumentScannerCameraViewSpec::getImageCorrection() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JImageCorrectionOptions>()>("getImageCorrection");
     auto __result = method(_javaPart);
     return __result->toCpp();
   }
-  void JHybridDocumentScannerCameraViewSpec::setRenderOptions(const DocumentRenderOptions& renderOptions) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JDocumentRenderOptions> /* renderOptions */)>("setRenderOptions");
-    method(_javaPart, JDocumentRenderOptions::fromCpp(renderOptions));
+  void JHybridDocumentScannerCameraViewSpec::setImageCorrection(const ImageCorrectionOptions& imageCorrection) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JImageCorrectionOptions> /* imageCorrection */)>("setImageCorrection");
+    method(_javaPart, JImageCorrectionOptions::fromCpp(imageCorrection));
   }
-  std::optional<std::string> JHybridDocumentScannerCameraViewSpec::getQuadTensorModel() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getQuadTensorModel");
+  ImageOutputOptions JHybridDocumentScannerCameraViewSpec::getOutputOptions() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JImageOutputOptions>()>("getOutputOptions");
+    auto __result = method(_javaPart);
+    return __result->toCpp();
+  }
+  void JHybridDocumentScannerCameraViewSpec::setOutputOptions(const ImageOutputOptions& outputOptions) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JImageOutputOptions> /* outputOptions */)>("setOutputOptions");
+    method(_javaPart, JImageOutputOptions::fromCpp(outputOptions));
+  }
+  std::optional<std::string> JHybridDocumentScannerCameraViewSpec::getCornerDetectionModel() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getCornerDetectionModel");
     auto __result = method(_javaPart);
     return __result != nullptr ? std::make_optional(__result->toStdString()) : std::nullopt;
   }
-  void JHybridDocumentScannerCameraViewSpec::setQuadTensorModel(const std::optional<std::string>& quadTensorModel) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* quadTensorModel */)>("setQuadTensorModel");
-    method(_javaPart, quadTensorModel.has_value() ? jni::make_jstring(quadTensorModel.value()) : nullptr);
+  void JHybridDocumentScannerCameraViewSpec::setCornerDetectionModel(const std::optional<std::string>& cornerDetectionModel) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* cornerDetectionModel */)>("setCornerDetectionModel");
+    method(_javaPart, cornerDetectionModel.has_value() ? jni::make_jstring(cornerDetectionModel.value()) : nullptr);
   }
   std::optional<std::function<void(const ScannerFailure& /* error */)>> JHybridDocumentScannerCameraViewSpec::getOnError() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_ScannerFailure::javaobject>()>("getOnError_cxx");
@@ -170,32 +213,41 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_ScannerFailure::javaobject> /* onError */)>("setOnError_cxx");
     method(_javaPart, onError.has_value() ? JFunc_void_ScannerFailure_cxx::fromCpp(onError.value()) : nullptr);
   }
-  std::optional<CameraMode> JHybridDocumentScannerCameraViewSpec::getMode() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JCameraMode>()>("getMode");
-    auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional(__result->toCpp()) : std::nullopt;
-  }
-  void JHybridDocumentScannerCameraViewSpec::setMode(std::optional<CameraMode> mode) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JCameraMode> /* mode */)>("setMode");
-    method(_javaPart, mode.has_value() ? JCameraMode::fromCpp(mode.value()) : nullptr);
-  }
-  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getGuide() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getGuide");
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getActive() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getActive");
     auto __result = method(_javaPart);
     return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
   }
-  void JHybridDocumentScannerCameraViewSpec::setGuide(std::optional<bool> guide) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* guide */)>("setGuide");
-    method(_javaPart, guide.has_value() ? jni::JBoolean::valueOf(guide.value()) : nullptr);
+  void JHybridDocumentScannerCameraViewSpec::setActive(std::optional<bool> active) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* active */)>("setActive");
+    method(_javaPart, active.has_value() ? jni::JBoolean::valueOf(active.value()) : nullptr);
   }
-  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getAdaptiveDetection() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getAdaptiveDetection");
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getGuideLiveCorners() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getGuideLiveCorners");
     auto __result = method(_javaPart);
     return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
   }
-  void JHybridDocumentScannerCameraViewSpec::setAdaptiveDetection(std::optional<bool> adaptiveDetection) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* adaptiveDetection */)>("setAdaptiveDetection");
-    method(_javaPart, adaptiveDetection.has_value() ? jni::JBoolean::valueOf(adaptiveDetection.value()) : nullptr);
+  void JHybridDocumentScannerCameraViewSpec::setGuideLiveCorners(std::optional<bool> guideLiveCorners) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* guideLiveCorners */)>("setGuideLiveCorners");
+    method(_javaPart, guideLiveCorners.has_value() ? jni::JBoolean::valueOf(guideLiveCorners.value()) : nullptr);
+  }
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getAutoCrop() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getAutoCrop");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridDocumentScannerCameraViewSpec::setAutoCrop(std::optional<bool> autoCrop) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* autoCrop */)>("setAutoCrop");
+    method(_javaPart, autoCrop.has_value() ? jni::JBoolean::valueOf(autoCrop.value()) : nullptr);
+  }
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getInferenceThrottling() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getInferenceThrottling");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridDocumentScannerCameraViewSpec::setInferenceThrottling(std::optional<bool> inferenceThrottling) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* inferenceThrottling */)>("setInferenceThrottling");
+    method(_javaPart, inferenceThrottling.has_value() ? jni::JBoolean::valueOf(inferenceThrottling.value()) : nullptr);
   }
   std::optional<double> JHybridDocumentScannerCameraViewSpec::getMinCornerScore() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getMinCornerScore");
@@ -206,23 +258,14 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* minCornerScore */)>("setMinCornerScore");
     method(_javaPart, minCornerScore.has_value() ? jni::JDouble::valueOf(minCornerScore.value()) : nullptr);
   }
-  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getQualityGate() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getQualityGate");
+  LowQualityControl JHybridDocumentScannerCameraViewSpec::getLowQualityControl() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JLowQualityControl>()>("getLowQualityControl");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+    return __result->toCpp();
   }
-  void JHybridDocumentScannerCameraViewSpec::setQualityGate(std::optional<bool> qualityGate) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* qualityGate */)>("setQualityGate");
-    method(_javaPart, qualityGate.has_value() ? jni::JBoolean::valueOf(qualityGate.value()) : nullptr);
-  }
-  std::optional<QualityGateConfig> JHybridDocumentScannerCameraViewSpec::getQualityGateConfig() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JQualityGateConfig>()>("getQualityGateConfig");
-    auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional(__result->toCpp()) : std::nullopt;
-  }
-  void JHybridDocumentScannerCameraViewSpec::setQualityGateConfig(const std::optional<QualityGateConfig>& qualityGateConfig) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JQualityGateConfig> /* qualityGateConfig */)>("setQualityGateConfig");
-    method(_javaPart, qualityGateConfig.has_value() ? JQualityGateConfig::fromCpp(qualityGateConfig.value()) : nullptr);
+  void JHybridDocumentScannerCameraViewSpec::setLowQualityControl(const LowQualityControl& lowQualityControl) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JLowQualityControl> /* lowQualityControl */)>("setLowQualityControl");
+    method(_javaPart, JLowQualityControl::fromCpp(lowQualityControl));
   }
   std::optional<bool> JHybridDocumentScannerCameraViewSpec::getTapToFocus() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getTapToFocus");
@@ -278,14 +321,14 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JCaptureMode> /* captureMode */)>("setCaptureMode");
     method(_javaPart, captureMode.has_value() ? JCaptureMode::fromCpp(captureMode.value()) : nullptr);
   }
-  std::optional<double> JHybridDocumentScannerCameraViewSpec::getJpegQuality() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getJpegQuality");
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getHighResolutionPhoto() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getHighResolutionPhoto");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional(__result->value()) : std::nullopt;
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
   }
-  void JHybridDocumentScannerCameraViewSpec::setJpegQuality(std::optional<double> jpegQuality) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* jpegQuality */)>("setJpegQuality");
-    method(_javaPart, jpegQuality.has_value() ? jni::JDouble::valueOf(jpegQuality.value()) : nullptr);
+  void JHybridDocumentScannerCameraViewSpec::setHighResolutionPhoto(std::optional<bool> highResolutionPhoto) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* highResolutionPhoto */)>("setHighResolutionPhoto");
+    method(_javaPart, highResolutionPhoto.has_value() ? jni::JBoolean::valueOf(highResolutionPhoto.value()) : nullptr);
   }
   std::optional<double> JHybridDocumentScannerCameraViewSpec::getGuideTransitionDuration() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getGuideTransitionDuration");
@@ -296,23 +339,23 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* guideTransitionDuration */)>("setGuideTransitionDuration");
     method(_javaPart, guideTransitionDuration.has_value() ? jni::JDouble::valueOf(guideTransitionDuration.value()) : nullptr);
   }
-  std::optional<double> JHybridDocumentScannerCameraViewSpec::getAnalysisWidth() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getAnalysisWidth");
+  std::optional<double> JHybridDocumentScannerCameraViewSpec::getAnalysisFrameWidth() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getAnalysisFrameWidth");
     auto __result = method(_javaPart);
     return __result != nullptr ? std::make_optional(__result->value()) : std::nullopt;
   }
-  void JHybridDocumentScannerCameraViewSpec::setAnalysisWidth(std::optional<double> analysisWidth) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* analysisWidth */)>("setAnalysisWidth");
-    method(_javaPart, analysisWidth.has_value() ? jni::JDouble::valueOf(analysisWidth.value()) : nullptr);
+  void JHybridDocumentScannerCameraViewSpec::setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* analysisFrameWidth */)>("setAnalysisFrameWidth");
+    method(_javaPart, analysisFrameWidth.has_value() ? jni::JDouble::valueOf(analysisFrameWidth.value()) : nullptr);
   }
-  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getSquareFrame() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getSquareFrame");
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getSquareAspectRatio() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getSquareAspectRatio");
     auto __result = method(_javaPart);
     return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
   }
-  void JHybridDocumentScannerCameraViewSpec::setSquareFrame(std::optional<bool> squareFrame) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* squareFrame */)>("setSquareFrame");
-    method(_javaPart, squareFrame.has_value() ? jni::JBoolean::valueOf(squareFrame.value()) : nullptr);
+  void JHybridDocumentScannerCameraViewSpec::setSquareAspectRatio(std::optional<bool> squareAspectRatio) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* squareAspectRatio */)>("setSquareAspectRatio");
+    method(_javaPart, squareAspectRatio.has_value() ? jni::JBoolean::valueOf(squareAspectRatio.value()) : nullptr);
   }
   std::optional<bool> JHybridDocumentScannerCameraViewSpec::getShowStats() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getShowStats");
@@ -437,13 +480,13 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Methods
-  std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> JHybridDocumentScannerCameraViewSpec::takePhotoResult(const std::optional<TakePhotoOptions>& options) {
+  std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> JHybridDocumentScannerCameraViewSpec::takePhotoResult(const std::optional<TakePhotoOptions>& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JTakePhotoOptions> /* options */)>("takePhotoResult");
     auto __result = method(_javaPart, options.has_value() ? JTakePhotoOptions::fromCpp(options.value()) : nullptr);
     return [&]() {
-      auto __promise = Promise<std::variant<std::string, ScannerFailure>>::create();
+      auto __promise = Promise<std::variant<ScannerFailure, CameraCaptureResult>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
-        auto __result = jni::static_ref_cast<JVariant_String_ScannerFailure>(__boxedResult);
+        auto __result = jni::static_ref_cast<JVariant_ScannerFailure_CameraCaptureResult>(__boxedResult);
         __promise->resolve(__result->toCpp());
       });
       __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {

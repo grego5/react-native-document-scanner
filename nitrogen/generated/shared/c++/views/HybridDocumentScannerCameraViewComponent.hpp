@@ -19,13 +19,13 @@
 
 #include <memory>
 #include "HybridScanSessionSpec.hpp"
-#include "DocumentRenderOptions.hpp"
+#include "ImageCorrectionOptions.hpp"
+#include "ImageOutputOptions.hpp"
 #include <string>
 #include <optional>
 #include "ScannerFailure.hpp"
 #include <functional>
-#include "CameraMode.hpp"
-#include "QualityGateConfig.hpp"
+#include "LowQualityControl.hpp"
 #include "TorchMode.hpp"
 #include "CaptureMode.hpp"
 #include "CameraState.hpp"
@@ -57,25 +57,26 @@ namespace margelo::nitro::documentscanner::views {
 
   public:
     nitro::ReactProp<std::shared_ptr<HybridScanSessionSpec>> session;
-    nitro::ReactProp<DocumentRenderOptions> renderOptions;
-    nitro::ReactProp<std::optional<std::string>> quadTensorModel;
+    nitro::ReactProp<ImageCorrectionOptions> imageCorrection;
+    nitro::ReactProp<ImageOutputOptions> outputOptions;
+    nitro::ReactProp<std::optional<std::string>> cornerDetectionModel;
     nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* error */)>>> onError;
-    nitro::ReactProp<std::optional<CameraMode>> mode;
-    nitro::ReactProp<std::optional<bool>> guide;
-    nitro::ReactProp<std::optional<bool>> adaptiveDetection;
+    nitro::ReactProp<std::optional<bool>> active;
+    nitro::ReactProp<std::optional<bool>> guideLiveCorners;
+    nitro::ReactProp<std::optional<bool>> autoCrop;
+    nitro::ReactProp<std::optional<bool>> inferenceThrottling;
     nitro::ReactProp<std::optional<double>> minCornerScore;
-    nitro::ReactProp<std::optional<bool>> qualityGate;
-    nitro::ReactProp<std::optional<QualityGateConfig>> qualityGateConfig;
+    nitro::ReactProp<LowQualityControl> lowQualityControl;
     nitro::ReactProp<std::optional<bool>> tapToFocus;
     nitro::ReactProp<std::optional<double>> exposureCompensation;
     nitro::ReactProp<std::optional<double>> minFrameRate;
     nitro::ReactProp<std::optional<TorchMode>> torch;
     nitro::ReactProp<std::optional<bool>> lowLightBoost;
     nitro::ReactProp<std::optional<CaptureMode>> captureMode;
-    nitro::ReactProp<std::optional<double>> jpegQuality;
+    nitro::ReactProp<std::optional<bool>> highResolutionPhoto;
     nitro::ReactProp<std::optional<double>> guideTransitionDuration;
-    nitro::ReactProp<std::optional<double>> analysisWidth;
-    nitro::ReactProp<std::optional<bool>> squareFrame;
+    nitro::ReactProp<std::optional<double>> analysisFrameWidth;
+    nitro::ReactProp<std::optional<bool>> squareAspectRatio;
     nitro::ReactProp<std::optional<bool>> showStats;
     nitro::ReactProp<std::optional<double>> guideColor;
     nitro::ReactProp<std::optional<bool>> captureFeedback;
@@ -90,25 +91,26 @@ namespace margelo::nitro::documentscanner::views {
     [[nodiscard]]
     bool hasSameProps(const HybridDocumentScannerCameraViewProps& other) const noexcept {
       return session.hasSameValue(other.session) &&
-             renderOptions.hasSameValue(other.renderOptions) &&
-             quadTensorModel.hasSameValue(other.quadTensorModel) &&
+             imageCorrection.hasSameValue(other.imageCorrection) &&
+             outputOptions.hasSameValue(other.outputOptions) &&
+             cornerDetectionModel.hasSameValue(other.cornerDetectionModel) &&
              onError.hasSameValue(other.onError) &&
-             mode.hasSameValue(other.mode) &&
-             guide.hasSameValue(other.guide) &&
-             adaptiveDetection.hasSameValue(other.adaptiveDetection) &&
+             active.hasSameValue(other.active) &&
+             guideLiveCorners.hasSameValue(other.guideLiveCorners) &&
+             autoCrop.hasSameValue(other.autoCrop) &&
+             inferenceThrottling.hasSameValue(other.inferenceThrottling) &&
              minCornerScore.hasSameValue(other.minCornerScore) &&
-             qualityGate.hasSameValue(other.qualityGate) &&
-             qualityGateConfig.hasSameValue(other.qualityGateConfig) &&
+             lowQualityControl.hasSameValue(other.lowQualityControl) &&
              tapToFocus.hasSameValue(other.tapToFocus) &&
              exposureCompensation.hasSameValue(other.exposureCompensation) &&
              minFrameRate.hasSameValue(other.minFrameRate) &&
              torch.hasSameValue(other.torch) &&
              lowLightBoost.hasSameValue(other.lowLightBoost) &&
              captureMode.hasSameValue(other.captureMode) &&
-             jpegQuality.hasSameValue(other.jpegQuality) &&
+             highResolutionPhoto.hasSameValue(other.highResolutionPhoto) &&
              guideTransitionDuration.hasSameValue(other.guideTransitionDuration) &&
-             analysisWidth.hasSameValue(other.analysisWidth) &&
-             squareFrame.hasSameValue(other.squareFrame) &&
+             analysisFrameWidth.hasSameValue(other.analysisFrameWidth) &&
+             squareAspectRatio.hasSameValue(other.squareAspectRatio) &&
              showStats.hasSameValue(other.showStats) &&
              guideColor.hasSameValue(other.guideColor) &&
              captureFeedback.hasSameValue(other.captureFeedback) &&
@@ -124,25 +126,26 @@ namespace margelo::nitro::documentscanner::views {
     [[nodiscard]]
     bool hasAnyProvidedProps() const noexcept {
       return session.isProvided() ||
-             renderOptions.isProvided() ||
-             quadTensorModel.isProvided() ||
+             imageCorrection.isProvided() ||
+             outputOptions.isProvided() ||
+             cornerDetectionModel.isProvided() ||
              onError.isProvided() ||
-             mode.isProvided() ||
-             guide.isProvided() ||
-             adaptiveDetection.isProvided() ||
+             active.isProvided() ||
+             guideLiveCorners.isProvided() ||
+             autoCrop.isProvided() ||
+             inferenceThrottling.isProvided() ||
              minCornerScore.isProvided() ||
-             qualityGate.isProvided() ||
-             qualityGateConfig.isProvided() ||
+             lowQualityControl.isProvided() ||
              tapToFocus.isProvided() ||
              exposureCompensation.isProvided() ||
              minFrameRate.isProvided() ||
              torch.isProvided() ||
              lowLightBoost.isProvided() ||
              captureMode.isProvided() ||
-             jpegQuality.isProvided() ||
+             highResolutionPhoto.isProvided() ||
              guideTransitionDuration.isProvided() ||
-             analysisWidth.isProvided() ||
-             squareFrame.isProvided() ||
+             analysisFrameWidth.isProvided() ||
+             squareAspectRatio.isProvided() ||
              showStats.isProvided() ||
              guideColor.isProvided() ||
              captureFeedback.isProvided() ||

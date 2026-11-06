@@ -14,7 +14,7 @@ import android.view.View
  * viewfinder area. While waiting it follows the live outline; from shooting on it keeps the outline drawn at the
  * shutter, which is the one the frozen frame shows.
  */
-internal class CaptureFeedbackView(context: Context, private val guide: LiveQuadOverlay) : View(context) {
+internal class CaptureFeedbackView(context: Context, private val guide: LiveGuideOverlay) : View(context) {
   /** ARGB color for every stage but failure; its alpha scales each stage's opacity. */
   var color = DEFAULT_COLOR
     set(value) {

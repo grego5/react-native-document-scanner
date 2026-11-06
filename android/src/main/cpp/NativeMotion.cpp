@@ -21,11 +21,11 @@ local_ref<JArrayDouble> array(std::span<const double> data) {
   a->setRegion(0, data.size(), data.data());
   return a;
 }
-Quad quad(alias_ref<JArrayDouble> a) {
+Corners corners(alias_ref<JArrayDouble> a) {
   const auto v = values(a, 8);
   return {Point{v[0], v[1]}, Point{v[2], v[3]}, Point{v[4], v[5]}, Point{v[6], v[7]}};
 }
-local_ref<JArrayDouble> quadArray(const std::optional<Quad> &q) {
+local_ref<JArrayDouble> cornersArray(const std::optional<Corners> &q) {
   if (!q)
     return nullptr;
   const double v[]{(*q)[0].x, (*q)[0].y, (*q)[1].x, (*q)[1].y, (*q)[2].x, (*q)[2].y, (*q)[3].x, (*q)[3].y};
@@ -45,7 +45,7 @@ local_ref<JArrayDouble> fitNative(alias_ref<jclass>, alias_ref<JArrayDouble> inp
 }
 local_ref<JArrayDouble> warpNative(alias_ref<jclass>, alias_ref<JArrayDouble> transform, alias_ref<JArrayDouble> q) {
   const auto t = values(transform, 8);
-  return quadArray(m::Transform{t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7]}.warp(quad(q)));
+  return cornersArray(m::Transform{t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7]}.warp(corners(q)));
 }
 local_ref<JArrayDouble> gyroNative(alias_ref<jclass>, alias_ref<JArrayLong> times, alias_ref<JArrayDouble> rates,
                                    jlong from, jlong to, alias_ref<JArrayLong> correlation, jint operation,
@@ -93,7 +93,7 @@ local_ref<JArrayDouble> rotationWarpNative(alias_ref<jclass>, alias_ref<JArrayDo
   const auto f = values(frame, 6), r = values(rotation, 9);
   m::Matrix matrix;
   std::copy(r.begin(), r.end(), matrix.begin());
-  return quadArray(m::rotationWarp(quad(q), {int(f[0]), int(f[1]), f[2], f[3], f[4], int(f[5])}, matrix));
+  return cornersArray(m::rotationWarp(corners(q), {int(f[0]), int(f[1]), f[2], f[3], f[4], int(f[5])}, matrix));
 }
 local_ref<JArrayDouble> gateNative(alias_ref<jclass>, alias_ref<JArrayDouble> speed, jint width, jint lost,
                                    jlong exposure, alias_ref<JArrayDouble> gyro) {
@@ -140,7 +140,7 @@ void NativeFlowHistory::addNative(jlong from, jlong to, alias_ref<JArrayDouble> 
   history_.add(e);
 }
 local_ref<JArrayDouble> NativeFlowHistory::warpNative(alias_ref<JArrayDouble> q, jlong from, jlong to) {
-  return quadArray(history_.warp(quad(q), from, to));
+  return cornersArray(history_.warp(corners(q), from, to));
 }
 local_ref<NativeFlowEstimator::jhybriddata> NativeFlowEstimator::initHybrid(alias_ref<jhybridobject>, jint edge,
                                                                             jint features, jlong gap) {
@@ -176,9 +176,9 @@ local_ref<JArrayDouble> NativeFlowEstimator::updateNative(alias_ref<JByteBuffer>
                     size_t(pixelStride),
                     {uint32_t(left), uint32_t(top), uint32_t(right - left), uint32_t(bottom - top)},
                     orientation});
-  std::optional<Quad> q;
+  std::optional<Corners> q;
   if (region)
-    q.emplace(quad(region));
+    q.emplace(corners(region));
   const auto r = estimator_.update(lease, sensor, q, fit);
   const jlong timestamps[]{r.fromNs, r.toNs};
   times->setRegion(0, 2, timestamps);

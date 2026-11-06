@@ -55,7 +55,7 @@ class ScanSessionStateTest {
   private var renderError: Throwable? = null
   private var actionsClosed = 0
   private val actions = object : ScanSessionState.Actions {
-    override fun prepareAnalysis(original: SessionResources.Resource, liveQuad: DocumentQuad?, selection: com.margelo.nitro.documentscanner.processing.QuadModelStore.Selection?): () -> DocumentAnalysis {
+    override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection?): () -> DocumentAnalysis {
       val model = selectedModel
       return {
         resources.lease(original).use {
@@ -89,7 +89,7 @@ class ScanSessionStateTest {
     ScannerFailure((error as? ScannerException)?.code ?: fallback)
   }
   private val full = ScanPage.fullFrame()
-  private val crop = DocumentQuad(DocumentPoint(.1, .1), DocumentPoint(.9, .1),
+  private val crop = DocumentCorners(DocumentPoint(.1, .1), DocumentPoint(.9, .1),
     DocumentPoint(.9, .9), DocumentPoint(.1, .9))
   private fun meta(id: String = "page") = requireNotNull(state.metadata()[id])
   private fun admit(options: DocumentRenderOptions? = null, id: String = "page") {
@@ -186,11 +186,11 @@ class ScanSessionStateTest {
     assertEquals(1, rendered.size)
     assertEquals(DocumentFilter.ENHANCE, rendered.single().first.options.filter)
     assertEquals(false, rendered.single().first.options.removeShadows)
-    assertEquals(full, rendered.single().first.quad)
+    assertEquals(full, rendered.single().first.corners)
     assertEquals(meta().requestedRevision, meta().readyRevision)
   }
 
-  private fun candidate(quad: DocumentQuad): DocumentCandidate = DocumentCandidate(quad, .99)
+  private fun candidate(corners: DocumentCorners): DocumentCandidate = DocumentCandidate(corners, .99)
 
   @Test fun manualGeometryDuringAnalysisWinsButFilterChangesKeepUsefulCandidate() {
     analysisResult = analysisResult.copy(candidate = candidate(crop))
@@ -200,16 +200,28 @@ class ScanSessionStateTest {
       state.setFilter("page", DocumentFilter.GRAYSCALE)
     }
     drain()
-    assertEquals(full, meta().quad)
-    assertEquals(crop, meta().analysis?.candidate?.quad)
+    assertEquals(full, meta().corners)
+    assertEquals(crop, meta().analysis?.candidate?.corners)
     assertEquals(DocumentFilter.GRAYSCALE, rendered.single().first.options.filter)
 
     duringAnalysis = { state.setFilter("other", DocumentFilter.ENHANCE) }
     admit(id = "other")
     drain()
-    assertEquals(crop, meta("other").quad)
+    assertEquals(crop, meta("other").corners)
     assertEquals(DocumentFilter.ENHANCE, rendered.last().first.options.filter)
     assertEquals(2, analysisCalls)
+  }
+
+  @Test fun aPageAdmittedWithoutAutoCropKeepsTheFullFrameButStillHasItsCandidate() {
+    analysisResult = analysisResult.copy(candidate = candidate(crop))
+    state.admit("photo", source(), source(SessionResources.Kind.FRAME), null, null, autoCrop = false)
+    drain()
+    assertEquals(full, meta("photo").corners)
+    assertEquals(full, rendered.single().first.corners)
+    assertEquals(crop, meta("photo").analysis?.candidate?.corners)
+    state.setDocumentCrop("photo", crop)
+    drain()
+    assertEquals(crop, rendered.last().first.corners)
   }
 
   @Test fun analysisFailureAndNoCandidateBothLeaveFullFrameAndManualCroppingUsable() {
@@ -218,16 +230,16 @@ class ScanSessionStateTest {
     drain()
     assertEquals(ScannerErrorCode.ANALYSIS_FAILED, meta().analysisFailure?.code)
     assertNull(meta().renderFailure)
-    assertEquals(full, rendered.single().first.quad)
+    assertEquals(full, rendered.single().first.corners)
     state.setDocumentCrop("page", crop)
     drain()
-    assertEquals(crop, rendered.last().first.quad)
+    assertEquals(crop, rendered.last().first.corners)
     assertEquals(1, analysisCalls)
     analysisError = null
     admit(id = "no-candidate")
     drain()
     assertNull(meta("no-candidate").analysisFailure)
-    assertEquals(full, meta("no-candidate").quad)
+    assertEquals(full, meta("no-candidate").corners)
   }
 
   @Test fun equalSettingsAreNoOpsAndInvalidCommandsDoNotChangeAcceptedState() {
@@ -322,7 +334,7 @@ class ScanSessionStateTest {
     assertEquals(2, rendered.size)
     assertTrue(rendered.first().second.image.deleted.isDone)
     assertFalse(rendered.last().second.image.deleted.isDone)
-    assertEquals(crop, rendered.last().first.quad)
+    assertEquals(crop, rendered.last().first.corners)
     assertEquals(meta().requestedRevision, meta().readyRevision)
   }
 

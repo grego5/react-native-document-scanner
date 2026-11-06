@@ -20,29 +20,29 @@ This is a lookup map. Locate symbols and read only the ranges needed for the nex
 
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/ImageGeometry.kt
 - android/src/main/java/com/margelo/nitro/documentscanner/processing/PhotoInferenceCrop.kt
-- android/src/main/java/com/margelo/nitro/documentscanner/CropQuadEditing.kt
-- android/src/test/java/com/margelo/nitro/documentscanner/CropQuadEditingTest.kt
+- android/src/main/java/com/margelo/nitro/documentscanner/CropCornerEditing.kt
+- android/src/test/java/com/margelo/nitro/documentscanner/CropCornerEditingTest.kt
 - android/src/test/java/com/margelo/nitro/documentscanner/processing/PhotoInferenceCropTest.kt
 
 ## Current behavior and invariants
 
-All public quads are normalized upright TL/TR/BR/BL. Photo inference uses 10% seed margins expanded to source aspect; editing rejects crossed, concave, or collapsed quads.
+All public corners are normalized upright TL/TR/BR/BL. Photo inference uses 10% seed margins expanded to source aspect; editing rejects crossed, concave, or collapsed corners.
 
 ## Implementation steps
 
-1. Move orientation transforms, region mapping, quad validation, crop-edit clamping, and target geometry into the shared engine.
+1. Move orientation transforms, region mapping, corners validation, crop-edit clamping, and target geometry into the shared engine.
 2. Replace Android math with JNI calls while retaining Android-owned gesture state and image resources.
 3. Represent centered square framing as a region transform, distinct from resizing into the model tensor.
 4. Move affected pure assertions into core tests atomically with production replacement; retain Android-only assertions in JVM tests.
 
 ## Ownership and boundary rules
 
-Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public quads remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
+Keep platform handles out of portable C++ interfaces; borrow pixels only through their owner's lease. Keep UIKit on main and camera/runtime/processing work on its declared serial owner. Cross-owner results carry immutable snapshots/generations. Existing public corners remain normalized upright TL/TR/BR/BL; framing crops and model resizing are separate transforms. Capture resources and Promises settle once and stale completion must not publish.
 
 ## Tests and expected results
 
 - Round-trip all eight EXIF orientations and portrait/landscape square crops.
-- Verify crop-edge motion, rejected invalid drags, inference-region mapping, outside-image render quads, and normalized output polygons.
+- Verify crop-edge motion, rejected invalid drags, inference-region mapping, outside-image render corners, and normalized output polygons.
 
 ## Validation commands
 
@@ -68,9 +68,9 @@ Moved source orientation, normalized/image conversion, region mapping, photo inf
 
 Image-edge transforms and pixel-center bitmap matrices are explicit separate conventions. Centered square framing is represented by a region transform, including fractional offsets for odd dimensions, independently of model resizing. Existing photo seed margins, edit rejection thresholds, render extrapolation limits and Point2f projection rounding are preserved. JNI translates argument errors explicitly and preserves `InvalidInputException` for public render validation; consumer rules retain the JNI class and reflected exception constructor.
 
-All assertions from `CropQuadEditingTest.kt` and `PhotoInferenceCropTest.kt` moved into `cpp/tests/GeometryTest.cpp` with production replacement. Added core orientation/region round trips, square framing, render sizing/clipping and normalized polygon checks. Retained Android bitmap and viewport tests; added JNI marshalling/error checks and a real editor gesture sequence that keeps the last valid quad and publishes once on release.
+All assertions from `CropCornerEditingTest.kt` and `PhotoInferenceCropTest.kt` moved into `cpp/tests/GeometryTest.cpp` with production replacement. Added core orientation/region round trips, square framing, render sizing/clipping and normalized polygon checks. Retained Android bitmap and viewport tests; added JNI marshalling/error checks and a real editor gesture sequence that keeps the last valid corners and publishes once on release.
 
-Scope boundary: `DocCornerSession.decodeOutput` / `validNormalizedQuad` and their JVM assertions remain for Task 06's prediction interpretation migration. Photo crop selection preserves that acceptance predicate locally, without applying the editor's distinct minimum-area rule. Perspective warping and page-edge algorithms remain for Task 07. No model, public API or generated bindings changed.
+Scope boundary: `DocCornerSession.decodeOutput` / `validNormalizedCorners` and their JVM assertions remain for Task 06's prediction interpretation migration. Photo crop selection preserves that acceptance predicate locally, without applying the editor's distinct minimum-area rule. Perspective warping and page-edge algorithms remain for Task 07. No model, public API or generated bindings changed.
 
 Validation:
 

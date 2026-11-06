@@ -28,7 +28,7 @@ class CropEditorViewTest {
       lateinit var hybrid: HybridDocumentCropEditorView
       instrumentation.runOnMainSync {
         fixture.admit("page")
-        val original = DocumentQuad(DocumentPoint(.1, .1), DocumentPoint(.9, .1),
+        val original = DocumentCorners(DocumentPoint(.1, .1), DocumentPoint(.9, .1),
           DocumentPoint(.9, .9), DocumentPoint(.1, .9))
         fixture.state.setDocumentCrop("page", original)
         val react = com.facebook.react.bridge.BridgeReactContext(context)
@@ -43,16 +43,16 @@ class CropEditorViewTest {
       val result = java.util.concurrent.CompletableFuture<Variant_Boolean_ScannerFailure>()
       hybrid.setPresetResult(CropPreset.NONE).then { result.complete(it) }
       assertEquals(true, result.get(5, java.util.concurrent.TimeUnit.SECONDS).asFirstOrNull())
-      val draft = java.util.concurrent.CompletableFuture<Variant_ScannerFailure_DocumentQuad>()
-      hybrid.getQuadResult().then { draft.complete(it) }
+      val draft = java.util.concurrent.CompletableFuture<Variant_ScannerFailure_DocumentCorners>()
+      hybrid.getCornersResult().then { draft.complete(it) }
       assertEquals(ScanPage.fullFrame(), draft.get(5, java.util.concurrent.TimeUnit.SECONDS).asSecondOrNull())
       assertEquals(before, fixture.state.snapshot().pages.getValue("page"))
       assertEquals(listOf(CropDraftPreset.CUSTOM, CropDraftPreset.NONE), presets)
       instrumentation.runOnMainSync {
         val editor = hybrid.view as CropEditorView
         val custom = doubleArrayOf(.2, .2, .8, .2, .8, .8, .2, .8)
-        editor.replaceQuad(custom)
-        editor.onQuadEdited?.invoke(custom)
+        editor.replaceCorners(custom)
+        editor.onCornersEdited?.invoke(custom)
       }
       assertEquals(CropDraftPreset.CUSTOM, presets.last())
       val reset = java.util.concurrent.CompletableFuture<Variant_Boolean_ScannerFailure>()
@@ -61,10 +61,10 @@ class CropEditorViewTest {
       val submitted = java.util.concurrent.CompletableFuture<Variant_Boolean_ScannerFailure>()
       hybrid.submitResult().then { submitted.complete(it) }
       assertEquals(true, submitted.get(5, java.util.concurrent.TimeUnit.SECONDS).asFirstOrNull())
-      assertEquals(ScanPage.fullFrame(), fixture.state.snapshot().pages.getValue("page").quad)
+      assertEquals(ScanPage.fullFrame(), fixture.state.snapshot().pages.getValue("page").corners)
       instrumentation.runOnMainSync { hybrid.onDropView() }
-      val dropped = java.util.concurrent.CompletableFuture<Variant_ScannerFailure_DocumentQuad>()
-      hybrid.getQuadResult().then { dropped.complete(it) }
+      val dropped = java.util.concurrent.CompletableFuture<Variant_ScannerFailure_DocumentCorners>()
+      hybrid.getCornersResult().then { dropped.complete(it) }
       assertEquals(ScannerErrorCode.INPUT_INVALID, dropped.get(5, java.util.concurrent.TimeUnit.SECONDS).asFirstOrNull()?.code)
       val rejectedSubmit = java.util.concurrent.CompletableFuture<Variant_Boolean_ScannerFailure>()
       hybrid.submitResult().then { rejectedSubmit.complete(it) }
@@ -74,17 +74,17 @@ class CropEditorViewTest {
 
 
   @Test
-  fun edgeDragKeepsLastValidSharedQuadAndPublishesOnceOnRelease() = withEditor(assertUnchanged = false) { editor, touches ->
-    editor.replaceQuad(doubleArrayOf(.1, .1, .9, .1, .9, .9, .1, .9))
+  fun edgeDragKeepsLastValidSharedCornersAndPublishesOnceOnRelease() = withEditor(assertUnchanged = false) { editor, touches ->
+    editor.replaceCorners(doubleArrayOf(.1, .1, .9, .1, .9, .9, .1, .9))
     var edits = 0
     var published: DoubleArray? = null
-    editor.onQuadEdited = { edits++; published = it }
+    editor.onCornersEdited = { edits++; published = it }
     touches.begin(500f, 100f)
     touches.send(MotionEvent.ACTION_MOVE, 500f, 200f)
     val valid = doubleArrayOf(.1, .2, .9, .2, .9, .9, .1, .9)
-    assertArrayEquals(valid, editor.quad, 1e-9)
+    assertArrayEquals(valid, editor.corners, 1e-9)
     touches.send(MotionEvent.ACTION_MOVE, 500f, 950f)
-    assertArrayEquals(valid, editor.quad, 1e-9)
+    assertArrayEquals(valid, editor.corners, 1e-9)
     assertEquals(0, edits)
     touches.send(MotionEvent.ACTION_UP, 500f, 950f)
     assertEquals(1, edits)
@@ -131,13 +131,13 @@ class CropEditorViewTest {
       val editor = CropEditorView(instrumentation.targetContext)
       editor.layout(0, 0, 1000, 1000)
       editor.bitmap = photo
-      val original = editor.quad.copyOf()
+      val original = editor.corners.copyOf()
       var edits = 0
-      editor.onQuadEdited = { edits++ }
+      editor.onCornersEdited = { edits++ }
       try {
         check(editor, Touches(editor))
         if (assertUnchanged) {
-          assertArrayEquals(original, editor.quad, 0.0)
+          assertArrayEquals(original, editor.corners, 0.0)
           assertEquals("Viewport gestures do not edit the crop", 0, edits)
         }
       } finally {

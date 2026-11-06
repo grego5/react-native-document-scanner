@@ -56,6 +56,8 @@ namespace margelo::nitro::documentscanner {
     void setPageId(const std::string& pageId) override;
     std::optional<DocumentFilter> getFilter() override;
     void setFilter(std::optional<DocumentFilter> filter) override;
+    std::optional<bool> getRectangle() override;
+    void setRectangle(std::optional<bool> rectangle) override;
     std::optional<std::function<void(CropDraftPreset /* preset */)>> getOnPresetChange() override;
     void setOnPresetChange(const std::optional<std::function<void(CropDraftPreset /* preset */)>>& onPresetChange) override;
     std::optional<std::function<void(double /* width */, double /* height */)>> getOnLoad() override;
@@ -66,7 +68,7 @@ namespace margelo::nitro::documentscanner {
   public:
     // Methods
     std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> submitResult() override;
-    std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>> getQuadResult() override;
+    std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>> getCornersResult() override;
     std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setPresetResult(CropPreset preset) override;
 
   private:

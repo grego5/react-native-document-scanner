@@ -18,7 +18,7 @@ struct FlowEstimator::State {
   std::array<int64_t, 7> geometry{};
   State(int edge, int features, int64_t gap) : maxEdge(edge), maxFeatures(features), maxGap(gap) {}
 
-  std::array<double, 4> selectRegion(const std::optional<Quad> &region, int width, int height, int rotation) {
+  std::array<double, 4> selectRegion(const std::optional<Corners> &region, int width, int height, int rotation) {
     mask = cv::Mat::zeros(height, width, CV_8UC1);
     if (region) {
       double cx = 0, cy = 0;
@@ -53,7 +53,7 @@ struct FlowEstimator::State {
     return {left, top, width - left, height - top};
   }
   Estimate track(int bufferWidth, int cropWidth, int cropHeight, int rotation, int64_t gap, int64_t sensor,
-                 const std::optional<Quad> &region, bool fitTransform) {
+                 const std::optional<Corners> &region, bool fitTransform) {
     auto unknown = [&](Status status, double confidence = 0, int tracks = 0) {
       return Estimate{status, {}, bufferWidth, previousNs, sensor, confidence, tracks};
     };
@@ -138,7 +138,7 @@ FlowEstimator::FlowEstimator(int edge, int features, int64_t gap)
 }
 FlowEstimator::~FlowEstimator() = default;
 void FlowEstimator::reset() { state_->hasPrevious = false; }
-Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const std::optional<Quad> &region,
+Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const std::optional<Corners> &region,
                                bool fitTransform) {
   auto &s = *state_;
   const bool hadPrevious = s.hasPrevious;

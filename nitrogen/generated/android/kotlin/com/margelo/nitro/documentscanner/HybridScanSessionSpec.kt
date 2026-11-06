@@ -44,7 +44,7 @@ abstract class HybridScanSessionSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
-  abstract fun setDocumentCropResult(pageId: String, quad: DocumentQuad): Promise<Variant_Boolean_ScannerFailure>
+  abstract fun setDocumentCropResult(pageId: String, corners: DocumentCorners): Promise<Variant_Boolean_ScannerFailure>
   
   @DoNotStrip
   @Keep

@@ -8,7 +8,7 @@
 #include <stdexcept>
 
 namespace document_scanner {
-GeometricRenderInfo renderGeometry(const PixelLease &lease, const Quad &normalized, double scale,
+GeometricRenderInfo renderGeometry(const PixelLease &lease, const Corners &normalized, double scale,
                                    std::optional<double> paper, bool follow, const PixelAllocator &allocate,
                                    std::optional<RenderSourceRegion> region) {
   namespace g = geometry;
@@ -19,8 +19,8 @@ GeometricRenderInfo renderGeometry(const PixelLease &lease, const Quad &normaliz
       layout.crop.height != size.height || size.width > 4096 || size.height > 4096)
     throw std::invalid_argument(
         "Geometric rendering requires a full upright RGBA8 source no larger than 4096 pixels per side.");
-  g::validateRenderQuad(normalized);
-  const auto q = [&]() -> Quad {
+  g::validateRenderCorners(normalized);
+  const auto q = [&]() -> Corners {
     if (!region)
       return g::toImage(normalized, size);
     const auto r = *region;
@@ -62,7 +62,7 @@ GeometricRenderInfo renderGeometry(const PixelLease &lease, const Quad &normaliz
     throw std::runtime_error("The selected document contains no captured image pixels.");
   g::Matrix h;
   std::copy_n(homography.ptr<double>(), 9, h.begin());
-  auto polygon = g::normalizedOutputPolygon(g::clipImageToQuad(q, size), h, output);
+  auto polygon = g::normalizedOutputPolygon(g::clipImageToCorners(q, size), h, output);
   if (polygon.size() < 3)
     throw std::runtime_error("The selected document does not overlap the captured image.");
   const auto out = internal::target(allocate, PixelFormat::rgba8, outputSize);
@@ -75,7 +75,7 @@ GeometricRenderInfo renderGeometry(const PixelLease &lease, const Quad &normaliz
   out.kept(warped);
   return {std::move(polygon), curved};
 }
-GeometricRenderResult renderGeometry(const PixelLease &lease, const Quad &normalized, double scale,
+GeometricRenderResult renderGeometry(const PixelLease &lease, const Corners &normalized, double scale,
                                      std::optional<double> paper, bool follow,
                                      std::optional<RenderSourceRegion> region) {
   internal::OwnedTarget out;

@@ -20,7 +20,7 @@ import java.util.Objects
 data class DocumentCandidate(
   @DoNotStrip
   @Keep
-  val quad: DocumentQuad,
+  val corners: DocumentCorners,
   @DoNotStrip
   @Keep
   val score: Double
@@ -30,13 +30,13 @@ data class DocumentCandidate(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is DocumentCandidate) return false
-    return Objects.deepEquals(this.quad, other.quad)
+    return Objects.deepEquals(this.corners, other.corners)
       && Objects.deepEquals(this.score, other.score)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
-      quad,
+      corners,
       score
     ).contentDeepHashCode()
   }
@@ -49,8 +49,8 @@ data class DocumentCandidate(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(quad: DocumentQuad, score: Double): DocumentCandidate {
-      return DocumentCandidate(quad, score)
+    private fun fromCpp(corners: DocumentCorners, score: Double): DocumentCandidate {
+      return DocumentCandidate(corners, score)
     }
   }
 }

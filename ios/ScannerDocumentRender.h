@@ -18,7 +18,7 @@ FOUNDATION_EXPORT NSErrorDomain const ScannerRenderErrorDomain;
 /// owner must retain the borrowed upright RGBA8 bytes and their store pin.
 @interface ScannerDocumentRenderer : NSObject
 - (instancetype)init NS_UNAVAILABLE;
-+ (BOOL)validateQuad:(NSArray<NSNumber *> *)quad error:(NSError **)error;
++ (BOOL)validateCorners:(NSArray<NSNumber *> *)corners error:(NSError **)error;
 /// Writes the image (three-channel JPEG or four-bit gray PNG) and a JPEG
 /// thumbnail to the given private paths. The caller owns publication and
 /// cleanup.
@@ -28,9 +28,9 @@ FOUNDATION_EXPORT NSErrorDomain const ScannerRenderErrorDomain;
                                         width:(uint32_t)width
                                        height:(uint32_t)height
                                     rowStride:(NSUInteger)rowStride
-                                         quad:(NSArray<NSNumber *> *)quad
+                                         corners:(NSArray<NSNumber *> *)corners
                                 paperLongEdge:(double)paperLongEdge
-                              followPageEdges:(BOOL)followPageEdges
+                              simpleDewarp:(BOOL)simpleDewarp
                                        filter:(NSInteger)filter
                                 removeShadows:(BOOL)removeShadows
                                       grayPng:(BOOL)grayPng
@@ -50,13 +50,13 @@ FOUNDATION_EXPORT NSErrorDomain const ScannerRenderErrorDomain;
 /// Shared crop-editor geometry over normalized upright TL/TR/BR/BL x,y pairs.
 @interface ScannerCropGeometry : NSObject
 - (instancetype)init NS_UNAVAILABLE;
-+ (NSArray<NSNumber *> *)clamp:(NSArray<NSNumber *> *)quad;
++ (NSArray<NSNumber *> *)clamp:(NSArray<NSNumber *> *)corners;
 /// Inside the photo, clockwise and not collapsed: what an edited crop must be.
-+ (BOOL)validCrop:(NSArray<NSNumber *> *)quad;
-/// The quad with corner `index` moved to (x, y), or edge `index` (from that corner to
++ (BOOL)validCrop:(NSArray<NSNumber *> *)corners;
+/// The corners with corner `index` moved to (x, y), or edge `index` (from that corner to
 /// the next) moved by (x, y) and shortened at the photo's bounds; nil when the result
 /// is crossed, concave or collapsed.
-+ (nullable NSArray<NSNumber *> *)move:(NSArray<NSNumber *> *)quad
++ (nullable NSArray<NSNumber *> *)move:(NSArray<NSNumber *> *)corners
                                  index:(NSInteger)index
                                      x:(double)x
                                      y:(double)y

@@ -7,7 +7,7 @@ export interface DocumentPoint {
   y: number
 }
 
-export interface DocumentQuad {
+export interface DocumentCorners {
   topLeft: DocumentPoint
   topRight: DocumentPoint
   bottomRight: DocumentPoint
@@ -15,7 +15,7 @@ export interface DocumentQuad {
 }
 
 export interface DocumentCandidate {
-  quad: DocumentQuad
+  corners: DocumentCorners
   /** Ranking evidence, not a probability. */
   score: number
 }
@@ -29,20 +29,7 @@ export interface DocumentAnalysis {
   candidate?: DocumentCandidate
 }
 
-/**
- * The remaining filters except `none` first even out the paper's lighting: they white-balance the
- * page to its paper and divide it by an estimate of the bare paper around each pixel, so shadows, uneven light and
- * colour casts drop out and the paper turns white; that flat white is also what makes the file small. The estimate
- * comes only from neutral areas near the brightest on the page, so coloured areas and photos darker than about 60% of
- * the paper keep their tones, and one estimate serves all channels, so colours keep their ratios. Light gray areas
- * count as paper and whiten. `enhance` keeps colour, for stamps, highlighter and signatures;
- * `grayscale` drops it; both are then sharpened and their mid-tones darkened so faint strokes read. `blackWhite`
- * makes a high-contrast grayscale page while preserving gray pixels around faint and thin text strokes.
- *
- * All three then even out the ink across the page: thin ink that glare or distance left faded is deepened toward the
- * page's darkest ink (at most 2.5 times its contrast), and softer areas are sharpened more. Broad mid-tone areas, such
- * as photos, are measured apart from thin ink and keep their tones.
- */
+/** `enhance` retains color, `grayscale` removes color, and `blackWhite` produces high-contrast grayscale. */
 export type DocumentFilter = 'none' | 'enhance' | 'grayscale' | 'blackWhite'
 
 /** `png` is 4-bit grayscale (16 levels), allowed with `grayscale` or `blackWhite`; `jpeg` keeps full tones and colour. */
@@ -54,14 +41,9 @@ export interface PaperSize {
   height: number
 }
 
-/** The quad's corners map exactly to the output corners; no margin or canvas is added. */
+/** The document corners map exactly to the output corners; no margin or canvas is added. */
 export interface DocumentRenderOptions {
-  /**
-   * Lifts shaded paper toward the page's bright paper before the filter, at most twice its brightness. Defaults to
-   * true. The paper's brightness is estimated with ink removed, and one gain serves all channels, so colours keep their
-   * ratios; a shadow lit by differently coloured light keeps a slight tint without a filter. Areas darker than paper
-   * and wider than a text line, such as fingers or solid dark boxes, are lifted as well.
-   */
+  /** Brighten shaded paper before filtering; defaults to true. */
   removeShadows?: boolean
   /** JPEG quality from 0 through 1; defaults to 0.92. Ignored for `png`. */
   jpegQuality?: number
@@ -79,12 +61,10 @@ export interface DocumentRenderOptions {
   /** Dots per inch on `paperSize`, from 50 to 600; defaults to 200. Requires `paperSize`. */
   dpi?: number
   /**
-   * Bends each side onto the page's own edge where the page curves between the quad's corners, as a page held in a
-   * hand or fresh from a printer does, so no background shows along it. Defaults to true. The corners stay where the
-   * quad puts them, and a side whose edge is not found clearly stays straight. Skipped when a corner lies outside the
-   * image. Set false to keep exactly the straight quad.
+   * Follow curved page edges while retaining the submitted corners; defaults to true. An undetected edge stays straight,
+   * and correction is skipped when a corner lies outside the image.
    */
-  followPageEdges?: boolean
+  simpleDewarp?: boolean
 }
 
 /**

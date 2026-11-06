@@ -35,7 +35,7 @@ class DocCornerNetRuntimeTest {
   fun initializeRuntime() {
     SoLoader.init(context, false)
     JNIOnLoad.initializeNativeNitro()
-    QuadModelStore.activate(QuadModelStore.prepare(context, "asset:///doccornernet/model.tflite"))
+    CornerModelStore.activate(CornerModelStore.prepare(context, "asset:///doccornernet/model.tflite"))
   }
 
   @Test
@@ -67,29 +67,29 @@ class DocCornerNetRuntimeTest {
 
   @Test
   fun replacementUsesOwnedBytesAndFailuresKeepPreviousModel() {
-    val previous = QuadModelStore.current
+    val previous = CornerModelStore.current
     val file = File.createTempFile("corner-model-", ".tflite", context.cacheDir)
     try {
       file.writeBytes(context.assets.open("doccornernet/model.tflite").use { it.readBytes() })
-      val replacement = QuadModelStore.prepare(context, Uri.fromFile(file).toString())
+      val replacement = CornerModelStore.prepare(context, Uri.fromFile(file).toString())
       assertEquals(224, replacement.size.width)
       assertEquals(224, replacement.size.height)
-      QuadModelStore.activate(replacement)
-      assertSame(replacement, QuadModelStore.current)
-      assertSame(replacement, QuadModelStore.current)
+      CornerModelStore.activate(replacement)
+      assertSame(replacement, CornerModelStore.current)
+      assertSame(replacement, CornerModelStore.current)
       file.writeBytes(byteArrayOf(1, 2, 3))
-      assertThrows(Exception::class.java) { QuadModelStore.prepare(context, file.absolutePath) }
-      assertSame(replacement, QuadModelStore.current)
+      assertThrows(Exception::class.java) { CornerModelStore.prepare(context, file.absolutePath) }
+      assertSame(replacement, CornerModelStore.current)
       file.delete()
       replacement.open(context).use { it.warmUp() }
-      assertThrows(Exception::class.java) { QuadModelStore.prepare(context, file.absolutePath) }
-      assertThrows(Exception::class.java) { QuadModelStore.prepare(context, "https://example.com/model.tflite") }
-      assertThrows(Exception::class.java) { QuadModelStore.prepare(context, "relative.tflite") }
-      assertSame(replacement, QuadModelStore.current)
-      QuadModelStore.activate(QuadModelStore.prepare(context, "asset:///doccornernet/model.tflite"))
-      QuadModelStore.current.open(context).use { it.warmUp() }
+      assertThrows(Exception::class.java) { CornerModelStore.prepare(context, file.absolutePath) }
+      assertThrows(Exception::class.java) { CornerModelStore.prepare(context, "https://example.com/model.tflite") }
+      assertThrows(Exception::class.java) { CornerModelStore.prepare(context, "relative.tflite") }
+      assertSame(replacement, CornerModelStore.current)
+      CornerModelStore.activate(CornerModelStore.prepare(context, "asset:///doccornernet/model.tflite"))
+      CornerModelStore.current.open(context).use { it.warmUp() }
     } finally {
-      QuadModelStore.activate(previous)
+      CornerModelStore.activate(previous)
       file.delete()
     }
   }
@@ -214,10 +214,10 @@ class DocCornerNetRuntimeTest {
     fixtures.list("doccornernet-runtime")?.contains("references.json") == true)
 
   private fun values(candidate: DocumentCandidate?): DoubleArray {
-    assertNotNull("Model did not return a valid quad", candidate)
-    val quad = candidate!!.quad
-    return doubleArrayOf(quad.topLeft.x, quad.topLeft.y, quad.topRight.x, quad.topRight.y,
-      quad.bottomRight.x, quad.bottomRight.y, quad.bottomLeft.x, quad.bottomLeft.y, candidate.score)
+    assertNotNull("Model did not return a valid corners", candidate)
+    val corners = candidate!!.corners
+    return doubleArrayOf(corners.topLeft.x, corners.topLeft.y, corners.topRight.x, corners.topRight.y,
+      corners.bottomRight.x, corners.bottomRight.y, corners.bottomLeft.x, corners.bottomLeft.y, candidate.score)
   }
 
   private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

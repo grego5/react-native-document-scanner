@@ -41,8 +41,8 @@ final class CropEditorView: UIView {
   private static let color = CGColor(srgbRed: 0x38 / 255.0, green: 0xD6 / 255.0, blue: 0xA8 / 255.0, alpha: 1)
   private static let crosshairColor = CGColor(srgbRed: 1, green: 0x3B / 255.0, blue: 0x30 / 255.0, alpha: 1)
 
-  /// Called with the edited quad when a drag that changed it ends.
-  var onQuadEdited: ((QuadCoordinates) -> Void)?
+  /// Called with the edited corners when a drag that changed it ends.
+  var onCornersEdited: ((CornerCoordinates) -> Void)?
   /// Called when the view joins or leaves a window.
   var onAttach: (() -> Void)?
   var onDetach: (() -> Void)?
@@ -59,8 +59,24 @@ final class CropEditorView: UIView {
     }
   }
 
+  /// Keeps the crop an upright rectangle: only its corners move, the opposite corner fixed,
+  /// with no edge handles and no pinch, pan or double-tap zoom. Turning it on fits the photo
+  /// and squares the crop to its bounding rectangle.
+  var rectangle = false {
+    didSet {
+      guard rectangle != oldValue else { return }
+      cancelSequence()
+      if rectangle {
+        corners = CropCornerEditing.boundingRectangle(corners)
+        zoom = 1
+        pan = .zero
+      }
+      update()
+    }
+  }
+
   /// The crop in normalized upright coordinates.
-  private(set) var quad: QuadCoordinates = CropQuadEditing.fullFrame
+  private(set) var corners: CornerCoordinates = CropCornerEditing.fullFrame
   /// The photo's scale over its contain fit, and its center's offset from the view's center.
   private(set) var zoom: CGFloat = 1
   private(set) var pan = CGPoint.zero
@@ -78,14 +94,14 @@ final class CropEditorView: UIView {
   private let magnifiedOutline = CAShapeLayer()
   private let crosshairs = CAShapeLayer()
 
-  /// `start` is the quad before the touch, `base` the quad after snapping the handle under the finger.
+  /// `start` is the corners before the touch, `base` the corners after snapping the handle under the finger.
   private struct Drag {
     let corner: Bool
     let index: Int
     let touch: Touch
     let down: CGPoint
-    let start: QuadCoordinates
-    let base: QuadCoordinates
+    let start: CornerCoordinates
+    let base: CornerCoordinates
   }
 
   private enum Gesture { case handle, view }
@@ -159,10 +175,10 @@ final class CropEditorView: UIView {
     update()
   }
 
-  /// Replaces the crop with a valid in-frame quad and cancels a drag in progress.
-  func replaceQuad(_ value: QuadCoordinates) throws {
-    guard CropQuadEditing.isValid(value) else { throw ScannerCodeError(code: .inputInvalid) }
-    quad = value
+  /// Replaces the crop with a valid in-frame corners and cancels a drag in progress.
+  func replaceCorners(_ value: CornerCoordinates) throws {
+    guard CropCornerEditing.isValid(value) else { throw ScannerCodeError(code: .inputInvalid) }
+    corners = rectangle ? CropCornerEditing.boundingRectangle(value) : value
     if drag != nil {
       drag = nil
       stopGlide()
@@ -172,8 +188,8 @@ final class CropEditorView: UIView {
 
   /// The view position of corner `index`.
   func corner(_ index: Int) -> CGPoint {
-    CGPoint(x: content.minX + CGFloat(quad[index * 2]) * content.width,
-            y: content.minY + CGFloat(quad[index * 2 + 1]) * content.height)
+    CGPoint(x: content.minX + CGFloat(corners[index * 2]) * content.width,
+            y: content.minY + CGFloat(corners[index * 2 + 1]) * content.height)
   }
 
   /// The view position of the middle of the edge from corner `index` to the next.
@@ -209,6 +225,8 @@ final class CropEditorView: UIView {
     if touches.isEmpty {
       active = image != nil && layoutContent()
       if active { gesture = handle(at: point) == nil ? .view : .handle }
+      // A rectangle crop never zooms; a touch away from its corners does nothing.
+      if active, rectangle, gesture == .view { active = false }
     }
     touches[id] = point
     guard active else { return }
@@ -234,19 +252,21 @@ final class CropEditorView: UIView {
       let isCorner = grabbed.corner, index = grabbed.index
       // A handle press ends any tap sequence, so it never completes a double tap.
       lastTap = nil
-      let start = quad
+      let start = corners
       // The grabbed corner, or the middle of the grabbed edge, jumps under the finger at once.
-      let snapped: QuadCoordinates?
-      if isCorner {
-        snapped = CropQuadEditing.moveCorner(start, index, x: Double((point.x - content.minX) / content.width),
-                                             y: Double((point.y - content.minY) / content.height))
+      let snapped: CornerCoordinates?
+      let x = Double((point.x - content.minX) / content.width), y = Double((point.y - content.minY) / content.height)
+      if isCorner && rectangle {
+        snapped = CropCornerEditing.moveRectangleCorner(start, index, x: x, y: y)
+      } else if isCorner {
+        snapped = CropCornerEditing.moveCorner(start, index, x: x, y: y)
       } else {
         let middle = edgeMiddle(index)
-        snapped = CropQuadEditing.moveEdge(start, index, dx: Double((point.x - middle.x) / content.width),
+        snapped = CropCornerEditing.moveEdge(start, index, dx: Double((point.x - middle.x) / content.width),
                                            dy: Double((point.y - middle.y) / content.height))
       }
-      quad = snapped ?? start
-      drag = Drag(corner: isCorner, index: index, touch: id, down: point, start: start, base: quad)
+      corners = snapped ?? start
+      drag = Drag(corner: isCorner, index: index, touch: id, down: point, start: start, base: corners)
       finger = point
       magnifierCenter = nil
       if isCorner { startGlide() }
@@ -285,12 +305,13 @@ final class CropEditorView: UIView {
       let dx = Double((point.x - current.down.x) / content.width)
       let dy = Double((point.y - current.down.y) / content.height)
       let base = current.base
-      let next = current.corner
-        ? CropQuadEditing.moveCorner(base, current.index, x: base[current.index * 2] + dx,
-                                     y: base[current.index * 2 + 1] + dy)
-        : CropQuadEditing.moveEdge(base, current.index, dx: dx, dy: dy)
-      // An invalid move keeps the last valid quad.
-      if let next { quad = next }
+      let x = base[current.index * 2] + dx, y = base[current.index * 2 + 1] + dy
+      let next: CornerCoordinates?
+      if current.corner && rectangle { next = CropCornerEditing.moveRectangleCorner(base, current.index, x: x, y: y) }
+      else if current.corner { next = CropCornerEditing.moveCorner(base, current.index, x: x, y: y) }
+      else { next = CropCornerEditing.moveEdge(base, current.index, dx: dx, dy: dy) }
+      // An invalid move keeps the last valid corners.
+      if let next { corners = next }
       update()
     }
   }
@@ -313,7 +334,7 @@ final class CropEditorView: UIView {
     }
   }
 
-  /// Ignores the rest of the touch sequence in progress. A drag is abandoned: its quad
+  /// Ignores the rest of the touch sequence in progress. A drag is abandoned: its corners
   /// returns to where it started and nothing is published.
   private func cancelSequence() {
     if !touches.isEmpty { active = false }
@@ -322,7 +343,7 @@ final class CropEditorView: UIView {
     focus = nil
     if let current = drag {
       drag = nil
-      quad = current.start
+      corners = current.start
       stopGlide()
     }
   }
@@ -331,13 +352,14 @@ final class CropEditorView: UIView {
     drag = nil
     stopGlide()
     update()
-    if current.start != quad { onQuadEdited?(quad) }
+    if current.start != corners { onCornersEdited?(corners) }
   }
 
   /// The corner within reach of `point`, nearest first, otherwise the nearest edge middle within reach.
   private func handle(at point: CGPoint) -> (corner: Bool, index: Int)? {
     let corners = (0..<4).min { distance(corner($0), point) < distance(corner($1), point) }!
     if distance(corner(corners), point) <= Self.touchRadius { return (true, corners) }
+    if rectangle { return nil }
     let edges = (0..<4).min { distance(edgeMiddle($0), point) < distance(edgeMiddle($1), point) }!
     if distance(edgeMiddle(edges), point) <= Self.touchRadius { return (false, edges) }
     return nil
@@ -401,7 +423,7 @@ final class CropEditorView: UIView {
     }
     imageView.isHidden = false
     imageView.frame = content
-    let path = quadPath()
+    let path = cornersPath()
     outline.path = path
     let circles = CGMutablePath()
     let gripShapes = CGMutablePath()
@@ -414,8 +436,8 @@ final class CropEditorView: UIView {
       let middle = edgeMiddle(index)
       let turn = CGAffineTransform(translationX: middle.x, y: middle.y)
         .rotated(by: atan2(next.y - point.y, next.x - point.x))
-      gripShapes.addPath(CGPath(roundedRect: grip, cornerWidth: Self.gripThickness / 2,
-                                cornerHeight: Self.gripThickness / 2, transform: nil), transform: turn)
+      if !rectangle { gripShapes.addPath(CGPath(roundedRect: grip, cornerWidth: Self.gripThickness / 2,
+                                cornerHeight: Self.gripThickness / 2, transform: nil), transform: turn) }
     }
     handles.path = circles
     grips.path = gripShapes
@@ -429,7 +451,7 @@ final class CropEditorView: UIView {
     }
   }
 
-  private func quadPath() -> CGPath {
+  private func cornersPath() -> CGPath {
     let path = CGMutablePath()
     path.addLines(between: (0..<4).map(corner))
     path.closeSubpath()
@@ -459,7 +481,7 @@ final class CropEditorView: UIView {
     magnifiedImage.frame = CGRect(x: (content.minX - point.x) * scale + radius, y: (content.minY - point.y) * scale + radius,
                                   width: content.width * scale, height: content.height * scale)
     var transform = CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: radius - point.x * scale, ty: radius - point.y * scale)
-    magnifiedOutline.path = quadPath().copy(using: &transform)
+    magnifiedOutline.path = cornersPath().copy(using: &transform)
   }
 
   // The display link only eases the magnifier; it retains this view until stopped.

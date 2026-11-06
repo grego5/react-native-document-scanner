@@ -15,7 +15,7 @@ export function ActionButton({ label, onPress, onLongPress, accessibilityHint, d
       accessibilityState={{ disabled }}
       style={({ pressed }) => [styles.tuningSwitch, style, pressed && styles.buttonPressed, disabled && styles.buttonDisabled]}
     >
-      <Text style={styles.tuningLabel}>{label}</Text>
+      <Text style={[styles.tuningLabel, styles.centeredLabel]} numberOfLines={1} adjustsFontSizeToFit>{label}</Text>
     </Pressable>
   )
 }

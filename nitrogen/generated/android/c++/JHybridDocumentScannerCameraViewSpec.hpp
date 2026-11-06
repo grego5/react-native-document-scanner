@@ -52,24 +52,26 @@ namespace margelo::nitro::documentscanner {
     // Properties
     std::shared_ptr<HybridScanSessionSpec> getSession() override;
     void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) override;
-    DocumentRenderOptions getRenderOptions() override;
-    void setRenderOptions(const DocumentRenderOptions& renderOptions) override;
-    std::optional<std::string> getQuadTensorModel() override;
-    void setQuadTensorModel(const std::optional<std::string>& quadTensorModel) override;
+    ImageCorrectionOptions getImageCorrection() override;
+    void setImageCorrection(const ImageCorrectionOptions& imageCorrection) override;
+    ImageOutputOptions getOutputOptions() override;
+    void setOutputOptions(const ImageOutputOptions& outputOptions) override;
+    std::optional<std::string> getCornerDetectionModel() override;
+    void setCornerDetectionModel(const std::optional<std::string>& cornerDetectionModel) override;
     std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() override;
     void setOnError(const std::optional<std::function<void(const ScannerFailure& /* error */)>>& onError) override;
-    std::optional<CameraMode> getMode() override;
-    void setMode(std::optional<CameraMode> mode) override;
-    std::optional<bool> getGuide() override;
-    void setGuide(std::optional<bool> guide) override;
-    std::optional<bool> getAdaptiveDetection() override;
-    void setAdaptiveDetection(std::optional<bool> adaptiveDetection) override;
+    std::optional<bool> getActive() override;
+    void setActive(std::optional<bool> active) override;
+    std::optional<bool> getGuideLiveCorners() override;
+    void setGuideLiveCorners(std::optional<bool> guideLiveCorners) override;
+    std::optional<bool> getAutoCrop() override;
+    void setAutoCrop(std::optional<bool> autoCrop) override;
+    std::optional<bool> getInferenceThrottling() override;
+    void setInferenceThrottling(std::optional<bool> inferenceThrottling) override;
     std::optional<double> getMinCornerScore() override;
     void setMinCornerScore(std::optional<double> minCornerScore) override;
-    std::optional<bool> getQualityGate() override;
-    void setQualityGate(std::optional<bool> qualityGate) override;
-    std::optional<QualityGateConfig> getQualityGateConfig() override;
-    void setQualityGateConfig(const std::optional<QualityGateConfig>& qualityGateConfig) override;
+    LowQualityControl getLowQualityControl() override;
+    void setLowQualityControl(const LowQualityControl& lowQualityControl) override;
     std::optional<bool> getTapToFocus() override;
     void setTapToFocus(std::optional<bool> tapToFocus) override;
     std::optional<double> getExposureCompensation() override;
@@ -82,14 +84,14 @@ namespace margelo::nitro::documentscanner {
     void setLowLightBoost(std::optional<bool> lowLightBoost) override;
     std::optional<CaptureMode> getCaptureMode() override;
     void setCaptureMode(std::optional<CaptureMode> captureMode) override;
-    std::optional<double> getJpegQuality() override;
-    void setJpegQuality(std::optional<double> jpegQuality) override;
+    std::optional<bool> getHighResolutionPhoto() override;
+    void setHighResolutionPhoto(std::optional<bool> highResolutionPhoto) override;
     std::optional<double> getGuideTransitionDuration() override;
     void setGuideTransitionDuration(std::optional<double> guideTransitionDuration) override;
-    std::optional<double> getAnalysisWidth() override;
-    void setAnalysisWidth(std::optional<double> analysisWidth) override;
-    std::optional<bool> getSquareFrame() override;
-    void setSquareFrame(std::optional<bool> squareFrame) override;
+    std::optional<double> getAnalysisFrameWidth() override;
+    void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) override;
+    std::optional<bool> getSquareAspectRatio() override;
+    void setSquareAspectRatio(std::optional<bool> squareAspectRatio) override;
     std::optional<bool> getShowStats() override;
     void setShowStats(std::optional<bool> showStats) override;
     std::optional<double> getGuideColor() override;
@@ -111,7 +113,7 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
-    std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override;
+    std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override;
 
   private:
     jni::global_ref<JHybridDocumentScannerCameraViewSpec::JavaPart> _javaPart;

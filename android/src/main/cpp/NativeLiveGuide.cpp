@@ -4,9 +4,9 @@ namespace margelo::nitro::documentscanner {
 using namespace facebook::jni;
 using namespace document_scanner;
 namespace {
-Quad quad(alias_ref<JArrayDouble> a) {
+Corners corners(alias_ref<JArrayDouble> a) {
   if (!a || a->size() != 8)
-    throw std::invalid_argument("Invalid guide quad.");
+    throw std::invalid_argument("Invalid guide corners.");
   const auto v = a->getRegion(0, 8);
   return {Point{v[0], v[1]}, Point{v[2], v[3]}, Point{v[4], v[5]}, Point{v[6], v[7]}};
 }
@@ -18,7 +18,7 @@ local_ref<JArrayDouble> NativeLiveGuide::updateNative(alias_ref<JArrayDouble> q,
                                                       jlong arrival, jboolean retain, alias_ref<JArrayLong> times) {
   if (!times || times->size() != 2)
     throw std::invalid_argument("Invalid guide metadata.");
-  guide::Input input{q ? std::optional{quad(q)} : std::nullopt, w, h, sensor, arrival};
+  guide::Input input{q ? std::optional{corners(q)} : std::nullopt, w, h, sensor, arrival};
   auto result = retain ? guide_.retain(input) : std::optional{guide_.update(input)};
   if (!result)
     return nullptr;

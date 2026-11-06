@@ -38,13 +38,19 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var renderOptions: DocumentRenderOptions
+  abstract var imageCorrection: ImageCorrectionOptions
   
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var quadTensorModel: String?
+  abstract var outputOptions: ImageOutputOptions
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var cornerDetectionModel: String?
   
   abstract var onError: ((error: ScannerFailure) -> Unit)?
   
@@ -64,19 +70,25 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var mode: CameraMode?
+  abstract var active: Boolean?
   
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var guide: Boolean?
+  abstract var guideLiveCorners: Boolean?
   
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var adaptiveDetection: Boolean?
+  abstract var autoCrop: Boolean?
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var inferenceThrottling: Boolean?
   
   @get:DoNotStrip
   @get:Keep
@@ -88,13 +100,7 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var qualityGate: Boolean?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var qualityGateConfig: QualityGateConfig?
+  abstract var lowQualityControl: LowQualityControl
   
   @get:DoNotStrip
   @get:Keep
@@ -136,7 +142,7 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var jpegQuality: Double?
+  abstract var highResolutionPhoto: Boolean?
   
   @get:DoNotStrip
   @get:Keep
@@ -148,13 +154,13 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var analysisWidth: Double?
+  abstract var analysisFrameWidth: Double?
   
   @get:DoNotStrip
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var squareFrame: Boolean?
+  abstract var squareAspectRatio: Boolean?
   
   @get:DoNotStrip
   @get:Keep
@@ -253,7 +259,7 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   // Methods
   @DoNotStrip
   @Keep
-  abstract fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_String_ScannerFailure>
+  abstract fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_ScannerFailure_CameraCaptureResult>
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

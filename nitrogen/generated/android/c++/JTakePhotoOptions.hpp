@@ -31,10 +31,10 @@ namespace margelo::nitro::documentscanner {
     [[nodiscard]]
     TakePhotoOptions toCpp() const {
       static const auto clazz = javaClassStatic();
-      static const auto fieldSkipQualityGate = clazz->getField<jni::JBoolean>("skipQualityGate");
-      jni::local_ref<jni::JBoolean> skipQualityGate = this->getFieldValue(fieldSkipQualityGate);
+      static const auto fieldSkipLowQualityControl = clazz->getField<jni::JBoolean>("skipLowQualityControl");
+      jni::local_ref<jni::JBoolean> skipLowQualityControl = this->getFieldValue(fieldSkipLowQualityControl);
       return TakePhotoOptions(
-        skipQualityGate != nullptr ? std::make_optional(static_cast<bool>(skipQualityGate->value())) : std::nullopt
+        skipLowQualityControl != nullptr ? std::make_optional(static_cast<bool>(skipLowQualityControl->value())) : std::nullopt
       );
     }
 
@@ -49,7 +49,7 @@ namespace margelo::nitro::documentscanner {
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
-        value.skipQualityGate.has_value() ? jni::JBoolean::valueOf(value.skipQualityGate.value()) : nullptr
+        value.skipLowQualityControl.has_value() ? jni::JBoolean::valueOf(value.skipLowQualityControl.value()) : nullptr
       );
     }
   };

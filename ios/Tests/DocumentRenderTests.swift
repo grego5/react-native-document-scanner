@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 @testable import ReactNativeDocumentScanner
 
 final class DocumentRenderTests: XCTestCase {
-  private let quad: DocumentQuad = .init(topLeft: .init(x: 0.2, y: 0.2), topRight: .init(x: 0.8, y: 0.2),
+  private let corners: DocumentCorners = .init(topLeft: .init(x: 0.2, y: 0.2), topRight: .init(x: 0.8, y: 0.2),
                                          bottomRight: .init(x: 0.8, y: 0.8), bottomLeft: .init(x: 0.2, y: 0.8))
 
   private func folder() throws -> URL {
@@ -58,8 +58,8 @@ final class DocumentRenderTests: XCTestCase {
     let (url, lease) = try source(store)
     let originalBytes = try Data(contentsOf: url)
     let originalPixels = lease.withUnsafeBytes { Data($0) }
-    let result = try DocumentRenderService.render(lease, quad: quad, options: DocumentRenderOptions(
-      removeShadows: nil, jpegQuality: 0.8, filter: .enhance, format: nil, paperSize: nil, dpi: nil, followPageEdges: false),
+    let result = try DocumentRenderService.render(lease, corners: corners, options: DocumentRenderOptions(
+      removeShadows: nil, jpegQuality: 0.8, filter: .enhance, format: nil, paperSize: nil, dpi: nil, simpleDewarp: false),
       image: directory.appendingPathComponent("page.jpg"), thumbnail: directory.appendingPathComponent("thumb.jpg"))
     let (width, height, type) = try dimensions(result.image)
     XCTAssertEqual(type, UTType.jpeg.identifier)
@@ -82,9 +82,9 @@ final class DocumentRenderTests: XCTestCase {
     let url = try store.publish(image: photo(width: 2400, height: 1800))
     let lease = try store.acquire(url)
     let options = DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: .blackwhite, format: .auto,
-                                        paperSize: nil, dpi: nil, followPageEdges: nil)
+                                        paperSize: nil, dpi: nil, simpleDewarp: nil)
     XCTAssertEqual(DocumentRenderService.outputFormat(options), .png)
-    let result = try DocumentRenderService.render(lease, quad: quad, options: options,
+    let result = try DocumentRenderService.render(lease, corners: corners, options: options,
       image: directory.appendingPathComponent("page.png"), thumbnail: directory.appendingPathComponent("thumb.jpg"))
     let png = try Data(contentsOf: result.image)
     XCTAssertEqual(Array(png.prefix(8)), [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
@@ -100,22 +100,22 @@ final class DocumentRenderTests: XCTestCase {
     XCTAssertEqual(defaults.jpegQuality, 0.92)
     XCTAssertEqual(defaults.filter, DocumentFilter.none)
     XCTAssertEqual(defaults.format, .jpeg)
-    XCTAssertEqual(defaults.followPageEdges, true)
+    XCTAssertEqual(defaults.simpleDewarp, true)
     XCTAssertNil(defaults.dpi)
     let paper = try DocumentRenderService.effectiveOptions(DocumentRenderOptions(removeShadows: nil, jpegQuality: nil,
-      filter: nil, format: nil, paperSize: PaperSize(width: 21, height: 29.7), dpi: nil, followPageEdges: nil))
+      filter: nil, format: nil, paperSize: PaperSize(width: 21, height: 29.7), dpi: nil, simpleDewarp: nil))
     XCTAssertEqual(paper.dpi, 200)
     let invalid: [DocumentRenderOptions] = [
-      DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: nil, format: nil, paperSize: nil, dpi: 300, followPageEdges: nil),
-      DocumentRenderOptions(removeShadows: nil, jpegQuality: 1.5, filter: nil, format: nil, paperSize: nil, dpi: nil, followPageEdges: nil),
-      DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: .enhance, format: .png, paperSize: nil, dpi: nil, followPageEdges: nil),
+      DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: nil, format: nil, paperSize: nil, dpi: 300, simpleDewarp: nil),
+      DocumentRenderOptions(removeShadows: nil, jpegQuality: 1.5, filter: nil, format: nil, paperSize: nil, dpi: nil, simpleDewarp: nil),
+      DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: .enhance, format: .png, paperSize: nil, dpi: nil, simpleDewarp: nil),
       DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: nil, format: nil,
-                            paperSize: PaperSize(width: 100, height: 100), dpi: 600, followPageEdges: nil),
+                            paperSize: PaperSize(width: 100, height: 100), dpi: 600, simpleDewarp: nil),
       DocumentRenderOptions(removeShadows: nil, jpegQuality: nil, filter: nil, format: nil,
-                            paperSize: PaperSize(width: 0.5, height: 10), dpi: nil, followPageEdges: nil),
+                            paperSize: PaperSize(width: 0.5, height: 10), dpi: nil, simpleDewarp: nil),
     ]
     for options in invalid { XCTAssertEqual(code { try DocumentRenderService.validate(options) }, .inputInvalid) }
-    let crossed = DocumentQuad(topLeft: quad.topLeft, topRight: quad.bottomRight, bottomRight: quad.topRight, bottomLeft: quad.bottomLeft)
+    let crossed = DocumentCorners(topLeft: corners.topLeft, topRight: corners.bottomRight, bottomRight: corners.topRight, bottomLeft: corners.bottomLeft)
     XCTAssertEqual(code { try DocumentRenderService.validate(crossed) }, .inputInvalid)
   }
 
@@ -124,8 +124,8 @@ final class DocumentRenderTests: XCTestCase {
     let store = SourceStore(directory: directory.appendingPathComponent("sources"))
     defer { store.shutdown() }
     let (_, lease) = try source(store)
-    let result = try DocumentRenderService.render(lease, quad: quad, options: DocumentRenderOptions(removeShadows: false,
-      jpegQuality: nil, filter: nil, format: nil, paperSize: PaperSize(width: 21, height: 29.7), dpi: 50, followPageEdges: false),
+    let result = try DocumentRenderService.render(lease, corners: corners, options: DocumentRenderOptions(removeShadows: false,
+      jpegQuality: nil, filter: nil, format: nil, paperSize: PaperSize(width: 21, height: 29.7), dpi: 50, simpleDewarp: false),
       image: directory.appendingPathComponent("page.jpg"), thumbnail: directory.appendingPathComponent("thumb.jpg"))
     // 29.7 cm at 50 dpi is 585 px, more than the page's 288 px in the photo.
     XCTAssertLessThanOrEqual(max(result.width, result.height), 290)
@@ -138,11 +138,11 @@ final class DocumentRenderTests: XCTestCase {
     let (_, lease) = try source(store)
     let image = directory.appendingPathComponent("page.jpg")
     let missing = directory.appendingPathComponent("missing/thumb.jpg")
-    XCTAssertEqual(code { try DocumentRenderService.render(lease, quad: self.quad, options: nil, image: image, thumbnail: missing) },
+    XCTAssertEqual(code { try DocumentRenderService.render(lease, corners: self.corners, options: nil, image: image, thumbnail: missing) },
                    .renderFailed)
     XCTAssertFalse(FileManager.default.fileExists(atPath: image.path))
     let png = directory.appendingPathComponent("page.png")
-    XCTAssertEqual(code { try DocumentRenderService.render(lease, quad: self.quad, options: nil, image: png,
+    XCTAssertEqual(code { try DocumentRenderService.render(lease, corners: self.corners, options: nil, image: png,
       thumbnail: directory.appendingPathComponent("thumb.jpg")) }, .inputInvalid)
     XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), ["sources"])
   }
@@ -157,10 +157,10 @@ final class DocumentRenderTests: XCTestCase {
     let store = SourceStore(directory: directory.appendingPathComponent("sources"))
     defer { store.shutdown() }
     let (_, lease) = try source(store)
-    let jpeg = try DocumentRenderService.render(lease, quad: quad, options: nil,
+    let jpeg = try DocumentRenderService.render(lease, corners: corners, options: nil,
       image: directory.appendingPathComponent("a.jpg"), thumbnail: directory.appendingPathComponent("a-thumb.jpg"))
-    let png = try DocumentRenderService.render(lease, quad: quad, options: DocumentRenderOptions(removeShadows: nil,
-      jpegQuality: nil, filter: .grayscale, format: .png, paperSize: nil, dpi: nil, followPageEdges: nil),
+    let png = try DocumentRenderService.render(lease, corners: corners, options: DocumentRenderOptions(removeShadows: nil,
+      jpegQuality: nil, filter: .grayscale, format: .png, paperSize: nil, dpi: nil, simpleDewarp: nil),
       image: directory.appendingPathComponent("b.png"), thumbnail: directory.appendingPathComponent("b-thumb.jpg"))
     let tiff = directory.appendingPathComponent("c.tiff")
     let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(tiff as CFURL, UTType.tiff.identifier as CFString, 1, nil))

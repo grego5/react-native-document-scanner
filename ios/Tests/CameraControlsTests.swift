@@ -325,7 +325,7 @@ final class CameraControlsTests: XCTestCase {
       detector: LiveDocumentDetector(inference: CornerInference()))
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
     view.view.frame = window.bounds
-    view.quadTensorModel = "model.tflite"
+    view.cornerDetectionModel = "model.tflite"
     view.torch = .on
     var focus: [AutofocusState] = []
     view.onAutofocusChange = { focus.append($0) }
@@ -344,7 +344,7 @@ final class CameraControlsTests: XCTestCase {
     preview.onTap?(CGPoint(x: 0.25, y: 0.75))
     XCTAssertEqual(camera.commands.last, .scanFocus(CGPoint(x: 0.25, y: 0.75), meter: CGPoint(x: 0.25, y: 0.75)))
     camera.focusEvents?(FocusObservation(adjusting: true, locked: false))
-    view.mode = .off
+    view.active = false
     view.afterUpdate()
     XCTAssertEqual(focus, [.inactive, .scan, .inactive], "iOS reports only what AVFoundation observes")
   }

@@ -36,14 +36,14 @@ android {
   testOptions {
     unitTests.returnDefaultValues = true
     unitTests.all { test ->
-      test.systemProperty 'liveQuadTraceReport', file('build/reports/live-quad-trace').absolutePath
-      // JVM replay of recorded live quad traces: -PliveQuadTrace=<file or directory>, relative to the repository root.
-      def liveQuadTrace = project.findProperty('liveQuadTrace')
-      if (liveQuadTrace) {
-        def trace = new File(liveQuadTrace.toString())
-        if (!trace.absolute) trace = new File(projectDir.parentFile, liveQuadTrace.toString())
-        test.systemProperty 'liveQuadTrace', trace.absolutePath
-        test.inputs.files(trace).withPropertyName('liveQuadTrace')
+      test.systemProperty 'liveGuideTraceReport', file('build/reports/live-guide-trace').absolutePath
+      // JVM replay of recorded live guide traces: -PliveGuideTrace=<file or directory>, relative to the repository root.
+      def liveGuideTrace = project.findProperty('liveGuideTrace')
+      if (liveGuideTrace) {
+        def trace = new File(liveGuideTrace.toString())
+        if (!trace.absolute) trace = new File(projectDir.parentFile, liveGuideTrace.toString())
+        test.systemProperty 'liveGuideTrace', trace.absolutePath
+        test.inputs.files(trace).withPropertyName('liveGuideTrace')
       }
     }
   }

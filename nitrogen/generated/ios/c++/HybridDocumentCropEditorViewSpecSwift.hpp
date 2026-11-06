@@ -22,8 +22,8 @@ namespace margelo::nitro::documentscanner { enum class CropDraftPreset; }
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
-// Forward declaration of `DocumentQuad` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentQuad; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentPoint` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentPoint; }
 // Forward declaration of `CropPreset` to properly resolve imports.
@@ -40,7 +40,7 @@ namespace margelo::nitro::documentscanner { enum class CropPreset; }
 #include "ScannerErrorCode.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
-#include "DocumentQuad.hpp"
+#include "DocumentCorners.hpp"
 #include "DocumentPoint.hpp"
 #include "CropPreset.hpp"
 
@@ -111,6 +111,13 @@ namespace margelo::nitro::documentscanner {
     inline void setFilter(std::optional<DocumentFilter> filter) noexcept override {
       _swiftPart.setFilter(filter);
     }
+    inline std::optional<bool> getRectangle() noexcept override {
+      auto __result = _swiftPart.getRectangle();
+      return __result;
+    }
+    inline void setRectangle(std::optional<bool> rectangle) noexcept override {
+      _swiftPart.setRectangle(rectangle);
+    }
     inline std::optional<std::function<void(CropDraftPreset /* preset */)>> getOnPresetChange() noexcept override {
       auto __result = _swiftPart.getOnPresetChange();
       return __result;
@@ -143,8 +150,8 @@ namespace margelo::nitro::documentscanner {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentQuad>>> getQuadResult() override {
-      auto __result = _swiftPart.getQuadResult();
+    inline std::shared_ptr<Promise<std::variant<ScannerFailure, DocumentCorners>>> getCornersResult() override {
+      auto __result = _swiftPart.getCornersResult();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

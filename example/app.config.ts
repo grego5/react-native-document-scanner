@@ -1,5 +1,10 @@
 import type { ExpoConfig } from 'expo/config';
 
+const packageName = process.env.EXPO_PUBLIC_PACKAGE_NAME ?? 'dev.grego5.docscanner';
+const appName = process.env.EXPO_PUBLIC_APP_NAME ?? 'Doc Scanner';
+const slug = process.env.EXPO_PUBLIC_SLUG ?? 'react-native-document-scanner';
+const scheme = process.env.EXPO_PUBLIC_URL_SCHEME ?? 'react-native-document-scanner';
+
 const androidAbi = process.env.DOCUMENT_SCANNER_ANDROID_ABI ?? 'arm64-v8a';
 if (androidAbi !== 'arm64-v8a' && androidAbi !== 'x86_64') {
   throw new Error(
@@ -8,10 +13,10 @@ if (androidAbi !== 'arm64-v8a' && androidAbi !== 'x86_64') {
 }
 
 const config: ExpoConfig = {
-  name: 'Document Scanner Camera',
-  slug: 'react-native-document-scanner-camera',
-  scheme: 'document-scanner',
-  version: '0.1.0',
+  name: appName,
+  slug,
+  scheme,
+  version: '1.0.0',
   orientation: 'default',
   userInterfaceStyle: 'automatic',
   plugins: [
@@ -39,13 +44,14 @@ const config: ExpoConfig = {
     ],
   ],
   ios: {
-    bundleIdentifier: 'dev.reactnativedocumentscanner.example',
+    bundleIdentifier: packageName,
     infoPlist: {
       NSCameraUsageDescription: 'Document Scanner uses the camera to scan documents.',
+      ITSAppUsesNonExemptEncryption: false,
     },
   },
   android: {
-    package: 'dev.reactnativedocumentscanner.example',
+    package: packageName,
   },
 };
 

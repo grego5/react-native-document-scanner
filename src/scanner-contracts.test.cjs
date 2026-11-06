@@ -5,7 +5,7 @@ const test = require('node:test')
 const ts = require('typescript')
 
 // Execute the real pure adapters with injected native/filesystem boundaries; no React Native runtime is required.
-function load(relative, imports = {}, clock = Date) {
+function load(relative, imports = {}, clock = Date, dev = true) {
   const source = readFileSync(path.join(__dirname, '..', relative), 'utf8')
   const code = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
@@ -15,7 +15,7 @@ function load(relative, imports = {}, clock = Date) {
     if (Object.hasOwn(imports, name)) return imports[name]
     throw new Error(`Unexpected dependency: ${name}`)
   }
-  new Function('module', 'exports', 'require', 'Date', code)(module, module.exports, requireImport, clock)
+  new Function('module', 'exports', 'require', 'Date', '__DEV__', code)(module, module.exports, requireImport, clock, dev)
   return module.exports
 }
 
@@ -57,7 +57,7 @@ test('utility facade keeps typed sample controls separate from explicit session 
     'react-native': { Platform: { OS: 'android' } },
     'react-native-nitro-modules': { NitroModules: { createHybridObject: () => native } },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScannerCamera': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
   })
   DocumentScanner.setSampleFolder('file:///samples')
   DocumentScanner.setSampleCollection(true)
@@ -84,7 +84,7 @@ test('iOS defers sample collection with stable typed failures and idempotent dis
     'react-native': { Platform: { OS: 'ios' } },
     'react-native-nitro-modules': { NitroModules: { createHybridObject: () => native } },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScannerCamera': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
   })
   const unsupported = (error) => error instanceof errors.ScannerError && error.code === 'feature/unsupported'
   assert.throws(() => DocumentScanner.setSampleFolder('file:///samples'), unsupported)
@@ -179,7 +179,7 @@ function appSession() {
     getSession: () => snapshot,
     subscribe(listener) { active.add(listener); all.push(listener); return () => active.delete(listener) },
     close: async () => { calls.push(['close']) },
-    setDocumentCrop: async (...args) => { calls.push(['quad', ...args]) },
+    setDocumentCrop: async (...args) => { calls.push(['corners', ...args]) },
     setFilter: async (...args) => { calls.push(['filter', ...args]) },
     setShadowRemoval: async (...args) => { calls.push(['shadow', ...args]) },
     removePage: async (id) => {
@@ -198,7 +198,7 @@ function appSession() {
 }
 function appPage(id) {
   return { id, revision: 1, readyRevision: 1, ready: true, analyzing: false, rendering: false,
-    quad: FULL_SESSION_QUAD, options: { filter: 'none', removeShadows: true } }
+    corners: FULL_SESSION_CORNERS, options: { filter: 'none', removeShadows: true } }
 }
 function uiFixture(owner = appSession()) {
   let resets = 0
@@ -277,6 +277,23 @@ test('React export UX lock rejects immediate overlap and unlocks after failure',
 const nodes = (tree) => !tree || typeof tree !== 'object' ? [] :
   [tree, ...[tree.props?.children].flat(Infinity).flatMap(nodes)]
 const jsx = (type, props) => ({ type, props })
+test('saved camera modes migrate while other settings survive', () => {
+  let saved
+  class File {
+    get exists() { return true }
+    textSync() { return JSON.stringify(saved) }
+  }
+  const { loadSettings } = load('example/lib/settings.ts', { 'expo-file-system': { File, Paths: { document: '' } } })
+  for (const [oldMode, mode] of [['scanner', 'document'], ['camera', 'photo'], ['document', 'document'], ['photo', 'photo'], ['unknown', 'document'], [5, 'document']]) {
+    saved = { mode: oldMode, lowQualityControl: false, highResolutionPhoto: true }
+    assert.deepEqual(loadSettings({ mode: 'document', lowQualityControl: true, highResolutionPhoto: false }),
+      { mode, lowQualityControl: false, highResolutionPhoto: true })
+  }
+  saved = { squareFrame: true, adaptiveDetection: true, squareAspectRatio: false, qualityGate: false }
+  assert.deepEqual(loadSettings({ squareAspectRatio: false, inferenceThrottling: false, lowQualityControl: true }),
+    { squareAspectRatio: false, inferenceThrottling: true, lowQualityControl: false })
+})
+
 function reviewComponent() {
   return load('example/components/ReviewPanel.tsx', {
     '../lib/errorMessage': { errorMessage: () => 'error' },
@@ -292,6 +309,14 @@ function reviewComponent() {
     './PrimaryButton': { PrimaryButton: 'PrimaryButton' },
   }).ReviewPanel
 }
+test('photo sessions select rectangle crop and document sessions do not', () => {
+  const ReviewPanel = reviewComponent()
+  const session = { native: {}, screen: { type: 'review', pageId: 'p', cropping: true } }
+  const props = { visible: true, session, sampling: false }
+  const crop = (rectangle) => ReviewPanel({ ...props, rectangle }).props.children[1]
+  assert.equal(crop(true).props.rectangle, true)
+  assert.equal(crop(false).props.rectangle, false)
+})
 test('review retains its ID pager under crop, uses page IDs and native crop presets without preview handoff state', () => {
   const ReviewPanel = reviewComponent()
   const review = { type: 'review', pageId: 'p', origin: 'capture', cropping: false }
@@ -299,7 +324,7 @@ test('review retains its ID pager under crop, uses page IDs and native crop pres
   let submitted
   const session = { screen: review, native: {}, page, selectedId: 'p', pageIds: ['p'], select() {},
     cancelCrop: () => { submitted = false }, submitCrop: () => { submitted = true }, run: async fn => fn() }
-  const props = { visible: true, session, sampling: true }
+  const props = { visible: true, session, sampling: true, rectangle: false }
   const render = () => {
     const preview = ReviewPanel(props).props.children[0]
     return preview.type(preview.props)
@@ -308,32 +333,34 @@ test('review retains its ID pager under crop, uses page IDs and native crop pres
   assert.equal(immediatelyVisible.props.pointerEvents, 'auto')
   assert.equal(nodes(immediatelyVisible).find(n => n.type === 'ImagePager').props.selectedPageId, 'p')
   const inFlight = nodes(render(false))
-  assert.equal(inFlight.find(n => n.props?.label === 'Done').props.disabled, true)
+  assert.equal(inFlight.find(n => n.props?.label === 'Export').props.disabled, true)
   for (const label of ['Shadow', 'Crop', 'Filter · Original']) {
     assert.equal(inFlight.find(n => n.props?.label === label).props.disabled, false, `${label} accepts pending native work`)
   }
-  assert.equal(inFlight.find(n => n.props?.label === 'Sample').props.disabled, true)
-  page.analyzing = false
-  assert.equal(nodes(render(false)).find(n => n.props?.label === 'Sample').props.disabled, false,
-    'sampling waits for analysis, not rendering')
+  assert.equal(inFlight.find(n => n.props?.label === 'Sample'), undefined, 'sampling belongs to the crop screen')
   page.ready = true
-  assert.equal(nodes(render(false)).find(n => n.props?.label === 'Done').props.disabled, false)
+  assert.equal(nodes(render(false)).find(n => n.props?.label === 'Export').props.disabled, false)
   const hidden = ReviewPanel({ ...props, visible: false })
   assert.equal(hidden.props.pointerEvents, 'none')
   const retained = hidden.props.children[0]
   assert.equal(nodes(retained.type(retained.props)).find(n => n.type === 'ImagePager').props.pageIds, undefined)
   review.cropping = true
-  const automatic = { ...FULL_SESSION_QUAD, topLeft: { x: .1, y: .1 } }
-  page.analysis = { candidate: { quad: automatic } }
+  const automatic = { ...FULL_SESSION_CORNERS, topLeft: { x: .1, y: .1 } }
+  page.analysis = { candidate: { corners: automatic } }
   const crop = ReviewPanel(props)
   assert.equal(crop.props.children[0].type, retained.type)
   assert.equal(crop.props.children[0].props.visible, false)
-  const editor = crop.props.children[1].type(crop.props.children[1].props)
+  const cropScreen = () => crop.props.children[1].type(crop.props.children[1].props)
+  assert.equal(nodes(cropScreen()).find(n => n.props?.label === 'Sample').props.disabled, true)
+  page.analyzing = false
+  const editor = cropScreen()
+  assert.equal(nodes(editor).find(n => n.props?.label === 'Sample').props.disabled, false,
+    'sampling waits for analysis, not rendering')
   assert.equal(nodes(editor).find(n => n.type === 'CropEditor').props.pageId, 'p')
   nodes(editor).find(n => n.props?.label === 'No crop').props.onPress()
-  assert.equal('quad' in nodes(editor).find(n => n.type === 'CropEditor').props, false)
+  assert.equal('corners' in nodes(editor).find(n => n.type === 'CropEditor').props, false)
   nodes(editor).find(n => n.props?.label === 'Auto crop').props.onPress()
-  assert.equal('onQuadChange' in nodes(editor).find(n => n.type === 'CropEditor').props, false)
+  assert.equal('onCornersChange' in nodes(editor).find(n => n.type === 'CropEditor').props, false)
   nodes(editor).find(n => n.props?.label === 'Cancel').props.onPress()
   assert.equal(submitted, false)
   nodes(editor).find(n => n.props?.label === 'Submit').props.onPress()
@@ -381,7 +408,7 @@ test('scanner creates only after commit, replaces sessions on New scan and close
   const slots = []; const refs = []; const effects = []; const owners = []; let cursor = 0; let refCursor = 0
   const Scanner = load('example/app/index.tsx', {
     react: {
-      useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial
+      useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial
         return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value }] },
       useRef(initial) { const i = refCursor++; refs[i] ??= { current: initial }; return refs[i] },
       useEffect(effect) { effects.push(effect) },
@@ -395,7 +422,7 @@ test('scanner creates only after commit, replaces sessions on New scan and close
     '../components/ReviewPanel': {}, '../components/SheetModal': {}, '../components/ShutterButton': {},
     '../components/ActionButton': {}, '../hooks/useScanReview': {}, '../lib/errorMessage': {},
     '../lib/labels': load('example/lib/labels.ts'),
-    '../lib/pdfExports': { removeOldPdfExports() {} }, '../lib/scanSession': appModel, '../styles': { styles: {} },
+    '../lib/pdfExports': { removeOldPdfExports() {} }, '../lib/settings': { loadSettings: d => d, saveSettings() {} }, '../lib/scanSession': appModel, '../styles': { styles: {} },
   }).default
   const render = () => { cursor = 0; refCursor = 0; effects.length = 0; return Scanner() }
   assert.equal(render().type, 'View'); assert.equal(owners.length, 0)
@@ -415,7 +442,7 @@ test('camera forwards model preparation and failures to native without React loa
   const received = []
   const fixture = sessionFixture()
   const session = fixture.create()
-  const { Camera } = load('src/DocumentScannerCamera.tsx', {
+  const { Camera } = load('src/DocumentScanner.tsx', {
     'react': {
       forwardRef: (render) => render,
       useLayoutEffect: () => {},
@@ -430,27 +457,69 @@ test('camera forwards model preparation and failures to native without React loa
     './ScannerError': errors,
     './ScanSession': sessionAdapter,
   })
-  const view = Camera({ session, quadTensorModel: ' /models/page.tflite ', onError: (error) => received.push(error) }, null)
-  assert.equal(view.props.quadTensorModel, ' /models/page.tflite ')
-  assert.equal(view.props.mode, 'scanner')
+  const view = Camera({ session, cornerDetectionModel: ' /models/page.tflite ', onError: (error) => received.push(error) }, null)
+  assert.equal(view.props.cornerDetectionModel, ' /models/page.tflite ')
+  assert.equal(view.props.active, true)
+  assert.equal(view.props.guideLiveCorners, true)
+  assert.equal(view.props.autoCrop, true)
+  assert.equal(view.props.highResolutionPhoto, true)
+  assert.equal(view.props.lowLightBoost, true)
+  assert.equal(Object.hasOwn(view.props, 'jpegQuality'), false)
   assert.equal(view.props.session, fixture.native)
   const failure = { code: 'model/load-failed' }
   view.props.onError(failure)
   assert.equal(received.length, 1)
   assert.equal(received[0] instanceof errors.ScannerError, true)
   assert.equal(received[0].code, failure.code)
-  assert.equal(Camera({ session }, null).props.quadTensorModel, '')
-  assert.equal(Camera({ session, quadTensorModel: '/models/page.tflite', mode: 'off' }, null).props.mode, 'off')
+  assert.equal(Camera({ session }, null).props.cornerDetectionModel, '')
+  assert.equal(Camera({ session, active: false }, null).props.active, false)
+  const scannerSettings = { guideLiveCorners: true, autoCrop: true, inferenceThrottling: true, torch: 'on',
+    minCornerScore: 0.6, guideTransitionDuration: 123, guideColor: 'red', onDocumentStateChange: () => received.push('document'),
+    imageCorrection: { filter: 'enhance', removeShadows: true, simpleDewarp: true }, outputOptions: { width: 21, height: 29.7, dpi: 300 } }
+  const camera = Camera({ session, ...scannerSettings, mode: 'photo', active: false }, null)
+  assert.equal(camera.props.guideLiveCorners, false)
+  assert.equal(camera.props.autoCrop, false)
+  assert.equal(camera.props.inferenceThrottling, false)
+  assert.equal(camera.props.highResolutionPhoto, false)
+  assert.equal(camera.props.active, false)
+  assert.equal(camera.props.torch, 'on')
+  assert.equal(camera.props.minCornerScore, 0.95)
+  assert.equal(camera.props.guideTransitionDuration, 80)
+  camera.props.onDocumentStateChange('found')
+  assert.equal(received.length, 1)
+  assert.deepEqual(camera.props.imageCorrection, { filter: 'none', removeShadows: false, simpleDewarp: false })
+  assert.equal(camera.props.outputOptions, scannerSettings.outputOptions)
+  assert.deepEqual(Camera({ session, lowQualityControl: { enabled: false } }, null).props.lowQualityControl, { enabled: false })
+  assert.deepEqual(Camera({ session, lowQualityControl: {} }, null).props.lowQualityControl, {})
+  const control = { requireFocus: false, captureBlurPercent: 0.1 }
+  assert.equal(Camera({ session, lowQualityControl: control }, null).props.lowQualityControl, control)
+  assert.equal(Camera({ session, mode: 'photo', highResolutionPhoto: true }, null).props.highResolutionPhoto, true)
+  const document = Camera({ session, ...scannerSettings, guideLiveCorners: false, autoCrop: false, highResolutionPhoto: false }, null)
+  assert.equal(document.props.guideLiveCorners, false)
+  assert.equal(document.props.autoCrop, false)
+  assert.equal(document.props.highResolutionPhoto, false)
+  assert.equal(document.props.inferenceThrottling, true)
+  assert.equal(document.props.imageCorrection, scannerSettings.imageCorrection)
+  const restored = Camera({ session, ...scannerSettings, minCornerScore: 0.8, mode: 'document' }, null)
+  assert.equal(restored.props.minCornerScore, 0.8)
+  assert.equal(restored.props.guideTransitionDuration, 123)
+  assert.equal(restored.props.imageCorrection, scannerSettings.imageCorrection)
+  assert.equal(scannerSettings.imageCorrection.filter, 'enhance')
+  for (const host of [view, camera, document, restored]) {
+    assert.equal(host.type, view.type)
+    assert.equal(host.key, view.key)
+    assert.equal(Object.hasOwn(host.props, 'mode'), false)
+  }
 })
 
 
-const FULL_SESSION_QUAD = {
+const FULL_SESSION_CORNERS = {
   topLeft: { x: 0, y: 0 }, topRight: { x: 1, y: 0 },
   bottomRight: { x: 1, y: 1 }, bottomLeft: { x: 0, y: 1 },
 }
 function sessionPage(id, changes = {}) {
   return { id, revision: 1, readyRevision: 1, analyzing: false, rendering: false, ready: true,
-    quad: FULL_SESSION_QUAD, options: { filter: 'none', removeShadows: true }, ...changes }
+    corners: FULL_SESSION_CORNERS, options: { filter: 'none', removeShadows: true }, ...changes }
 }
 function sourceSnapshot(sourceVersion, pages = {}, closed = false, pageIds = Object.keys(pages)) { return { sourceVersion, closed, pageIds, pages } }
 
@@ -500,7 +569,7 @@ function sessionFixture(initial = sourceSnapshot(0)) {
       return { snapshot, unsubscribe() { if (active) { active = false; removals++ } } }
     },
     getSession() { reads++; return readHook ? readHook() : structuredClone(current) },
-    setDocumentCropResult: (id, quad) => command('quad', id, quad),
+    setDocumentCropResult: (id, corners) => command('corners', id, corners),
     setFilterResult: (id, filter) => command('filter', id, filter),
     setShadowRemovalResult: (id, shadows) => command('shadows', id, shadows),
     removePageResult: (id) => command('remove', id),
@@ -526,6 +595,24 @@ function sessionFixture(initial = sourceSnapshot(0)) {
     get closeCalls() { return closeCalls },
   }
 }
+
+test('capture snapshots reconcile events in either order without an extra native read', () => {
+  const page = sessionPage('p')
+  const first = sourceSnapshot(1, { p: page })
+  const later = sourceSnapshot(2, { p: sessionPage('p', { revision: 2 }) })
+  const f = sessionFixture()
+  const session = f.create()
+  sessionAdapter.synchronizeSession(session, first)
+  assert.ok(session.getSession().pages.p)
+  assert.equal(f.reads, 0)
+  f.send(later)
+  sessionAdapter.synchronizeSession(session, first)
+  assert.equal(session.getSession().pages.p.revision, 2)
+  assert.equal(f.reads, 0)
+  f.send(first)
+  assert.equal(session.getSession().pages.p.revision, 2)
+  assert.equal(f.frames.size, 0)
+})
 
 test('awaited page mutations publish accepted state before resolving without waiting for a frame', async () => {
   const f = sessionFixture(sourceSnapshot(0, { p: sessionPage('p') }))
@@ -575,7 +662,7 @@ test('session snapshots are stable and pending frames never leak into reads or s
 
 test('session batches bursts, shares unchanged pages and freezes owned copies recursively', () => {
   const analysis = { sourceWidth: 640, sourceHeight: 480, duration: 3,
-    candidate: { quad: FULL_SESSION_QUAD, score: .9 } }
+    candidate: { corners: FULL_SESSION_CORNERS, score: .9 } }
   const fixture = sessionFixture(sourceSnapshot(0, { a: sessionPage('a', { analysis }), b: sessionPage('b') }))
   const session = fixture.create()
   const before = session.getSession()
@@ -593,10 +680,31 @@ test('session batches bursts, shares unchanged pages and freezes owned copies re
   assert.equal(after.pages.b, before.pages.b)
   assert.equal(after.pages.a.revision, 4)
   for (const value of [after, after.pages, after.pages.a, after.pages.a.analysis,
-    after.pages.a.analysis.candidate.quad.topLeft, after.pages.a.options]) assert.equal(Object.isFrozen(value), true)
+    after.pages.a.analysis.candidate.corners.topLeft, after.pages.a.options]) assert.equal(Object.isFrozen(value), true)
   fixture.current.pages.a.analysis.sourceWidth = 999
   assert.equal(after.pages.a.analysis.sourceWidth, 640)
   assert.equal(before.pages.a.revision, 1)
+})
+
+test('production snapshots keep owned copies and stable identity without freezing', () => {
+  const productionAdapter = load('src/ScanSession.ts', { './ScannerError': errors }, Date, false)
+  const fixture = sessionFixture()
+  const session = productionAdapter.createScanSession(fixture.native, fixture.frames)
+  const source = structuredClone(sourceSnapshot(1, { a: sessionPage('a') }))
+  productionAdapter.synchronizeSession(session, source)
+  const snapshot = session.getSession()
+  for (const value of [snapshot, snapshot.pageIds, snapshot.pages, snapshot.pages.a,
+    snapshot.pages.a.corners, snapshot.pages.a.corners.topLeft, snapshot.pages.a.options]) {
+    assert.equal(Object.isFrozen(value), false)
+  }
+  source.pageIds.push('borrowed')
+  source.pages.a.corners.topLeft.x = 0.5
+  source.pages.a.options.filter = 'grayscale'
+  assert.deepEqual(snapshot.pageIds, ['a'])
+  assert.equal(snapshot.pages.a.corners.topLeft.x, 0)
+  assert.equal(snapshot.pages.a.options.filter, 'none')
+  productionAdapter.synchronizeSession(session, structuredClone(sourceSnapshot(2, { a: sessionPage('a') })))
+  assert.equal(session.getSession(), snapshot)
 })
 
 test('native-only versions and reverted metadata preserve public identity without notifying', () => {
@@ -804,7 +912,7 @@ test('the public session factory wraps admission, registration failure and stabl
     'react-native-nitro-modules': { NitroModules: { createHybridObject: () => ({ createSessionResult: () => result }) } },
     './ScannerError': errors,
     './ScanSession': { createScanSession: (native) => sessionAdapter.createScanSession(native, fixture.frames) },
-    './DocumentScannerCamera': {}, './DocumentCropEditor': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {},
     './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
   })
   const session = DocumentScanner.createSession()
@@ -813,11 +921,11 @@ test('the public session factory wraps admission, registration failure and stabl
   let calls = 0
   subscribe(() => { calls++ })
   assert.equal(calls, 0)
-  assert.equal(await setDocumentCrop('a', FULL_SESSION_QUAD), undefined)
+  assert.equal(await setDocumentCrop('a', FULL_SESSION_CORNERS), undefined)
   assert.equal(await session.setShadowRemoval('a', false), undefined)
   assert.equal(await session.removePage('a'), undefined)
   await assert.rejects(session.setFilter('missing', 'none'), (error) => error.code === 'input/invalid')
-  assert.deepEqual(fixture.calls.slice(0, 2), [['quad', 'a', FULL_SESSION_QUAD], ['shadows', 'a', false]])
+  assert.deepEqual(fixture.calls.slice(0, 2), [['corners', 'a', FULL_SESSION_CORNERS], ['shadows', 'a', false]])
   result = { code: 'processor/disposed' }
   assert.throws(() => DocumentScanner.createSession(), (error) => error instanceof errors.ScannerError && error.code === 'processor/disposed')
   let cleanup = 0
@@ -896,7 +1004,7 @@ test('camera keeps capture-state callback identity and forwards only committed h
     }
     return slots[index].value
   }
-  const { Camera } = load('src/DocumentScannerCamera.tsx', {
+  const { Camera } = load('src/DocumentScanner.tsx', {
     'react': {
       forwardRef: (render) => render,
       useLayoutEffect: (effect) => { effects.push(effect) },
@@ -912,19 +1020,19 @@ test('camera keeps capture-state callback identity and forwards only committed h
   })
   const seen = []
   const stages = []
-  let renderOptions
+  let imageCorrection
   const render = (handler) => {
     cursor = 0; effects = []
-    return Camera({ session, renderOptions, quadTensorModel: '/model', onCaptureStateChange: handler, onCaptureStage: (stage, reason) => stages.push([stage, reason]) }, ref)
+    return Camera({ session, imageCorrection, cornerDetectionModel: '/model', onCaptureStateChange: handler, onCaptureStage: (stage, reason) => stages.push([stage, reason]) }, ref)
   }
   const first = render((value) => seen.push(['first', value]))
-  assert.deepEqual(first.props.renderOptions, {})
-  renderOptions = { filter: 'grayscale', removeShadows: false }
+  assert.deepEqual(first.props.imageCorrection, {})
+  imageCorrection = { filter: 'grayscale', removeShadows: false }
   effects.forEach((effect) => effect())
   const oldCallback = first.props.onCaptureStateChange
   oldCallback('ready')
   const second = render((value) => seen.push(['second', value]))
-  assert.equal(second.props.renderOptions, renderOptions)
+  assert.equal(second.props.imageCorrection, imageCorrection)
   assert.equal(second.props.onCaptureStateChange, oldCallback)
   assert.equal(second.props.onCaptureStage, first.props.onCaptureStage)
   first.props.onCaptureStage('waiting', 'document')
@@ -937,14 +1045,14 @@ test('camera keeps capture-state callback identity and forwards only committed h
   assert.deepEqual(seen, [['first', 'ready'], ['first', 'waiting'], ['second', 'saving']])
   const requests = []
   second.props.hybridRef({
-    takePhotoResult: async (options) => { requests.push(options); fixture.emit(sourceSnapshot(1, { 'native-page-id': sessionPage('native-page-id') })); return 'native-page-id' },
+    takePhotoResult: async (options) => { requests.push(options); const snapshot = sourceSnapshot(1, { 'native-page-id': sessionPage('native-page-id') }); fixture.emit(snapshot); return { pageId: 'native-page-id', snapshot } },
   })
-  const options = { skipQualityGate: true }
+  const options = { skipLowQualityControl: true }
   assert.equal(await ref.current.takePhoto(options), 'native-page-id')
   assert.deepEqual(requests, [options])
   assert.ok(session.getSession().pages['native-page-id'])
   assert.equal(fixture.frames.size, 0)
-  second.props.hybridRef({ takePhotoResult: async () => { fixture.emit(sourceSnapshot(2)); return 'native-page-id' } })
+  second.props.hybridRef({ takePhotoResult: async () => { const snapshot = sourceSnapshot(2); fixture.emit(snapshot); return { pageId: 'native-page-id', snapshot } } })
   await assert.rejects(ref.current.takePhoto(), error => error.code === 'processor/superseded')
   second.props.hybridRef({ takePhotoResult: async () => ({ code: 'capture/busy' }) })
   await assert.rejects(ref.current.takePhoto(), (error) => error instanceof errors.ScannerError && error.code === 'capture/busy')
@@ -968,23 +1076,26 @@ test('crop ref reads the native draft and applies presets without React geometry
   const f = sessionFixture(sourceSnapshot(0, { p: sessionPage('p') }))
   const observedPresets = []
   const editor = CropEditor({ session: f.create(), pageId: 'p', onPresetChange: preset => observedPresets.push(preset) }, ref)
+  // A removed optional prop must reach native as false, never as React's null.
+  assert.equal(CropEditor({ session: f.create(), pageId: 'p', rectangle: true }, { current: null }).props.rectangle, true)
+  assert.equal(editor.props.rectangle, false)
   editor.props.onPresetChange('none')
   editor.props.onPresetChange('custom')
   assert.deepEqual(observedPresets, ['none', 'custom'])
-  let draft = FULL_SESSION_QUAD; const presets = []
+  let draft = FULL_SESSION_CORNERS; const presets = []
   let submissions = 0
-  editor.props.hybridRef({ getQuadResult: async () => draft,
+  editor.props.hybridRef({ getCornersResult: async () => draft,
     submitResult: async () => { submissions++; return true },
     setPresetResult: async preset => { presets.push(preset); return true } })
-  assert.equal('quad' in editor.props, false)
-  assert.equal('onQuadChange' in editor.props, false)
+  assert.equal('corners' in editor.props, false)
+  assert.equal('onCornersChange' in editor.props, false)
   await ref.current.setPreset('none')
   assert.deepEqual(presets, ['none'])
-  assert.equal(await ref.current.getQuad(), draft)
+  assert.equal(await ref.current.getCorners(), draft)
   await ref.current.submit()
   assert.equal(submissions, 1)
   draft = { code: 'input/invalid' }
-  await assert.rejects(ref.current.getQuad(), error => error.code === 'input/invalid')
+  await assert.rejects(ref.current.getCorners(), error => error.code === 'input/invalid')
   editor.props.hybridRef(null)
   await assert.rejects(ref.current.setPreset('auto'), error => error.code === 'input/invalid')
 })

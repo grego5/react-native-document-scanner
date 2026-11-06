@@ -35,7 +35,7 @@ export function SheetModal({ visible, onClose, children }: {
         </Animated.View>
         <View pointerEvents="box-none" style={[local.safeArea, {
           paddingTop: insets.top + 16, paddingBottom: insets.bottom + 12,
-          paddingLeft: insets.left + 12, paddingRight: insets.right + 12,
+          paddingLeft: insets.left, paddingRight: insets.right,
         }]}>
           <Animated.View accessibilityViewIsModal style={[local.sheet, {
             transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) }],

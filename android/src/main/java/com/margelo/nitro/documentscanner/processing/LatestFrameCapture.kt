@@ -2,7 +2,7 @@ package com.margelo.nitro.documentscanner.processing
 
 import android.graphics.Bitmap
 import android.net.Uri
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.PageThumbnails
 import com.margelo.nitro.documentscanner.SessionResources
 import com.margelo.nitro.documentscanner.LocalSessionFiles
@@ -27,21 +27,21 @@ import org.opencv.imgproc.Imgproc
  * capture is its page's thumbnail until a render, so it is also cached as one.
  */
 internal object LatestFrameCapture {
-  /** [quad] is normalized in the upright frame; null keeps the whole frame. */
-  fun write(frame: LiveFrame, quad: DocumentQuad?, file: File) {
+  /** [corners] is normalized in the upright frame; null keeps the whole frame. */
+  fun write(frame: LiveFrame, corners: DocumentCorners?, file: File) {
     requireInput(!LocalSessionFiles.isSessionFile(file)) { "Session frames require a native output transaction." }
-    writeTo(frame, quad, file, file)
+    writeTo(frame, corners, file, file)
   }
 
   /** Native session destination; consumes the writer pin and cleans partial/stale output. */
-  fun write(frame: LiveFrame, quad: DocumentQuad?, output: SessionResources.Output): SessionResources.Resource =
+  fun write(frame: LiveFrame, corners: DocumentCorners?, output: SessionResources.Output): SessionResources.Resource =
     output.use {
       requireInput(output.resource.kind == SessionResources.Kind.FRAME) { "Expected a session frame destination." }
-      writeTo(frame, quad, output.file, output.destination)
+      writeTo(frame, corners, output.file, output.destination)
       output.commit()
     }
 
-  private fun writeTo(frame: LiveFrame, quad: DocumentQuad?, file: File, cachedFile: File) {
+  private fun writeTo(frame: LiveFrame, corners: DocumentCorners?, file: File, cachedFile: File) {
     OpenCvRuntime.ensureLoaded()
     val mats = mutableListOf<Mat>()
     fun mat() = Mat().also(mats::add)
@@ -54,7 +54,7 @@ internal object LatestFrameCapture {
         270 -> mat().also { Core.rotate(rgba, it, Core.ROTATE_90_COUNTERCLOCKWISE) }
         else -> rgba
       }
-      val page = if (quad == null) upright else straightened(upright, quad, ::mat)
+      val page = if (corners == null) upright else straightened(upright, corners, ::mat)
       val bgr = mat()
       Imgproc.cvtColor(page, bgr, Imgproc.COLOR_RGBA2BGR)
       val parameters = MatOfInt(Imgcodecs.IMWRITE_JPEG_QUALITY, QUALITY).also(mats::add)
@@ -67,13 +67,13 @@ internal object LatestFrameCapture {
     }
   }
 
-  private fun straightened(upright: Mat, quad: DocumentQuad, mat: () -> Mat): Mat {
-    val corners = listOf(quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft)
+  private fun straightened(upright: Mat, corners: DocumentCorners, mat: () -> Mat): Mat {
+    val points = listOf(corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft)
       .map { Point(it.x * upright.cols(), it.y * upright.rows()) }
-    fun side(a: Int, b: Int) = hypot(corners[a].x - corners[b].x, corners[a].y - corners[b].y)
+    fun side(a: Int, b: Int) = hypot(points[a].x - points[b].x, points[a].y - points[b].y)
     val width = max(1, ((side(0, 1) + side(3, 2)) / 2).roundToInt())
     val height = max(1, ((side(0, 3) + side(1, 2)) / 2).roundToInt())
-    val source = MatOfPoint2f(*corners.toTypedArray())
+    val source = MatOfPoint2f(*points.toTypedArray())
     val target = MatOfPoint2f(
       Point(0.0, 0.0), Point(width.toDouble(), 0.0), Point(width.toDouble(), height.toDouble()), Point(0.0, height.toDouble()),
     )

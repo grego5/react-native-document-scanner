@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.ImageFormat
 import android.graphics.Typeface
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -67,7 +68,7 @@ import java.util.concurrent.TimeUnit
 import com.margelo.nitro.documentscanner.CameraState as ScannerCameraState
 import com.margelo.nitro.documentscanner.processing.CameraFrameState
 import com.margelo.nitro.documentscanner.processing.CameraOpticsReader
-import com.margelo.nitro.documentscanner.processing.QuadTensorModelLoader
+import com.margelo.nitro.documentscanner.processing.CornerTensorModelLoader
 import com.margelo.nitro.documentscanner.processing.LatestFrameCapture
 import com.margelo.nitro.documentscanner.processing.LiveFrame
 import com.margelo.nitro.documentscanner.processing.SampleTicket
@@ -78,8 +79,8 @@ import com.margelo.nitro.documentscanner.processing.LiveCameraOptics
 import com.margelo.nitro.documentscanner.processing.LiveDetectionStats
 import com.margelo.nitro.documentscanner.processing.LiveDocumentDetector
 import com.margelo.nitro.documentscanner.processing.LiveGuideStatus
-import com.margelo.nitro.documentscanner.processing.LiveQuadTraceObserver
-import com.margelo.nitro.documentscanner.processing.LiveQuadStabilizerConfig
+import com.margelo.nitro.documentscanner.processing.LiveGuideTraceObserver
+import com.margelo.nitro.documentscanner.processing.GuideStabilizerConfig
 import com.margelo.nitro.documentscanner.processing.LiveFocusCandidate
 import com.margelo.nitro.documentscanner.processing.TorchPolicy
 import com.margelo.nitro.documentscanner.processing.DarkScenePolicy
@@ -166,7 +167,7 @@ open class HybridDocumentScannerCameraView(
   /** Keep the displayed crop unchanged while a capture defers a use-case rebind. */
   private var previewSquareFrame = false
   private val gyroscope = GyroscopeSource(themedContext, GyroHistory())
-  private val liveOverlay = LiveQuadOverlay(themedContext)
+  private val liveOverlay = LiveGuideOverlay(themedContext)
   /** Over the frozen frame, so the shooting stage shows on the photo being taken. */
   private val captureFeedbackView = CaptureFeedbackView(themedContext, liveOverlay)
   // A fixed line count keeps the strip's height, and so the preview below it, steady as the figures change.
@@ -185,7 +186,7 @@ open class HybridDocumentScannerCameraView(
   /** The guide while it tracks a page, normalized upright in the analysis frame; main thread. */
   private var trackedGuide: DocumentCandidate? = null
   private val liveDetector = LiveDocumentDetector(themedContext, debugLoggingEnabled, gyro = gyroscope.history) { result ->
-    latestModelScore = result.score ?: latestModelScore.takeIf { result.quad != null }
+    latestModelScore = result.score ?: latestModelScore.takeIf { result.corners != null }
     updateDocumentState(when (result.status) {
       LiveGuideStatus.SEARCHING, LiveGuideStatus.DETECTED -> DocumentState.SEARCHING
       LiveGuideStatus.TRACKING -> DocumentState.TRACKING
@@ -194,9 +195,9 @@ open class HybridDocumentScannerCameraView(
     })
     // A frame optical flow alone carried has no inference score; the guide keeps its latest one. Flow can carry corners
     // past the frame, which photo analysis rejects, so such an outline is not offered and the photo is detected afresh.
-    trackedGuide = result.quad
-      ?.takeIf { result.status == LiveGuideStatus.TRACKING && NativeQuadGeometry.prediction(NativeQuadGeometry.coordinates(it)) }
-      ?.let { quad -> DocumentCandidate(quad, result.score ?: trackedGuide?.score ?: 0.0) }
+    trackedGuide = result.corners
+      ?.takeIf { result.status == LiveGuideStatus.TRACKING && NativeCornerGeometry.prediction(NativeCornerGeometry.coordinates(it)) }
+      ?.let { corners -> DocumentCandidate(corners, result.score ?: trackedGuide?.score ?: 0.0) }
     liveOverlay.show(result, previewView.outputTransform)
     renderStatus()
   }.apply {
@@ -271,7 +272,7 @@ open class HybridDocumentScannerCameraView(
   /** Main thread; for instrumentation tests. */
   internal val gyroscopeRunning: Boolean get() = gyroscope.isRunning
   /** Test-harness live trace hook; nothing in the app sets it. */
-  internal var liveQuadTraceObserver: LiveQuadTraceObserver?
+  internal var liveGuideTraceObserver: LiveGuideTraceObserver?
     get() = liveDetector.traceObserver
     set(value) { liveDetector.traceObserver = value }
   /** Test-harness switch that estimates image motion for traces even when no gate uses it; main thread. */
@@ -396,10 +397,18 @@ open class HybridDocumentScannerCameraView(
       }
     }
 
+  override var imageCorrection = ImageCorrectionOptions(null, null, null)
+  override var outputOptions = ImageOutputOptions(null, null, null, null, null)
   @Volatile private var captureRenderOptions: DocumentRenderOptions? = null
-  override var renderOptions: DocumentRenderOptions
-    get() = captureRenderOptions ?: throw InvalidInputException("Camera render settings are not installed.")
-    set(value) { synchronized(this) { captureRenderOptions = value } }
+
+  private fun captureRenderOptions(): DocumentRenderOptions {
+    val correction = imageCorrection
+    val output = outputOptions
+    val paper = if (output.width == null && output.height == null) null
+      else PaperSize(output.width ?: Double.NaN, output.height ?: Double.NaN)
+    return DocumentRenderOptions(correction.removeShadows, output.jpegQuality, correction.filter,
+      output.format, paper, output.dpi, correction.simpleDewarp)
+  }
 
   @Volatile private var requestedSession: HybridScanSessionSpec? = null
   private var sessionGeneration = 0L
@@ -450,7 +459,7 @@ open class HybridDocumentScannerCameraView(
   override var onCaptureStage: ((stage: CaptureStage, waitReason: CaptureWaitReason?) -> Unit)? = null
 
   // Raw React props; afterUpdate resolves them into [props] once per batch.
-  override var quadTensorModel: String? = null
+  override var cornerDetectionModel: String? = null
   private var requestedModel: String? = null
   private var modelChecked = false
   private var modelReady = false
@@ -462,22 +471,22 @@ open class HybridDocumentScannerCameraView(
       field = value
       mainHandler.post { if (!disposed) modelFailure?.let { value?.invoke(scannerFailure(it, ScannerErrorCode.MODEL_LOAD_FAILED)) } }
     }
-  override var mode: CameraMode? = null
-  override var guide: Boolean? = null
-  override var adaptiveDetection: Boolean? = null
+  override var active: Boolean? = null
+  override var guideLiveCorners: Boolean? = null
+  override var autoCrop: Boolean? = null
+  override var inferenceThrottling: Boolean? = null
   override var minCornerScore: Double? = null
-  override var qualityGate: Boolean? = null
-  override var qualityGateConfig: QualityGateConfig? = null
+  override var lowQualityControl: LowQualityControl = LowQualityControl(true, null, null)
   override var tapToFocus: Boolean? = null
   override var exposureCompensation: Double? = null
   override var minFrameRate: Double? = null
   override var torch: TorchMode? = null
   override var lowLightBoost: Boolean? = null
   override var captureMode: CaptureMode? = null
-  override var jpegQuality: Double? = null
+  override var highResolutionPhoto: Boolean? = null
   override var guideTransitionDuration: Double? = null
-  override var analysisWidth: Double? = null
-  override var squareFrame: Boolean? = null
+  override var analysisFrameWidth: Double? = null
+  override var squareAspectRatio: Boolean? = null
   override var showStats: Boolean? = null
   override var guideColor: Double? = null
   override var captureFeedback: Boolean? = null
@@ -488,13 +497,14 @@ open class HybridDocumentScannerCameraView(
   /** Main thread, after each React prop batch; tests that set props directly call it themselves. */
   override fun afterUpdate() {
     if (disposed) return
+    synchronized(this) { captureRenderOptions = captureRenderOptions() }
     updateSession()
     updateModel()
     val old = props
     val next = resolveProps()
     if (next == old) return
     props = next
-    liveDetector.adaptiveDetection = next.adaptiveDetection
+    liveDetector.inferenceThrottling = next.inferenceThrottling
     liveDetector.minCornerScore = next.minCornerScore
     liveDetector.flowGate = next.flowMotion
     liveDetector.flowMotionEnabled = flowMotionEnabled || next.flowMotion || next.guide
@@ -521,14 +531,16 @@ open class HybridDocumentScannerCameraView(
       renderStatus()
       layoutStats()
     }
-    if (old.squareFrame != next.squareFrame && !hasPendingCapture()) layoutStats()
+    if (old.squareAspectRatio != next.squareAspectRatio && !hasPendingCapture()) layoutStats()
     // A rebind applies the guide when it binds; a deferred one leaves the bound camera, which applies it below.
     var rebinding = false
     // The frame rate belongs to the bound session, so it rebinds too.
-    if (old.analysisWidth != next.analysisWidth || old.captureMode != next.captureMode || lightChangesMode ||
-      old.jpegQuality != next.jpegQuality || old.squareFrame != next.squareFrame || old.minFrameRate != next.minFrameRate) {
-      logLifecycle("use cases changed analysisWidth=${next.analysisWidth} captureMode=${next.captureMode} " +
-        "jpegQuality=${next.jpegQuality} squareFrame=${next.squareFrame} minFrameRate=${next.minFrameRate}")
+    if (old.analysisFrameWidth != next.analysisFrameWidth || old.captureMode != next.captureMode || lightChangesMode ||
+      old.squareAspectRatio != next.squareAspectRatio || old.minFrameRate != next.minFrameRate ||
+      old.highResolutionPhoto != next.highResolutionPhoto) {
+      logLifecycle("use cases changed analysisFrameWidth=${next.analysisFrameWidth} captureMode=${next.captureMode} " +
+        "squareAspectRatio=${next.squareAspectRatio} minFrameRate=${next.minFrameRate} " +
+        "highResolutionPhoto=${next.highResolutionPhoto}")
       if (hasPendingCapture()) {
         logLifecycle("use-case rebind deferred until capture settles")
         requestRebind(RebindReason.CONFIGURATION)
@@ -563,9 +575,9 @@ open class HybridDocumentScannerCameraView(
 
   /** Main thread: source changes invalidate only this view's completion; in-flight captures settle first. */
   private fun updateModel() {
-    if (modelChecked && requestedModel == quadTensorModel) return
+    if (modelChecked && requestedModel == cornerDetectionModel) return
     modelChecked = true
-    requestedModel = quadTensorModel
+    requestedModel = cornerDetectionModel
     modelGeneration++
     modelReady = false
     modelFailure = null
@@ -586,13 +598,13 @@ open class HybridDocumentScannerCameraView(
       updateCameraState()
       updateDocumentState(DocumentState.UNAVAILABLE)
       onError?.invoke(scannerFailure(error, ScannerErrorCode.MODEL_LOAD_FAILED))
-      Log.e("DocumentScanner", "Could not prepare quad tensor model", error)
+      Log.e("DocumentScanner", "Could not prepare corners tensor model", error)
     }
     if (uri.isNullOrEmpty()) {
       failed(ScannerException(ScannerErrorCode.INPUT_INVALID))
       return
     }
-    QuadTensorModelLoader.load(themedContext.applicationContext, uri).then {
+    CornerTensorModelLoader.load(themedContext.applicationContext, uri).then {
       mainHandler.post {
         if (!disposed && generation == modelGeneration) {
           modelReady = true
@@ -605,35 +617,35 @@ open class HybridDocumentScannerCameraView(
   private fun resolveProps(): ResolvedProps {
     val minimumScore = minCornerScore ?: 0.95
     requireInput(minimumScore.isFinite() && minimumScore in 0.0..1.0) { "minCornerScore must be between 0 and 1." }
-    val gated = qualityGate ?: true
-    val config = qualityGateConfig
+    val config = lowQualityControl
+    val gated = config.enabled ?: true
     val maxCaptureBlur = if (!gated) 0.0
       else (config?.captureBlurPercent ?: DEFAULT_CAPTURE_BLUR_PERCENT).coerceAtLeast(0.0) / 100
+    val detection = guideLiveCorners ?: true
     return ResolvedProps(
-      active = mode != CameraMode.OFF,
+      active = active ?: true,
       requireFocus = gated && (config?.requireFocus ?: true),
-      guide = guide ?: true,
-      adaptiveDetection = adaptiveDetection ?: false,
+      guide = detection,
+      inferenceThrottling = inferenceThrottling ?: false,
       minCornerScore = minimumScore,
-      qualityGate = gated,
+      lowQualityControl = gated,
       maxCaptureBlur = maxCaptureBlur,
       flowMotion = maxCaptureBlur > 0,
-      documentFocus = (mode ?: CameraMode.SCANNER) == CameraMode.SCANNER,
+      documentFocus = detection,
+      autoCrop = autoCrop ?: true,
       tapToFocus = tapToFocus ?: true,
       exposureCompensation = exposureCompensation?.takeIf { it.isFinite() } ?: 0.0,
       minFrameRate = minFrameRate?.takeIf { it.isFinite() }?.toInt()?.coerceAtLeast(0) ?: 0,
       torch = torch ?: TorchMode.OFF,
       lowLightBoost = lowLightBoost ?: true,
-      guideTransitionNs = guideTransitionDuration?.let { (it * 1_000_000).toLong() } ?: QuadTransition.DEFAULT_DURATION_NS,
-      squareFrame = squareFrame ?: false,
-      analysisWidth = analysisWidth?.toInt()?.coerceIn(160, 1920) ?: DEFAULT_ANALYSIS_WIDTH,
+      guideTransitionNs = guideTransitionDuration?.let { (it * 1_000_000).toLong() } ?: GuideTransition.DEFAULT_DURATION_NS,
+      squareAspectRatio = squareAspectRatio ?: false,
+      analysisFrameWidth = analysisFrameWidth?.toInt()?.coerceIn(160, 1920) ?: DEFAULT_ANALYSIS_WIDTH,
       captureMode = captureMode ?: CaptureMode.ZSL,
-      // Negative or non-finite means the capture mode's own quality; a prop setter must not throw.
-      jpegQuality = jpegQuality?.takeIf { it.isFinite() && it >= 0.0 }
-        ?.let { jpegQualityPercent(it.coerceAtMost(1.0)).coerceAtLeast(1) } ?: 0,
+      highResolutionPhoto = highResolutionPhoto ?: true,
       showStats = showStats ?: false,
       // processColor yields a signed or unsigned 32-bit ARGB number.
-      guideColor = guideColor?.toLong()?.toInt() ?: LiveQuadOverlay.DEFAULT_COLOR,
+      guideColor = guideColor?.toLong()?.toInt() ?: LiveGuideOverlay.DEFAULT_COLOR,
       captureFeedback = captureFeedback ?: true,
       captureColor = captureColor?.toLong()?.toInt() ?: CaptureFeedbackView.DEFAULT_COLOR,
     )
@@ -668,12 +680,12 @@ open class HybridDocumentScannerCameraView(
     )
   }
 
-  override fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_String_ScannerFailure> =
+  override fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_ScannerFailure_CameraCaptureResult> =
     takePhoto(options).scannerResult(ScannerErrorCode.CAPTURE_FAILED,
-      { Variant_String_ScannerFailure.create(it) }, { Variant_String_ScannerFailure.create(it) })
+      { Variant_ScannerFailure_CameraCaptureResult.create(it) }, { Variant_ScannerFailure_CameraCaptureResult.create(it) })
 
-  internal fun takePhoto(options: TakePhotoOptions? = null): Promise<String> {
-    val promise = Promise<String>()
+  internal fun takePhoto(options: TakePhotoOptions? = null): Promise<CameraCaptureResult> {
+    val promise = Promise<CameraCaptureResult>()
     try {
       val capture = captureAdmission.admit {
         if (disposed) throw ScannerException(ScannerErrorCode.CAMERA_UNAVAILABLE)
@@ -681,7 +693,7 @@ open class HybridDocumentScannerCameraView(
           ?: throw ScannerException(ScannerErrorCode.CAPTURE_NOT_READY)
         val source = SessionCapture.reserve(owner, captureRenderOptions)
         pendingPromises[promise] = Unit
-        GatedCapture(promise, SystemClock.uptimeMillis(), options?.skipQualityGate == true,
+        GatedCapture(promise, SystemClock.uptimeMillis(), options?.skipLowQualityControl == true,
           source, props, sessionGeneration)
       }
       mainHandler.post { takePhotoOnMain(capture) }
@@ -857,11 +869,11 @@ open class HybridDocumentScannerCameraView(
       capture.latest = null
     }
     val blurLimit = config.maxCaptureBlur
-    val motionCheckEnabled = config.qualityGate && blurLimit > 0
-    val documentRequired = config.qualityGate && config.documentFocus && config.guide
+    val motionCheckEnabled = config.lowQualityControl && blurLimit > 0
+    val documentRequired = config.lowQualityControl && config.documentFocus && config.guide
     val nowMs = SystemClock.uptimeMillis()
     // The page and focus checks; with `requireFocus` off, focus itself is not waited for.
-    val focusCheckEnabled = config.qualityGate && (hasAutofocus || documentRequired)
+    val focusCheckEnabled = config.lowQualityControl && (hasAutofocus || documentRequired)
     val waitsForFocus = focusCheckEnabled && hasAutofocus && config.requireFocus
     // A frame's own autofocus state: a scan's lock, or continuous autofocus settled on focus.
     fun frameFocused(afState: Int?) = !hasAutofocus || afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED ||
@@ -900,7 +912,7 @@ open class HybridDocumentScannerCameraView(
     val latest = capture.latest
     val binding = bound
     val afState = latest?.frame?.afState
-    val skip = capture.skipQualityGate
+    val skip = capture.skipLowQualityControl
     val scanningFrame = afState == CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN || afState == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN
     val staleFocus = latest?.frame?.let(::predatesPage) == true
     // Quality mode scans for each photo: at the page once one is found, or the preview's centre, since a dim, blurred
@@ -954,7 +966,7 @@ open class HybridDocumentScannerCameraView(
     // Zero shutter lag saves the newest buffered frame CameraX found focused, exposed and balanced, however old, so a gated
     // shot waits for the newest frame to qualify, whether or not focus is required. A fixed-focus camera never reports
     // focus, so its buffer stays empty and CameraX takes a new frame.
-    val waitForZsl = config.qualityGate && binding?.zsl == true && hasAutofocus
+    val waitForZsl = config.lowQualityControl && binding?.zsl == true && hasAutofocus
     val lightPending = light.pending
     val captureState = CaptureState(
       nowMs, if (skip) hasAutofocus && config.requireFocus else focusCheckEnabled, documentRequired, config.requireFocus,
@@ -1028,7 +1040,7 @@ open class HybridDocumentScannerCameraView(
     val file = capture.source.original.file
     // Stage times in ms since the request, for comparing capture settings in the lifecycle log.
     val elapsed = { SystemClock.uptimeMillis() - requestedMs }
-    logLifecycle("capture timing steady=${elapsed()}ms mode=${bound?.captureMode} jpegQuality=${bound?.jpegQuality}")
+    logLifecycle("capture timing steady=${elapsed()}ms mode=${bound?.captureMode}")
     previewView.bitmap?.let {
       capture.preview = it
       frozenFrame.setImageBitmap(it)
@@ -1101,13 +1113,13 @@ open class HybridDocumentScannerCameraView(
       val id = synchronized(this) {
         if (!isPending(promise) || !captureCurrent(capture)) null else {
           capture.sample?.let { SampleCollection.remember(capture.source.original.destination.name, it) }
-          val id = capture.source.publish(photo.frame, capture.liveCandidate?.quad)
+          val id = capture.source.publish(photo.frame, capture.liveCandidate?.corners, autoCrop = capture.config.autoCrop)
           if (settle(promise)) id else null
         }
       }
       if (id != null) {
         capture.preview?.let { capture.source.session.retainCapturePlaceholder(id, it) }
-        promise.resolve(id)
+        promise.resolve(CameraCaptureResult(id, capture.source.session.snapshot()))
       }
       id != null
     } catch (error: Throwable) {
@@ -1125,8 +1137,8 @@ open class HybridDocumentScannerCameraView(
    */
   private fun onFocusCandidate(hint: LiveFocusCandidate) {
     if (!props.active || !props.guide || !hasAutofocus) return
-    focusCandidate = hint.takeIf { it.quad != null }
-    if (hint.quad == null) return
+    focusCandidate = hint.takeIf { it.corners != null }
+    if (hint.corners == null) return
     if (pageArrivedSensorNs == null || hint.sensorNs - pageSeenSensorNs >= PAGE_LOST_NS) {
       pageArrivedSensorNs = hint.sensorNs
       logLifecycle("page arrived sensorNs=${hint.sensorNs}")
@@ -1137,10 +1149,10 @@ open class HybridDocumentScannerCameraView(
   /** Main thread: [hint]'s page centre as a metering point on the preview, or null when it maps outside it. */
   private fun meteringPoint(hint: LiveFocusCandidate): MeteringPoint? {
     val target = previewView.outputTransform
-    val quad = hint.quad
-    val points = if (quad == null || target == null) null else floatArrayOf(
-      ((quad.topLeft.x + quad.topRight.x + quad.bottomRight.x + quad.bottomLeft.x) * hint.width / 4).toFloat(),
-      ((quad.topLeft.y + quad.topRight.y + quad.bottomRight.y + quad.bottomLeft.y) * hint.height / 4).toFloat(),
+    val corners = hint.corners
+    val points = if (corners == null || target == null) null else floatArrayOf(
+      ((corners.topLeft.x + corners.topRight.x + corners.bottomRight.x + corners.bottomLeft.x) * hint.width / 4).toFloat(),
+      ((corners.topLeft.y + corners.topRight.y + corners.bottomRight.y + corners.bottomLeft.y) * hint.height / 4).toFloat(),
     ).let { p ->
       try { CoordinateTransform(hint.source, target).mapPoints(p); p } catch (_: IllegalArgumentException) { null }
     }
@@ -1225,6 +1237,8 @@ open class HybridDocumentScannerCameraView(
         val cameraInfo = ProcessCameraProvider.getInstance(themedContext).get().getCameraInfo(selector)
         val lowLightBoostSupported = cameraInfo.isLowLightBoostSupported
         val hasFlash = cameraInfo.hasFlashUnit()
+        val slowSizes = cameraInfo.cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+          ?.getHighResolutionOutputSizes(ImageFormat.JPEG).orEmpty().toSet()
         val (captureMode, lightFallback) = captureModeFor(props, lowLightBoostSupported, hasFlash, atBind = true)
         if (lightFallback != null) logLifecycle("capture mode=$captureMode for $lightFallback, requested ${props.captureMode}")
         // The controller attaches the preview to previewView.
@@ -1240,22 +1254,24 @@ open class HybridDocumentScannerCameraView(
               CaptureMode.ZSL -> ImageCapture.CAPTURE_MODE_ZERO_SHUTTER_LAG
             },
           )
-          .also { if (props.jpegQuality > 0) it.setJpegQuality(props.jpegQuality) }
           .also { observeStillFrames(it, generation) }
           .setResolutionSelector(
             ResolutionSelector.Builder()
-              // Quality mode also offers the sizes a camera lists as slower high-resolution ones, which limited
-              // phones hold their full-size 4:3 stills in; the other modes keep the sizes their shutter lag allows.
+              // A high-resolution photo, the size for text, may also use the sizes a camera lists as slower
+              // high-resolution ones, which limited phones hold their full-size 4:3 stills in; the ranking takes one
+              // only when no normal size suits text. Otherwise the photo is the standard 1440x1080-class one.
               .also {
-                if (captureMode == CaptureMode.QUALITY) {
+                if (props.highResolutionPhoto) {
                   it.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
                 }
               }
               // Reorder all CameraX-advertised sizes across aspect ratios.
               // Keep fallbacks so the three bound use cases can negotiate a supported combination.
               .setResolutionFilter { supportedSizes, _ ->
-                CaptureResolutionPolicy.rank(supportedSizes, { it.width }, { it.height }).also { ranked ->
-                  logLifecycle("capture candidates=${ranked.joinToString()} mode=$captureMode")
+                (if (props.highResolutionPhoto) CaptureResolutionPolicy.rank(supportedSizes, { it.width }, { it.height }, { it in slowSizes })
+                else CaptureResolutionPolicy.rankStandard(supportedSizes, { it.width }, { it.height })).also { ranked ->
+                  logLifecycle("capture candidates=${ranked.joinToString()} mode=$captureMode " +
+                    "highResolution=${props.highResolutionPhoto} slow=${slowSizes.joinToString()}")
                 }
               }
               .build(),
@@ -1263,10 +1279,10 @@ open class HybridDocumentScannerCameraView(
           .setTargetRotation(targetRotation)
           .build()
         // Page thumbnails match the live frame, so a capture's latest frame and its renders share one size.
-        PageThumbnails.longSide = props.analysisWidth
+        PageThumbnails.longSide = props.analysisFrameWidth
         val analysis = ImageAnalysis.Builder()
           .setResolutionSelector(ResolutionSelector.Builder().setResolutionStrategy(
-            ResolutionStrategy(props.analysisWidth.let { Size(it, it * 3 / 4) }, ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
+            ResolutionStrategy(props.analysisFrameWidth.let { Size(it, it * 3 / 4) }, ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
           ).build())
           .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
           .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -1281,7 +1297,7 @@ open class HybridDocumentScannerCameraView(
         // The controller replaces the session's viewport with previewView's. FIT keeps the whole frame in every use
         // case; on a square preview FILL_CENTER crops all three to the frame's centered square, so the saved JPEG and
         // the analysis frames match what the preview shows.
-        previewView.scaleType = if (props.squareFrame) PreviewView.ScaleType.FILL_CENTER else PreviewView.ScaleType.FIT_CENTER
+        previewView.scaleType = if (props.squareAspectRatio) PreviewView.ScaleType.FILL_CENTER else PreviewView.ScaleType.FIT_CENTER
         liveDetector.begin(props.guide)
         analysis.setAnalyzer(liveDetector.executor, liveDetector.boundAnalyzer())
         val camera = try {
@@ -1316,7 +1332,7 @@ open class HybridDocumentScannerCameraView(
           "pipelineMaxDepth=${characteristics.get(CameraCharacteristics.REQUEST_PIPELINE_MAX_DEPTH)}")
         liveDetector.cameraOptics = backCameraOptics(camera.info)
         // The ImageCapture above was built from these props in this same call; a later change waits for a rebind.
-        bound = BoundCapture(captureMode, props.jpegQuality,
+        bound = BoundCapture(captureMode,
           zsl = captureMode == CaptureMode.ZSL && camera.info.isZslSupported, lowLightBoostSupported = lowLightBoostSupported,
           hasFlash = hasFlash, lightFallback = lightFallback)
         if (captureMode == CaptureMode.ZSL) logLifecycle("zero shutter lag supported=${camera.info.isZslSupported}")
@@ -1452,8 +1468,8 @@ open class HybridDocumentScannerCameraView(
     place(statsLabel, 0, 0, width, top)
     // FIT_CENTER scales the viewport crop but does not hide the surrounding camera texture inside a
     // rectangular PreviewView. Make the view itself square so it clips to the same area as analysis.
-    if (!hasPendingCapture()) previewSquareFrame = props.squareFrame
-    liveOverlay.squareFrame = previewSquareFrame
+    if (!hasPendingCapture()) previewSquareFrame = props.squareAspectRatio
+    liveOverlay.squareAspectRatio = previewSquareFrame
     val cameraWidth = if (previewSquareFrame) minOf(width, height - top) else width
     val cameraHeight = if (previewSquareFrame) cameraWidth else height - top
     val cameraLeft = (width - cameraWidth) / 2
@@ -1670,7 +1686,9 @@ open class HybridDocumentScannerCameraView(
     output.commit()
     val frame = capture.frame?.let { pending ->
       runCatching {
-        LatestFrameCapture.write(pending.get(FRAME_WAIT_MS, TimeUnit.MILLISECONDS), capture.liveCandidate?.quad, capture.source.frame)
+        // Without auto-crop the page keeps the whole photo, so its retained frame stays unstraightened too.
+        val straighten = capture.liveCandidate?.corners?.takeIf { capture.config.autoCrop }
+        LatestFrameCapture.write(pending.get(FRAME_WAIT_MS, TimeUnit.MILLISECONDS), straighten, capture.source.frame)
       }.onFailure { logLifecycle("latest frame capture unavailable: ${it.javaClass.simpleName}") }.getOrNull()
     }
     return SavedCapture(width, height, orientation, frame)
@@ -1787,7 +1805,7 @@ open class HybridDocumentScannerCameraView(
    * supported, so CameraX takes the photo from its buffer. [lightFallback]: why this binding is `latency` for a `zsl`
    * request, or null when it binds what was requested.
    */
-  private data class BoundCapture(val captureMode: CaptureMode, val jpegQuality: Int, val zsl: Boolean,
+  private data class BoundCapture(val captureMode: CaptureMode, val zsl: Boolean,
     val lowLightBoostSupported: Boolean, val hasFlash: Boolean, val lightFallback: LightFallback?)
 
   /** Why a stop rebinds. [LIGHT] comes from sustained readings that outlive the stop, so the auto torch keeps its
@@ -1795,12 +1813,12 @@ open class HybridDocumentScannerCameraView(
   private enum class RebindReason { CONFIGURATION, LIGHT }
 
   /** One takePhoto's progress through its gate; main thread. */
-  private class GatedCapture(val promise: Promise<String>, val requestedMs: Long, val skipQualityGate: Boolean,
+  private class GatedCapture(val promise: Promise<CameraCaptureResult>, val requestedMs: Long, val skipLowQualityControl: Boolean,
     val source: SessionCapture, val config: ResolvedProps, val generation: Long) {
     var physicalInFlight = false
     var registered = false
     /** Owns the capture's deadlines and own focus scans, and decides each evaluation. */
-    val gate = CaptureGate(STEADY_TIMEOUT_MS, skipQualityGate, MAX_CAPTURE_SCANS, FRESH_FOCUS_FRAME_NS / 1_000_000)
+    val gate = CaptureGate(STEADY_TIMEOUT_MS, skipLowQualityControl, MAX_CAPTURE_SCANS, FRESH_FOCUS_FRAME_NS / 1_000_000)
     /** What the capture is waiting for, shown over the guide while it pulses; null once it shoots. */
     var reason: WaitReason? = null
     /** The next frame results to consume, and the newest consumed frame exposed since the last focus change. */
@@ -1857,32 +1875,37 @@ open class HybridDocumentScannerCameraView(
 }
 
 /** Camera view props with defaults applied; blur limits are fractions of the frame width, and zero disables them.
- * Without [qualityGate] both limits are zero. [flowMotion] runs optical flow, which checks both limits, while either is
+ * Without [lowQualityControl] both limits are zero. [flowMotion] runs optical flow, which checks both limits, while either is
  * on.
  */
 private data class ResolvedProps(
   val active: Boolean,
+  /** `guideLiveCorners`: live inference and the guide. */
   val guide: Boolean,
-  val adaptiveDetection: Boolean,
+  val inferenceThrottling: Boolean,
   val minCornerScore: Double,
-  val qualityGate: Boolean,
+  val lowQualityControl: Boolean,
   val maxCaptureBlur: Double,
   /** A capture waits for autofocus to finish and rejects when it did not focus; off, focus is not waited for. */
   val requireFocus: Boolean,
   val flowMotion: Boolean,
-  /** `scanner` mode: with the guide, a capture waits for a page and counts only focus reached after it arrived. */
+  /** `guideLiveCorners`: autofocus aims at the guide area, and a capture waits for a page and counts only focus reached
+   * after it arrived. */
   val documentFocus: Boolean,
+  /** New photos crop to the page their analysis finds. */
+  val autoCrop: Boolean,
   val tapToFocus: Boolean,
   val exposureCompensation: Double,
   val minFrameRate: Int,
   val torch: TorchMode,
   val lowLightBoost: Boolean,
   val guideTransitionNs: Long,
-  val analysisWidth: Int,
-  val squareFrame: Boolean,
+  val analysisFrameWidth: Int,
+  val squareAspectRatio: Boolean,
   val captureMode: CaptureMode,
-  /** 1–100, or 0 for the capture mode's own. */
-  val jpegQuality: Int,
+  /** The photo takes the size for text, from the camera's high-resolution sizes too; otherwise the standard
+   * 1440x1080-class photo. */
+  val highResolutionPhoto: Boolean,
   val showStats: Boolean,
   val guideColor: Int,
   val captureFeedback: Boolean,

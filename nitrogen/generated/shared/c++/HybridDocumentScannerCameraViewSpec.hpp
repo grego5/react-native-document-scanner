@@ -15,14 +15,14 @@
 
 // Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
 namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
-// Forward declaration of `DocumentRenderOptions` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
+// Forward declaration of `ImageCorrectionOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageCorrectionOptions; }
+// Forward declaration of `ImageOutputOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageOutputOptions; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
-// Forward declaration of `CameraMode` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class CameraMode; }
-// Forward declaration of `QualityGateConfig` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct QualityGateConfig; }
+// Forward declaration of `LowQualityControl` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct LowQualityControl; }
 // Forward declaration of `TorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TorchMode; }
 // Forward declaration of `CaptureMode` to properly resolve imports.
@@ -39,18 +39,20 @@ namespace margelo::nitro::documentscanner { enum class DocumentState; }
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
 // Forward declaration of `CaptureWaitReason` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureWaitReason; }
+// Forward declaration of `CameraCaptureResult` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
 // Forward declaration of `TakePhotoOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 
 #include <memory>
 #include "HybridScanSessionSpec.hpp"
-#include "DocumentRenderOptions.hpp"
+#include "ImageCorrectionOptions.hpp"
+#include "ImageOutputOptions.hpp"
 #include <string>
 #include <optional>
 #include "ScannerFailure.hpp"
 #include <functional>
-#include "CameraMode.hpp"
-#include "QualityGateConfig.hpp"
+#include "LowQualityControl.hpp"
 #include "TorchMode.hpp"
 #include "CaptureMode.hpp"
 #include "CameraState.hpp"
@@ -59,6 +61,7 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "DocumentState.hpp"
 #include "CaptureStage.hpp"
 #include "CaptureWaitReason.hpp"
+#include "CameraCaptureResult.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
 #include "TakePhotoOptions.hpp"
@@ -92,24 +95,26 @@ namespace margelo::nitro::documentscanner {
       // Properties
       virtual std::shared_ptr<HybridScanSessionSpec> getSession() = 0;
       virtual void setSession(const std::shared_ptr<HybridScanSessionSpec>& session) = 0;
-      virtual DocumentRenderOptions getRenderOptions() = 0;
-      virtual void setRenderOptions(const DocumentRenderOptions& renderOptions) = 0;
-      virtual std::optional<std::string> getQuadTensorModel() = 0;
-      virtual void setQuadTensorModel(const std::optional<std::string>& quadTensorModel) = 0;
+      virtual ImageCorrectionOptions getImageCorrection() = 0;
+      virtual void setImageCorrection(const ImageCorrectionOptions& imageCorrection) = 0;
+      virtual ImageOutputOptions getOutputOptions() = 0;
+      virtual void setOutputOptions(const ImageOutputOptions& outputOptions) = 0;
+      virtual std::optional<std::string> getCornerDetectionModel() = 0;
+      virtual void setCornerDetectionModel(const std::optional<std::string>& cornerDetectionModel) = 0;
       virtual std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() = 0;
       virtual void setOnError(const std::optional<std::function<void(const ScannerFailure& /* error */)>>& onError) = 0;
-      virtual std::optional<CameraMode> getMode() = 0;
-      virtual void setMode(std::optional<CameraMode> mode) = 0;
-      virtual std::optional<bool> getGuide() = 0;
-      virtual void setGuide(std::optional<bool> guide) = 0;
-      virtual std::optional<bool> getAdaptiveDetection() = 0;
-      virtual void setAdaptiveDetection(std::optional<bool> adaptiveDetection) = 0;
+      virtual std::optional<bool> getActive() = 0;
+      virtual void setActive(std::optional<bool> active) = 0;
+      virtual std::optional<bool> getGuideLiveCorners() = 0;
+      virtual void setGuideLiveCorners(std::optional<bool> guideLiveCorners) = 0;
+      virtual std::optional<bool> getAutoCrop() = 0;
+      virtual void setAutoCrop(std::optional<bool> autoCrop) = 0;
+      virtual std::optional<bool> getInferenceThrottling() = 0;
+      virtual void setInferenceThrottling(std::optional<bool> inferenceThrottling) = 0;
       virtual std::optional<double> getMinCornerScore() = 0;
       virtual void setMinCornerScore(std::optional<double> minCornerScore) = 0;
-      virtual std::optional<bool> getQualityGate() = 0;
-      virtual void setQualityGate(std::optional<bool> qualityGate) = 0;
-      virtual std::optional<QualityGateConfig> getQualityGateConfig() = 0;
-      virtual void setQualityGateConfig(const std::optional<QualityGateConfig>& qualityGateConfig) = 0;
+      virtual LowQualityControl getLowQualityControl() = 0;
+      virtual void setLowQualityControl(const LowQualityControl& lowQualityControl) = 0;
       virtual std::optional<bool> getTapToFocus() = 0;
       virtual void setTapToFocus(std::optional<bool> tapToFocus) = 0;
       virtual std::optional<double> getExposureCompensation() = 0;
@@ -122,14 +127,14 @@ namespace margelo::nitro::documentscanner {
       virtual void setLowLightBoost(std::optional<bool> lowLightBoost) = 0;
       virtual std::optional<CaptureMode> getCaptureMode() = 0;
       virtual void setCaptureMode(std::optional<CaptureMode> captureMode) = 0;
-      virtual std::optional<double> getJpegQuality() = 0;
-      virtual void setJpegQuality(std::optional<double> jpegQuality) = 0;
+      virtual std::optional<bool> getHighResolutionPhoto() = 0;
+      virtual void setHighResolutionPhoto(std::optional<bool> highResolutionPhoto) = 0;
       virtual std::optional<double> getGuideTransitionDuration() = 0;
       virtual void setGuideTransitionDuration(std::optional<double> guideTransitionDuration) = 0;
-      virtual std::optional<double> getAnalysisWidth() = 0;
-      virtual void setAnalysisWidth(std::optional<double> analysisWidth) = 0;
-      virtual std::optional<bool> getSquareFrame() = 0;
-      virtual void setSquareFrame(std::optional<bool> squareFrame) = 0;
+      virtual std::optional<double> getAnalysisFrameWidth() = 0;
+      virtual void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) = 0;
+      virtual std::optional<bool> getSquareAspectRatio() = 0;
+      virtual void setSquareAspectRatio(std::optional<bool> squareAspectRatio) = 0;
       virtual std::optional<bool> getShowStats() = 0;
       virtual void setShowStats(std::optional<bool> showStats) = 0;
       virtual std::optional<double> getGuideColor() = 0;
@@ -151,7 +156,7 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Methods
-      virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) = 0;
+      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) = 0;
 
     protected:
       // Hybrid Setup

@@ -8,7 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.margelo.nitro.documentscanner.DocumentFilter
 import com.margelo.nitro.documentscanner.DocumentImageFormat
 import com.margelo.nitro.documentscanner.DocumentPoint
-import com.margelo.nitro.documentscanner.DocumentQuad
+import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.DocumentRenderOptions
 import com.margelo.nitro.documentscanner.assumeMeasuring
 import org.junit.Assume.assumeTrue
@@ -93,11 +93,11 @@ class RenderTimingTest {
 
     // The whole render as the example calls it, from a copy in the cache folder.
     val cached = File(context.cacheDir, "render-timing.jpg").also { photo.copyTo(it, overwrite = true) }
-    val quad = DocumentQuad(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0), DocumentPoint(1.0, 1.0), DocumentPoint(0.0, 1.0))
+    val corners = DocumentCorners(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0), DocumentPoint(1.0, 1.0), DocumentPoint(0.0, 1.0))
     for (filter in DocumentFilter.entries) {
       val format = if (filter == DocumentFilter.BLACKWHITE) DocumentImageFormat.PNG else DocumentImageFormat.JPEG
       time("render $filter as $format, A4 200 dpi", repeat = 2) {
-        val rendered = DocumentRenderer.render(Uri.fromFile(cached).toString(), quad, DocumentRenderOptions(true, null, filter, format, com.margelo.nitro.documentscanner.PaperSize(21.0, 29.7), 200.0, null))
+        val rendered = DocumentRenderer.render(Uri.fromFile(cached).toString(), corners, DocumentRenderOptions(true, null, filter, format, com.margelo.nitro.documentscanner.PaperSize(21.0, 29.7), 200.0, null))
         File(Uri.parse(rendered.outputUri).path!!).delete()
       }
     }

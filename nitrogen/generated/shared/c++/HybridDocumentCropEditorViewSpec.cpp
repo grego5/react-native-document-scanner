@@ -20,6 +20,8 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridSetter("pageId", &HybridDocumentCropEditorViewSpec::setPageId);
       prototype.registerHybridGetter("filter", &HybridDocumentCropEditorViewSpec::getFilter);
       prototype.registerHybridSetter("filter", &HybridDocumentCropEditorViewSpec::setFilter);
+      prototype.registerHybridGetter("rectangle", &HybridDocumentCropEditorViewSpec::getRectangle);
+      prototype.registerHybridSetter("rectangle", &HybridDocumentCropEditorViewSpec::setRectangle);
       prototype.registerHybridGetter("onPresetChange", &HybridDocumentCropEditorViewSpec::getOnPresetChange);
       prototype.registerHybridSetter("onPresetChange", &HybridDocumentCropEditorViewSpec::setOnPresetChange);
       prototype.registerHybridGetter("onLoad", &HybridDocumentCropEditorViewSpec::getOnLoad);
@@ -27,7 +29,7 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridGetter("onError", &HybridDocumentCropEditorViewSpec::getOnError);
       prototype.registerHybridSetter("onError", &HybridDocumentCropEditorViewSpec::setOnError);
       prototype.registerHybridMethod("submitResult", &HybridDocumentCropEditorViewSpec::submitResult);
-      prototype.registerHybridMethod("getQuadResult", &HybridDocumentCropEditorViewSpec::getQuadResult);
+      prototype.registerHybridMethod("getCornersResult", &HybridDocumentCropEditorViewSpec::getCornersResult);
       prototype.registerHybridMethod("setPresetResult", &HybridDocumentCropEditorViewSpec::setPresetResult);
     });
   }
