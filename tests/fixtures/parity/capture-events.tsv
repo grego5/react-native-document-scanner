@@ -9,3 +9,7 @@ focus-timeout	0	true	false	true	true	true	wait	FOCUS	2000
 focus-timeout	2000	true	false	true	true	true	CAPTURE_FOCUS_TIMEOUT	FOCUS	-
 motion-timeout	0	true	true	true	true	false	wait	STEADY	1500
 motion-timeout	1500	true	true	true	true	false	CAPTURE_MOTION_TIMEOUT	STEADY	-
+refocus	0	true	true	true	true	false	wait	STEADY	1500
+refocus	200	true	false	true	true	false	wait	FOCUS	1500
+refocus	1400	true	true	true	true	false	wait	STEADY	2900
+refocus	2000	true	true	true	true	true	shoot	-	-

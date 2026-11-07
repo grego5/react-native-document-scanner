@@ -22,6 +22,7 @@ struct CameraConfiguration: Equatable, Sendable {
 /// `delivered` (the encoded still) or `failed`.
 enum StillEvent: @unchecked Sendable {
   case exposed
+  /// The still finished successfully.
   case delivered(Data)
   case failed(ScannerErrorCode)
 }
@@ -47,7 +48,7 @@ protocol CameraSessionControl: AnyObject {
   /// the buffer, which it borrows only for the call, and its presentation time in host-clock
   /// nanoseconds.
   var frameSink: ((CVPixelBuffer, Int64) -> Void)? { get set }
-  /// Each armed frame's exposure evidence, on the frame queue before `frameSink`.
+  /// Each armed frame's exposure and focus evidence, on the frame queue before `frameSink`.
   var metadataSink: ((CameraFrameMetadata) -> Void)? { get set }
   /// Focus states of the running configured device, on main; none after a stop. Each is sampled
   /// on the session owner, so main receives it in order with `perform` completions: after the
@@ -59,9 +60,10 @@ protocol CameraSessionControl: AnyObject {
   func start(_ request: CameraRequest)
   func stop()
   /// Applies `command` on the session owner after every earlier command and configuration, and
-  /// calls `completion` on main with whether the device accepted it, ordered with `focusEvents`. A
-  /// command for a stopped run is dropped, and so is its completion.
-  func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void)
+  /// calls `completion` on main with whether the device accepted it, ordered with `focusEvents`. An
+  /// accepted exposure bias completes later instead, once the first frame exposed with it arrives,
+  /// with that frame's host time. A command for a stopped run is dropped, and so is its completion.
+  func perform(_ command: CameraCommand, completion: @escaping (CommandOutcome) -> Void)
   /// Takes one still with `settings` on the session owner after every earlier command. `events`
   /// runs on main and always ends with one terminal event, even when the camera stops meanwhile,
   /// so a caller's busy slot always settles. A camera that is not streaming fails at once.
@@ -72,7 +74,7 @@ protocol CameraSessionControl: AnyObject {
 extension CameraSessionControl {
   var metadataSink: ((CameraFrameMetadata) -> Void)? { get { nil } set {} }
   var focusEvents: ((FocusObservation) -> Void)? { get { nil } set {} }
-  func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) {}
+  func perform(_ command: CameraCommand, completion: @escaping (CommandOutcome) -> Void) {}
   func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) {
     DispatchQueue.main.async { events(.failed(.cameraUnavailable)) }
   }
@@ -288,21 +290,31 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     queue.async { [self] in stopSession() }
   }
 
-  func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) {
+  func perform(_ command: CameraCommand, completion: @escaping (CommandOutcome) -> Void) {
     dispatchPrecondition(condition: .onQueue(.main))
     let current = generation
     // Created and called on main only.
     nonisolated(unsafe) let completion = completion
     queue.async { [self] in
-      var applied = false
-      if isRunning, configured != nil, let device = input?.device {
-        applied = CameraDeviceAdapter.apply(command, to: device)
-        if !applied { CameraLog.logger.info("camera command refused \(String(describing: command), privacy: .public)") }
+      let finish: @Sendable (CommandOutcome) -> Void = { outcome in
+        DispatchQueue.main.async { [self] in
+          guard generation == current else { return }
+          completion(outcome)
+        }
       }
-      DispatchQueue.main.async { [self] in
-        guard generation == current else { return }
-        completion(applied)
+      guard isRunning, configured != nil, let input else { return finish(.refused) }
+      var firstBuffer: (@Sendable (CMTime) -> Void)?
+      if case .exposureBias = command {
+        // The bias callback uses the device clock. Video output timestamps use the session clock.
+        let deviceClock = input.ports.first { $0.mediaType == .video }?.clock
+        firstBuffer = { time in
+          let fromNs = deviceClock.flatMap { hostNs(time, clock: $0) }
+          finish(CommandOutcome(applied: true, fromNs: fromNs))
+        }
       }
+      let applied = CameraDeviceAdapter.apply(command, to: input.device, firstBuffer: firstBuffer)
+      if !applied { CameraLog.logger.info("camera command refused \(String(describing: command), privacy: .public)") }
+      if !applied || firstBuffer == nil { finish(applied ? .accepted : .refused) }
     }
   }
 
@@ -452,6 +464,8 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     }
     photoOutput.maxPhotoDimensions = choice.photo.dimensions
     // Per-shot prioritization may then go up to quality; zero shutter lag stays on where supported.
+    // Its buffered photo may predate the gate's approved frames, so the view checks each delivered
+    // photo's timestamp against them.
     photoOutput.maxPhotoQualityPrioritization = .quality
     if photoOutput.isZeroShutterLagSupported { photoOutput.isZeroShutterLagEnabled = true }
     let configuration = CameraConfiguration(photo: choice.photo, video: choice.video,
@@ -534,13 +548,9 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     let sink = sink, metadata = metadata, device = configuredDevice, clock = liveSession?.synchronizationClock
     lock.unlock()
     guard sink != nil || metadata != nil else { return }
-    let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-    guard time.isNumeric else { return }
-    let host = clock.map { CMSyncConvertTime(time, from: $0, to: CMClockGetHostTimeClock()) } ?? time
-    guard host.isNumeric else { return }
-    let hostNs = CMTimeConvertScale(host, timescale: 1_000_000_000, method: .roundHalfAwayFromZero).value
-    metadata?(CameraDeviceAdapter.metadata(sampleBuffer, hostNs: hostNs, device: device))
-    sink?(buffer, hostNs)
+    guard let frameNs = hostNs(CMSampleBufferGetPresentationTimeStamp(sampleBuffer), clock: clock) else { return }
+    metadata?(CameraDeviceAdapter.metadata(sampleBuffer, hostNs: frameNs, device: device))
+    sink?(buffer, frameNs)
   }
 
   /// A frame of the actual delivered size; the frame callback's only effect.

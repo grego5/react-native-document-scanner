@@ -35,27 +35,52 @@ enum CameraCommand: Equatable, Sendable {
   case frameRate(FrameRateRange?)
 }
 
+/// How the device answered one command. `fromNs` is the host-clock time of the first frame the
+/// command affects, when the device reports it: AVFoundation does for an exposure bias, once a
+/// frame exposed with it arrives. Nil for every other command, whose effect has no timestamp.
+struct CommandOutcome: Equatable, Sendable {
+  let applied: Bool
+  var fromNs: Int64? = nil
+
+  static let accepted = CommandOutcome(applied: true)
+  static let refused = CommandOutcome(applied: false)
+}
+
 /// The device's focus state, sampled on the session owner after it changed. AVFoundation stamps
 /// neither the transition nor its frame, so the sample's place among command completions is its
 /// only time. `locked` means focus mode `.locked`, which a scan enters when it ends, focused or not.
 struct FocusObservation: Equatable, Sendable {
   let adjusting: Bool
   let locked: Bool
+  /// Host-clock time the sample was taken on the session owner; 0 when unknown.
+  var hostNs: Int64 = 0
 }
 
 /// Exposure evidence for one delivered frame. `hostNs` is the frame's presentation time converted
 /// from the session's clock to the host clock. Exposure and ISO come from the frame's own EXIF
 /// attachment; when it is missing they are the device's current settings, read as the frame is
-/// delivered, and `estimated` says so. Unreported values are nil.
+/// delivered, and `estimated` says so. Unreported values are nil. `focusAdjusting` is the device's
+/// `isAdjustingFocus` read as the frame is delivered, nil without a device: AVFoundation stamps no
+/// focus state on frames, so this sample is the closest per-frame focus evidence.
 struct CameraFrameMetadata: Equatable, Sendable {
   let hostNs: Int64
   let exposureNs: Int64?
   let iso: Double?
   let estimated: Bool
+  var focusAdjusting: Bool? = nil
 }
 
 /// The host clock in nanoseconds: mach absolute time, as `DispatchTime` uptime reports it.
 func hostClockNs() -> Int64 { Int64(DispatchTime.now().uptimeNanoseconds) }
+
+/// A camera-clock time (a frame's presentation time or the first buffer affected by a bias) on the
+/// host clock, as frame records are; nil when not numeric. Without a clock the time is taken as host.
+func hostNs(_ time: CMTime, clock: CMClock?) -> Int64? {
+  guard time.isNumeric else { return nil }
+  let host = clock.map { CMSyncConvertTime(time, from: $0, to: CMClockGetHostTimeClock()) } ?? time
+  guard host.isNumeric else { return nil }
+  return CMTimeConvertScale(host, timescale: 1_000_000_000, method: .roundHalfAwayFromZero).value
+}
 
 enum CameraDeviceAdapter {
   static func capabilities(_ device: AVCaptureDevice) -> CameraCapabilities {
@@ -73,8 +98,10 @@ enum CameraDeviceAdapter {
   }
 
   /// Applies one command under the device's configuration lock; false when the device refuses or
-  /// does not support it. Session owner queue only.
-  static func apply(_ command: CameraCommand, to device: AVCaptureDevice) -> Bool {
+  /// does not support it. An accepted exposure bias later calls `firstBuffer`, on a device queue,
+  /// with the session-clock time of the first frame exposed with it. Session owner queue only.
+  static func apply(_ command: CameraCommand, to device: AVCaptureDevice,
+                    firstBuffer: (@Sendable (CMTime) -> Void)? = nil) -> Bool {
     do { try device.lockForConfiguration() } catch { return false }
     defer { device.unlockForConfiguration() }
     switch command {
@@ -101,7 +128,7 @@ enum CameraDeviceAdapter {
       return true
     case .exposureBias(let ev):
       guard Float(ev) >= device.minExposureTargetBias, Float(ev) <= device.maxExposureTargetBias else { return false }
-      device.setExposureTargetBias(Float(ev), completionHandler: nil)
+      device.setExposureTargetBias(Float(ev), completionHandler: firstBuffer)
       return true
     case .frameRate(let range):
       guard let range else {
@@ -143,11 +170,17 @@ enum CameraDeviceAdapter {
   }
 
   static func focusObservation(_ device: AVCaptureDevice) -> FocusObservation {
-    FocusObservation(adjusting: device.isAdjustingFocus, locked: device.focusMode == .locked)
+    FocusObservation(adjusting: device.isAdjustingFocus, locked: device.focusMode == .locked, hostNs: hostClockNs())
   }
 
   /// A frame's exposure evidence; `device` supplies estimated values when the frame has no EXIF.
   static func metadata(_ sampleBuffer: CMSampleBuffer, hostNs: Int64, device: AVCaptureDevice?) -> CameraFrameMetadata {
+    var metadata = exposure(sampleBuffer, hostNs: hostNs, device: device)
+    metadata.focusAdjusting = device?.isAdjustingFocus
+    return metadata
+  }
+
+  private static func exposure(_ sampleBuffer: CMSampleBuffer, hostNs: Int64, device: AVCaptureDevice?) -> CameraFrameMetadata {
     if let exif = CMGetAttachment(sampleBuffer, key: kCGImagePropertyExifDictionary, attachmentModeOut: nil)
          as? [String: Any],
        let seconds = (exif[kCGImagePropertyExifExposureTime as String] as? NSNumber)?.doubleValue,

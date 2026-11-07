@@ -137,29 +137,27 @@ class CaptureGateTest {
   }
 
   @Test
-  fun aFailedScanRetriesAfterItsTriggerIsGoneAndAgainOnlyWhileTheCameraMoved() {
+  fun aFailedScanRetriesOnceAfterItsTriggerIsGoneAndMotionNeverStartsAScan() {
     val gate = CaptureGate(1_500)
     val base = ready.copy(focused = false, scanAvailable = true)
-    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.STALE_FOCUS, 1, false),
+    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.STALE_FOCUS, 1),
       gate.next(base.copy(scanTrigger = ScanTrigger.STALE_FOCUS)))
     // Owning the lens ends the stale focus that triggered the scan; the retry does not need it.
     assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_100), gate.next(base.copy(nowMs = 100, ownScan = OwnScan.SCANNING)))
-    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.STALE_FOCUS, 2, false),
+    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.STALE_FOCUS, 2),
       gate.next(base.copy(nowMs = 600, ownScan = OwnScan.FAILED)))
-    gate.next(base.copy(nowMs = 700, ownScan = OwnScan.SCANNING, movedDuringScan = true))
-    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.STALE_FOCUS, 3, true),
-      gate.next(base.copy(nowMs = 1_200, ownScan = OwnScan.FAILED)))
-    gate.next(base.copy(nowMs = 1_300, ownScan = OwnScan.SCANNING))
-    // Failing while the camera held still is the last scan.
-    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_100), gate.next(base.copy(nowMs = 1_800, ownScan = OwnScan.FAILED)))
-    assertEquals(3, gate.scans)
+    gate.next(base.copy(nowMs = 700, ownScan = OwnScan.SCANNING, steady = false))
+    // The second failure is the last scan, however the camera moved.
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 2_100),
+      gate.next(base.copy(nowMs = 1_200, ownScan = OwnScan.FAILED, steady = false)))
+    assertEquals(2, gate.scans)
   }
 
   @Test
   fun anAdmittedRescueScanOutlastsThePageDeadlineAndGetsOneFrameAfterItSettles() {
     val missing = ready.copy(documentFound = false, focused = false, scanAvailable = true)
     val gate = CaptureGate(1_500)
-    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.UNSEEN_PAGE, 1, false),
+    assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.UNSEEN_PAGE, 1),
       gate.next(missing.copy(scanTrigger = ScanTrigger.UNSEEN_PAGE)))
     assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 2_100),
       gate.next(missing.copy(nowMs = 100, ownScan = OwnScan.SCANNING, frameSinceFocusChange = false)))

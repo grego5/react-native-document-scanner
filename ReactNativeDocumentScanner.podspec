@@ -31,7 +31,7 @@ Pod::Spec.new do |s|
     test.source_files = 'ios/Tests/**/*.{swift,mm}'
     test.frameworks = 'XCTest'
     test.resources = ['ios/Tests/Fixtures/*.tflite', 'tests/fixtures/parity/adaptive.tsv', 'tests/fixtures/parity/torch.tsv',
-                      'tests/fixtures/parity/standard-resolution.tsv']
+                      'tests/fixtures/parity/standard-resolution.tsv', 'tests/fixtures/parity/capture-events.tsv']
   end
   install_modules_dependencies(s)
 end

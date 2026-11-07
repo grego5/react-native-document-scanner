@@ -53,8 +53,9 @@ export type CaptureWaitReason = 'document' | 'focus' | 'light' | 'steady'
 export type CameraCaptureState = 'unavailable' | 'ready' | 'waiting' | 'shooting' | 'saving'
 
 /**
- * Android capture readiness checks. Motion blur is measured as a percentage of frame width over the exposure;
- * optical flow falls back to gyroscope motion when available. iOS capture gating is not implemented yet.
+ * Capture readiness checks. Motion blur is measured as a percentage of frame width over the exposure; on Android
+ * optical flow falls back to gyroscope motion when available, while iOS treats low-texture motion as unknown. iOS
+ * judges focus from whether the lens is still, since AVFoundation reports no focus result.
  */
 export interface LowQualityControl {
   /** Enables capture quality checks; defaults to true. */
@@ -128,8 +129,8 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   minCornerScore?: number
   /**
-   * Android capture readiness checks, enabled by default. See `LowQualityControl` for focus and motion options.
-   * Detection and tracking run independently of focus. iOS currently accepts a ready shot without these checks.
+   * Capture readiness checks, enabled by default. See `LowQualityControl` for focus and motion options.
+   * Detection and tracking run independently of focus.
    */
   lowQualityControl: LowQualityControl
   /**
@@ -139,7 +140,8 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   tapToFocus?: boolean
   /**
    * Auto-exposure bias in EV stops, rounded to the camera's step and clamped to its range; negative values keep white
-   * paper from clipping. Defaults to 0, and cameras without compensation ignore it.
+   * paper from clipping. Defaults to 0, and cameras without compensation ignore it. A change made while a capture
+   * is pending waits for it to end, so the shot keeps its exposure; only the latest value then applies.
    */
   exposureCompensation?: number
   /**

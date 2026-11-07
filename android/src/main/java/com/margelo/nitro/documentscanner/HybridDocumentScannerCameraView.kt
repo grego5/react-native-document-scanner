@@ -295,6 +295,8 @@ open class HybridDocumentScannerCameraView(
   private var disposed = false
   /** Main thread: a rebind waiting for captures to settle, and why; null when none waits. */
   private var pendingRebind: RebindReason? = null
+  /** Main thread: an exposureCompensation change arrived while a capture was pending; [endCapture] applies it. */
+  private var exposureDeferred = false
   /** Main thread: removes the permission listener while the view is attached. */
   private var removePermissionListener: (() -> Unit)? = null
   private var imageCapture: ImageCapture? = null
@@ -511,7 +513,10 @@ open class HybridDocumentScannerCameraView(
     liveOverlay.color = next.guideColor
     captureFeedbackView.color = next.captureColor
     if (!next.captureFeedback) captureFeedbackView.clear()
-    if (old.exposureCompensation != next.exposureCompensation) applyExposureCompensation()
+    if (old.exposureCompensation != next.exposureCompensation) {
+      // A capture keeps the exposure it was admitted with; the last capture to end applies the latest value.
+      if (hasPendingCapture()) exposureDeferred = true else applyExposureCompensation()
+    }
     if (old.torch != next.torch) {
       synchronized(metadataLock) {
         torchPolicy.reset()
@@ -857,8 +862,10 @@ open class HybridDocumentScannerCameraView(
   /**
    * Main thread: one evaluation of [capture], on an event rather than a poll: new frame results, a focus change, a torch
    * change or a deadline. Frames are consumed in order, each once; those exposed before the latest focus change are
-   * skipped, and the change restarts the stability sequence, so a refocus is revalidated. The readiness state then goes to the capture's
-   * [CaptureGate], whose decision alone waits, shoots or rejects.
+   * skipped. Document detection continues while autofocus runs, but the four-frame motion and blur check starts from
+   * scratch once focus is accepted, so a refocus is revalidated. Motion only delays the shot or rejects it at the steady
+   * deadline; it never starts another scan. The readiness state then goes to the capture's [CaptureGate], whose decision
+   * alone waits, shoots or rejects.
    */
   private fun evaluateCapture(capture: GatedCapture, captureUseCase: ImageCapture) {
     if (!isPending(capture.promise) || capture.stage != CaptureStage.WAITING) return
@@ -890,8 +897,6 @@ open class HybridDocumentScannerCameraView(
     // Whether this evaluation read a record analysis just published, for the log: shooting on one an earlier evaluation
     // read, after a focus or torch change, means analysis had not produced a newer frame.
     var newFrame = false
-    // A frame smeared past the blur limit while the capture's own scan scanned; the gate retries its failure.
-    var movedDuringScan = false
     if (missed && motionCheckEnabled) capture.stability.interrupt()
     for (frame in frames) {
       capture.frameCursor = frame.sequence + 1
@@ -899,9 +904,6 @@ open class HybridDocumentScannerCameraView(
       capture.latest = frame
       newFrame = true
       if (!motionCheckEnabled) continue
-      if (snapshot.owner == FocusOwner.CAPTURE && snapshot.locked == null && (frame.motion?.blur ?: 0.0) > blurLimit) {
-        movedDuringScan = true
-      }
       // A frame exposed while focus was lost does not continue the sequence; one without its result cannot tell.
       val state = frame.frame
       if (waitsForFocus && !capture.gate.focusSkipped && state != null && (!frameFocused(state.afState) || predatesPage(state))) {
@@ -955,6 +957,9 @@ open class HybridDocumentScannerCameraView(
       snapshot.scanning(nowMs) || staleFocus -> false
       else -> frameFocused(afState)
     }
+    // Frames judged before focus was accepted do not count toward steadiness: the sequence starts with the first frame of
+    // accepted focus.
+    if (waitsForFocus && !skip && !capture.gate.focusSkipped && !focused) capture.stability.reset()
     // Autofocus is still moving, so a focus wait outlasts its limit rather than fail or shoot halfway. An owned scan
     // still pending counts by itself; a frame's scanning state counts only while that frame is recent, so a stalled
     // analysis cannot hold the shot on an old result.
@@ -985,7 +990,6 @@ open class HybridDocumentScannerCameraView(
         !(snapshot.owner == FocusOwner.TAP && snapshot.scanHolds(nowMs)),
       scanTrigger = scanTrigger,
       ownScan = ownScan,
-      movedDuringScan = movedDuringScan,
       frameSinceFocusChange = latest != null,
     )
     fun traceGate(fired: Boolean) = liveDetector.traceObserver?.onCaptureGate(LiveCaptureGateSample(
@@ -998,7 +1002,7 @@ open class HybridDocumentScannerCameraView(
         val point = focusCandidate?.let(::meteringPoint)
           ?: previewView.meteringPointFactory.createPoint(previewView.width / 2f, previewView.height / 2f)
         logLifecycle("capture focus scan ${decision.attempt} trigger=${decision.trigger} stale=$staleFocus dark=$dark " +
-          "page=${latest?.guide != null} moved=${decision.moved}")
+          "page=${latest?.guide != null}")
         // The new focus generation re-evaluates this capture.
         focus.capture(camera, point)
       }
@@ -1515,8 +1519,10 @@ open class HybridDocumentScannerCameraView(
     }
   }
 
-  /** Main thread: sets the bound camera's AE compensation index from exposureCompensation; a newer call cancels it. */
+  /** Main thread: sets the bound camera's AE compensation index from the current exposureCompensation, so after a
+   * deferral only the latest value applies; a newer call cancels it. */
   private fun applyExposureCompensation() {
+    exposureDeferred = false
     val camera = boundCamera ?: return
     val state = camera.info.exposureState
     if (!state.isExposureCompensationSupported) return
@@ -1743,6 +1749,7 @@ open class HybridDocumentScannerCameraView(
       if (!hasPendingCapture() && modelLoadPending) loadRequestedModel()
       if (!hasPendingCapture()) {
         clearCapturePreview()
+        if (exposureDeferred) applyExposureCompensation()
         applyLight()
       }
       if (!disposed && !props.active && !hasPendingCapture()) {
@@ -1855,7 +1862,7 @@ open class HybridDocumentScannerCameraView(
     const val STEADY_TIMEOUT_MS = 1_000L
     /** How long a capture waits for its page and for focus; autofocus still moving extends the focus wait. */
     const val FOCUS_TIMEOUT_MS = 4_000L
-    /** A capture's first focus scan and its one unconditional retry; a scan the camera moved during retries again. */
+    /** A capture's first focus scan and its one retry. */
     const val MAX_CAPTURE_SCANS = 2
     /** How recent a frame must be for its scanning autofocus state to extend a focus wait; also how long a settled
      * capture scan waits for a frame exposed after it. */

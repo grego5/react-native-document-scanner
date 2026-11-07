@@ -116,7 +116,12 @@ final class LiveDocumentDetector: @unchecked Sendable {
     /// AVFoundation's clockwise capture rotation angle.
     var rotationAngle: Double = 0
     var square = false
+    /// A capture's motion check needs flow even while guidance is off.
+    var motionEvidence = false
   }
+
+  /// A page unseen this long arrives anew, so a focus reached before it no longer counts.
+  static let pageLostNs: Int64 = 1_000_000_000
 
   static let holdNs: Int64 = 400_000_000
   static let minArea = 0.03
@@ -136,7 +141,23 @@ final class LiveDocumentDetector: @unchecked Sendable {
   private var running = false
   private var pending: LiveGuideResult?
   private var frameRequest: ((LiveFrame) -> Void)?
+  /// Advances with each camera start; frame evidence of an earlier run never continues.
+  private var run = 0
+  private var framesListener: (() -> Void)?
+  private var framesScheduled = false
+  /// When the latest focus sample after movement found the lens still; between frames, so a
+  /// movement too short for any frame to show still counts.
+  private var sampledAdjusting = false
+  private var sampledSettledNs: Int64?
   private let prepareQueue: DispatchQueue
+
+  /// Every analyzed frame's capture evidence, in order.
+  let frames = FrameHistory()
+  /// Called on main after frames were appended, coalesced; nil while nothing waits for them.
+  var onFrames: (() -> Void)? {
+    get { lock.lock(); defer { lock.unlock() }; return framesListener }
+    set { lock.lock(); framesListener = newValue; lock.unlock() }
+  }
 
   // Main only.
   var onResult: ((LiveGuideResult) -> Void)?
@@ -164,6 +185,15 @@ final class LiveDocumentDetector: @unchecked Sendable {
   private var flowRegionFraming: CameraFraming?
   private var trackedRegionSensorNs: Int64 = 0
   private var sequence = 0
+  /// This frame's metadata, delivered just before it on the same owner.
+  private var metadata: CameraFrameMetadata?
+  /// The newest published outline and until when it holds; nil while none.
+  private var lastGuide: (corners: LiveCorners, framing: CameraFraming?, deadlineNs: Int64, generation: Int)?
+  private var focusRun = -1
+  private var lastAdjusting: Bool?
+  private var focusReachedNs: Int64?
+  private var pageArrivedNs: Int64?
+  private var pageSeenNs: Int64 = 0
 
   init(inference: CornerInference = .shared,
        clock: @escaping () -> Int64 = { Int64(DispatchTime.now().uptimeNanoseconds) },
@@ -182,7 +212,8 @@ final class LiveDocumentDetector: @unchecked Sendable {
 
   /// A camera start. Enabled guidance opens and warms the interpreter before the first frame.
   func begin(enabled: Bool) {
-    lock.lock(); running = true; lock.unlock()
+    lock.lock(); running = true; run += 1; sampledAdjusting = false; sampledSettledNs = nil; lock.unlock()
+    frames.clear()
     state.begin(enabled: enabled)
     cancelDelivery()
     if enabled { preload() }
@@ -250,13 +281,30 @@ final class LiveDocumentDetector: @unchecked Sendable {
 
   // MARK: - Analysis owner
 
+  /// A focus sample of the running device, on main; only its time and stillness are used.
+  func focusObserved(_ observation: FocusObservation) {
+    lock.lock(); defer { lock.unlock() }
+    if observation.adjusting {
+      sampledAdjusting = true
+    } else if sampledAdjusting, observation.hostNs > 0 {
+      sampledAdjusting = false
+      sampledSettledNs = observation.hostNs
+    }
+  }
+
+  /// The next frame's exposure and focus evidence, delivered just before it on the analysis owner.
+  func frameMetadata(_ metadata: CameraFrameMetadata) { self.metadata = metadata }
+
   /// Analyzes one camera buffer in sensor axes; `sensorNs` is its presentation time.
   func analyze(_ buffer: CVPixelBuffer, sensorNs: Int64) {
     lock.lock()
     let settings = settings
     let request = frameRequest
     frameRequest = nil
+    let run = run
     lock.unlock()
+    let metadata = self.metadata.flatMap { $0.hostNs == sensorNs ? $0 : nil }
+    self.metadata = nil
     guard let framing = CameraFraming(buffer: PixelSize(CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer)),
                                       rotationAngle: settings.rotationAngle, square: settings.square) else { return }
     sequence += 1
@@ -267,12 +315,80 @@ final class LiveDocumentDetector: @unchecked Sendable {
       resetTracking()
       releaseFlow()
     }
-    guard state.guidanceEnabled else {
-      releaseFlow()
-      return
+    var estimate: ScannerFlowEstimate?
+    if state.guidanceEnabled {
+      let startedAt = clock()
+      estimate = updateFlow(buffer, framing: framing, sensorNs: sensorNs)
+      guideFrame(buffer, framing: framing, sensorNs: sensorNs, settings: settings, estimate: estimate,
+                 startedAt: startedAt)
+    } else {
+      lastGuide = nil
+      if settings.motionEvidence {
+        estimate = updateFlow(buffer, framing: framing, sensorNs: sensorNs)
+      } else {
+        releaseFlow()
+      }
     }
-    let startedAt = clock()
-    let estimate = updateFlow(buffer, framing: framing, sensorNs: sensorNs)
+    record(framing: framing, sensorNs: sensorNs, metadata: metadata, estimate: estimate, run: run)
+  }
+
+  /// Appends this frame's capture evidence and wakes main if something waits for it.
+  private func record(framing: CameraFraming, sensorNs: Int64, metadata: CameraFrameMetadata?,
+                      estimate: ScannerFlowEstimate?, run: Int) {
+    if run != focusRun {
+      focusRun = run
+      lastAdjusting = nil
+      focusReachedNs = nil
+      pageArrivedNs = nil
+      pageSeenNs = 0
+    }
+    let adjusting = metadata?.focusAdjusting
+    if adjusting == false && lastAdjusting == true { focusReachedNs = sensorNs }
+    if let adjusting { lastAdjusting = adjusting }
+    lock.lock(); let sampled = sampledSettledNs; lock.unlock()
+    if adjusting == false, let sampled, sampled <= sensorNs, sampled > (focusReachedNs ?? .min) { focusReachedNs = sampled }
+    let now = clock()
+    let guide = lastGuide.flatMap { held in
+      held.framing == framing && now < held.deadlineNs && state.isCurrent(held.generation) ? held.corners : nil
+    }
+    if guide != nil {
+      if pageArrivedNs == nil || sensorNs &- pageSeenNs > Self.pageLostNs { pageArrivedNs = sensorNs }
+      pageSeenNs = sensorNs
+    } else if pageArrivedNs != nil && sensorNs &- pageSeenNs > Self.pageLostNs {
+      pageArrivedNs = nil
+    }
+    let flow = estimate.flatMap { estimate in
+      FlowStatus(rawValue: estimate.status).map {
+        FlowEvidence(status: $0, speedPxPerSecond: estimate.speed?.doubleValue, sourceWidth: estimate.sourceWidth,
+                     lostRegions: estimate.lostRegions, fromNs: estimate.fromNs)
+      }
+    }
+    let exposure = metadata?.exposureNs
+    let blur: Double? = flow.flatMap { flow in
+      guard flow.status == .measured, let speed = flow.speedPxPerSecond, flow.sourceWidth > 0, let exposure else { return nil }
+      return speed * Double(exposure) * 1e-9 / Double(flow.sourceWidth)
+    }
+    let reached = focusReachedNs, arrived = pageArrivedNs
+    frames.append { sequence in
+      FrameRecord(sequence: sequence, sensorNs: sensorNs, framing: framing, flow: flow, exposureNs: exposure,
+                  iso: metadata?.iso, exposureEstimated: metadata?.estimated ?? false, blur: blur,
+                  focusAdjusting: adjusting, focusReachedNs: reached, pageArrivedNs: arrived, guide: guide)
+    }
+    lock.lock()
+    let wake = framesListener != nil && !framesScheduled
+    if wake { framesScheduled = true }
+    lock.unlock()
+    guard wake else { return }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      lock.lock(); framesScheduled = false; let listener = framesListener; lock.unlock()
+      listener?()
+    }
+  }
+
+  /// Guide work for one frame with guidance on: pacing, inference and acceptance.
+  private func guideFrame(_ buffer: CVPixelBuffer, framing: CameraFraming, sensorNs: Int64, settings: Settings,
+                          estimate: ScannerFlowEstimate?, startedAt: Int64) {
     let adaptive = settings.adaptive
     if adaptive != adaptiveWasEnabled {
       policy.reset()
@@ -460,6 +576,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
 
   /// Coalesces to the newest result; main receives it on its next turn.
   private func publish(_ result: LiveGuideResult) {
+    lastGuide = result.corners.map { ($0, result.framing, result.deadlineNs, result.generation) }
     lock.lock()
     let scheduled = pending != nil
     pending = result

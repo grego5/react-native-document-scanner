@@ -40,7 +40,8 @@ final class CameraControls: @unchecked Sendable {
 
   /// A photo is exposing: taps and new scans are refused, since its focus must not change.
   var shotInFlight: () -> Bool = { false }
-  /// A `takePhoto` call is in flight: torch changes wait for it, so its light does not change.
+  /// A `takePhoto` call is waiting or shooting: torch, exposure-bias and frame-rate changes wait for
+  /// it, so the light a capture is judged on does not change.
   var capturePending: () -> Bool = { false }
   /// The focus snapshot or the autofocus state changed.
   var onChange: (() -> Void)?
@@ -60,6 +61,13 @@ final class CameraControls: @unchecked Sendable {
   private var torchSerial = 0
   /// The torch state the device last accepted; nil before any or after a refusal.
   private(set) var torchApplied: Bool?
+  /// Exposure-bias and frame-rate commands the device has not answered yet.
+  private var exposurePending = 0
+  /// An exposure-bias or frame-rate change waits for the capture in progress.
+  private var exposureDeferred = false
+  /// When the device last applied a light change (torch, exposure bias or frame rate), as main
+  /// heard it: frames exposed before then may show the earlier light.
+  private(set) var lightChangedNs: Int64 = 0
 
   // Frame queue and main, under `torchLock`.
   private let torchLock = NSLock()
@@ -97,10 +105,10 @@ final class CameraControls: @unchecked Sendable {
     scan = nil
     torchRequest = nil
     torchApplied = nil
+    exposurePending = 0
     torchLock.lock(); torchPolicy.reset(); torchAdmitting = true; torchLock.unlock()
     aimContinuousFocus()
-    applyExposureBias()
-    applyFrameRate()
+    applyExposure()
     applyTorch()
   }
 
@@ -114,6 +122,7 @@ final class CameraControls: @unchecked Sendable {
     policy.unbind()
     torchRequest = nil
     torchApplied = nil
+    exposurePending = 0
     torchLock.lock(); torchPolicy.reset(); torchAdmitting = false; torchLock.unlock()
     autofocus = .inactive
     publish()
@@ -127,8 +136,7 @@ final class CameraControls: @unchecked Sendable {
       torchLock.lock(); torchPolicy.reset(); torchAuto = next.torch == .auto; torchLock.unlock()
     }
     guard isBound else { return }
-    if next.exposureBias != previous.exposureBias { applyExposureBias() }
-    if next.minFrameRate != previous.minFrameRate { applyFrameRate() }
+    if next.exposureBias != previous.exposureBias || next.minFrameRate != previous.minFrameRate { applyExposure() }
     if next.torch != previous.torch { applyTorch() }
   }
 
@@ -156,11 +164,12 @@ final class CameraControls: @unchecked Sendable {
     }
   }
 
-  /// A shot finished: a capture's scan ends, a tap past its hold ends, and a deferred torch
-  /// change applies.
+  /// A capture ended: its scan ends, a tap past its hold ends, and deferred torch, exposure-bias
+  /// and frame-rate changes apply.
   func afterCapture() {
     if policy.afterCapture(nowNs: clock()) { released() }
     scheduleDeadlines()
+    if exposureDeferred { applyExposure() }
     applyTorch()
   }
 
@@ -189,9 +198,9 @@ final class CameraControls: @unchecked Sendable {
   }
 
   private func send(_ target: Scan, _ command: CameraCommand) {
-    camera.perform(command) { [weak self] applied in
+    camera.perform(command) { [weak self] outcome in
       guard let self, pending(target) else { return }
-      guard applied else {
+      guard outcome.applied else {
         logger.info("focus scan refused by the device")
         return settle(target, success: false)
       }
@@ -219,8 +228,8 @@ final class CameraControls: @unchecked Sendable {
   /// there again, undoing a tap's point.
   private func aimContinuousFocus() {
     guard let capabilities, capabilities.continuousFocus || capabilities.focusPoint, policy.owner == nil else { return }
-    camera.perform(.continuousFocus(Self.centre)) { [weak self] applied in
-      if !applied { self?.logger.info("continuous focus refused by the device") }
+    camera.perform(.continuousFocus(Self.centre)) { [weak self] outcome in
+      if !outcome.applied { self?.logger.info("continuous focus refused by the device") }
     }
   }
 
@@ -269,6 +278,10 @@ final class CameraControls: @unchecked Sendable {
 
   private var autoLit: Bool { torchLock.lock(); defer { torchLock.unlock() }; return torchPolicy.lit }
 
+  /// A torch, exposure-bias or frame-rate change the device has not answered yet; a capture's
+  /// light is not ready meanwhile.
+  var lightPending: Bool { torchRequest != nil || exposurePending > 0 }
+
   /// Sets the torch from the mode and the auto decision. A change waits while a photo is in
   /// flight; `afterCapture` applies it. A refused change is retried by the next call.
   private func applyTorch() {
@@ -285,24 +298,46 @@ final class CameraControls: @unchecked Sendable {
     torchSerial += 1
     let id = torchSerial, owner = binding
     torchRequest = (lit, id)
-    camera.perform(.torch(lit)) { [weak self] applied in
+    camera.perform(.torch(lit)) { [weak self] outcome in
       guard let self, binding == owner, torchRequest?.id == id else { return }
       torchRequest = nil
-      torchApplied = applied ? lit : nil
-      if !applied { logger.info("torch lit=\(lit, privacy: .public) refused by the device") }
+      torchApplied = outcome.applied ? lit : nil
+      if outcome.applied { lightChanged(outcome) }
+      if !outcome.applied { logger.info("torch lit=\(lit, privacy: .public) refused by the device") }
+      onChange?()
     }
   }
 
-  private func applyExposureBias() {
-    guard let bias = CameraExposurePolicy.bias(settings.exposureBias, range: capabilities?.exposureBias) else { return }
-    camera.perform(.exposureBias(bias)) { _ in }
+  /// Sends the exposure bias and frame rate, which change the light frames are exposed with. Like
+  /// the torch, they wait for a capture in progress; `afterCapture` sends them.
+  private func applyExposure() {
+    guard let capabilities else { return }
+    guard !capturePending() else { exposureDeferred = true; return }
+    exposureDeferred = false
+    if let bias = CameraExposurePolicy.bias(settings.exposureBias, range: capabilities.exposureBias) {
+      sendExposure(.exposureBias(bias), name: "exposure bias")
+    }
+    if !capabilities.frameRates.isEmpty {
+      let range = CameraExposurePolicy.frameRate(minFps: settings.minFrameRate, ranges: capabilities.frameRates)
+      sendExposure(.frameRate(range), name: "frame rate")
+    }
   }
 
-  private func applyFrameRate() {
-    guard let capabilities, !capabilities.frameRates.isEmpty else { return }
-    let range = CameraExposurePolicy.frameRate(minFps: settings.minFrameRate, ranges: capabilities.frameRates)
-    camera.perform(.frameRate(range)) { [weak self] applied in
-      if !applied { self?.logger.info("frame rate refused by the device") }
+  private func sendExposure(_ command: CameraCommand, name: String) {
+    exposurePending += 1
+    let owner = binding
+    camera.perform(command) { [weak self] outcome in
+      guard let self, binding == owner else { return }
+      exposurePending -= 1
+      if outcome.applied { lightChanged(outcome) } else { logger.info("\(name, privacy: .public) refused by the device") }
+      onChange?()
     }
+  }
+
+  /// Frames before the change's cutoff were lit the old way: the first frame the device reports
+  /// exposed with it (an exposure bias), else the acknowledgement's arrival. The cutoff never moves
+  /// back, so an earlier frame time cannot undo a later change.
+  private func lightChanged(_ outcome: CommandOutcome) {
+    lightChangedNs = max(lightChangedNs, outcome.fromNs ?? clock())
   }
 }

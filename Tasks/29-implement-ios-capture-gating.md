@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Implemented (physical-device checks pending)
 Complexity: High
 Dependencies: [27](27-implement-ios-camera-controls.md), [28](28-implement-ios-still-capture.md)
 
@@ -39,7 +39,7 @@ AVFoundation scan completion currently reports an unknown focus result, not succ
 
 1. Map existing Swift state, callbacks and queues before editing. Refactor CameraControls, the view and Task 28 integration only as needed so hardware focus/light command state has one owner, per-request gate policy has one owner, and the view remains the adapter. Keep command application and focus observations ordered on the camera queue, publication on main, and immutable run-tagged snapshots across owners. Retain separate pending-capture and exposing-shot boundaries.
 2. Implement the Swift decision policy with explicit clock inputs and event/deadline-driven reevaluation. Before admitting a first scan, enforce the 4 s page/focus admission deadline. Quality captures request a scan at the current page or preview centre; zsl/latency request one for stale page focus or a dark scene without effective illumination where the supported iOS evidence permits that decision. A held user tap remains authoritative, and skipLowQualityControl starts no scan. Use the current 100,000 exposure-ms × ISO dark threshold and shared torch vectors. Do not port Android light-fallback-only triggers to iOS.
-3. For a known failed owned scan, retry once independently of its original trigger, then retry only when motion during the failed scan warrants it. An admitted owned scan holds both page and focus waits past their deadlines; after settlement, allow up to 500 ms for a frame exposed after the focus change. Match the 1 s light/steadiness window after page/focus readiness. Keep hardware scan timeout separate from capture readiness deadlines; verify the appropriate AVFoundation timeout rather than copying CameraX's 5 s completion/6 s backstop.
+3. For a known failed owned scan, retry once independently of its original trigger; motion never starts another scan. An admitted owned scan holds both page and focus waits past their deadlines; after settlement, allow up to 500 ms for a frame exposed after the focus change. Match the 1 s light/steadiness window after page/focus readiness. Keep hardware scan timeout separate from capture readiness deadlines; verify the appropriate AVFoundation timeout rather than copying CameraX's 5 s completion/6 s backstop.
 4. Define and document the iOS focus-acceptance rule from available AVFoundation observations before claiming parity. Unknown completion is neither proof of focus nor a failed scan eligible for blind retries. Cover fixed-focus devices and unavailable readiness explicitly; never synthesize focused/locked-success or Android metadata. Record any unavoidable platform difference in this task and the public platform notes.
 5. Consume complete ordered frame records with normalized timestamps, framing, focus generation, exposure provenance and motion evidence. Reuse shared flow/gyro evidence where available; preserve unknown motion and estimated exposure labels. Reset readiness across relevant control/settings changes and discard old-run results. Do not replace frame evidence with separately updated UI fields.
 6. Keep torch and any supported exposure-affecting command deferral/acknowledgement in the existing control owner. A pending light command holds light readiness, and capture settlement applies the latest deferred settings. Optional focus must not waive buffer/light safety; if an iOS buffered path is used, establish its actual eligibility/freshness guarantees or use a supported fresh-frame path. skipLowQualityControl retains its explicit opt-out semantics.
@@ -74,3 +74,37 @@ The Swift gate owns capture decisions and retries; existing controls and Task 28
 
 feat(ios): implement native capture quality gating
 
+## Implementation record — 2026-11-07
+
+Changed files: `ios/CaptureGate.swift` (new: `FrameRecord`, `FrameHistory`, `CaptureStability`, `CaptureGate`, decision and evidence types), `ios/HybridDocumentScannerCameraView.swift` (admission before waiting, `GatedCapture` adapter, event-driven evaluation, one invalidation path, shot started only by the gate's first Shoot), `ios/LiveDocumentDetector.swift` (ordered frame records with flow, exposure provenance, blur, per-frame focus, focus-reached and page-arrival times; flow for a waiting capture's motion check with guidance off), `ios/CameraDeviceControl.swift` (`focusAdjusting` per frame, focus sample host time), `ios/CameraControls.swift` (`lightPending`, torch completion publishes a change, torch deferred for the whole capture), `ios/CameraSession.swift` (doc), `ios/Tests/CaptureGateTests.swift` (new), `ios/Tests/CameraSessionTests.swift`, `ReactNativeDocumentScanner.podspec` (capture-events.tsv test resource), `ios/README.md`, `src/DocumentScannerCamera.nitro.ts` (comments only; nitrogen not regenerated), `tests/fixtures/README.md`, `.agents/skills/docs/references/architecture.md`, `development.md`.
+
+Decisions and platform differences:
+
+- The Swift gate is a direct port of Kotlin's decision rules (4 s focus/page wait, 1 s light/steady window, one unconditional retry of a known failure, 500 ms post-settle frame allowance, scan holds page/focus waits) and passes `capture-events.tsv`.
+- Focus acceptance on iOS: a frame is focused when `isAdjustingFocus` was false as it was delivered and, for continuous autofocus with a required page, the lens last settled after the page arrived. A completed AVFoundation scan is an unknown result (`OwnScan.settled`): never retried, never focus by itself. Known failures are a refused scan or the controls' 2 s timeout, a package backstop because AVFoundation documents no scan timeout. No focused/locked state is synthesized.
+- iOS has no gyroscope fallback: low-texture flow is unknown motion and breaks steadiness.
+- No zero-shutter-lag buffer check: AVFoundation exposes no buffered-frame eligibility. The shared fixture's zsl column drives the gate's buffer input, which only Android's adapter enables.
+- Scan triggers: quality, stale page focus, dark scene with the torch not confirmed lit. Android's unseen-page trigger and light-driven zsl-to-latency switch are not ported.
+- Light: an unanswered torch command holds light readiness; torch changes wait for the whole capture and apply when it settles.
+- `onCaptureStage` reports only `waiting` with reason changes; later stages belong to Task 30.
+
+Executed checks:
+
+- `npm run check`: passed (45 tests).
+- Split run not possible: the Mac VM no longer has Xcode (`/Applications` holds only Safari; `DEVELOPER_DIR` points at a missing `~/Downloads/Xcode 2.app`), so the Mac build failed at `git init`. Used the GitHub route instead.
+- GitHub `ios-validation.yml` (build and test on the runner), `CaptureGateTests`, `CameraSessionTests`, `CameraControlsTests`, `LiveGuidanceTests`, `StillCaptureTests`: first run failed to compile one test helper (main-actor isolation); after the fix, 93 executed, passed (run 42322479990).
+- Not run: the full iOS suite since this change; physical-device checks (page arrival, stale focus, dark/torch scenes, tap priority, motion waits, interruption, whether the zsl buffered frame matches the approved frames), which need a person's shutter tap.
+
+### Review follow-up — 2026-11-07
+
+Changed files: `ios/HybridDocumentScannerCameraView.swift`, `ios/CameraControls.swift`, `ios/CameraSession.swift`, `ios/CaptureGate.swift`, `ios/Tests/CameraSessionTests.swift`, `ios/README.md`, `src/DocumentScannerCamera.nitro.ts` (comment only).
+
+- One capture phase (`idle`, `waiting`, `exposing`, `saving`) replaces `waiting`, `shot` and `shotExposed`; admission, tap refusal, control deferral and capture state derive from it. Stop, interruption, runtime failure, session replacement/close and unmount share one cancellation path: a waiting capture frees its slot at once, a physical shot keeps it until the delegate and writer settle. `sessionGeneration` is removed; the ticket arbitrates publication.
+- Motion no longer drives focus retries, on either platform: a known failure is retried once and the second is the last. Document detection continues while autofocus runs; the four-frame motion and blur check starts from scratch once focus is accepted, and motion only delays the shot or rejects it at the steady deadline, with no extra timeout. This replaces the review's scan-motion attribution, so the scan start/settle times are not published.
+- Exposure bias and frame rate defer during a capture like the torch; their unanswered commands hold light. Every applied light change publishes a time; readiness restarts and light waits for a frame exposed after it.
+- The shot takes rotation, framing and guide at shutter time; a gate that judged a page uses its approved frame's guide when its framing still matches. A framing change restarts stability, and evidence from another framing does not count.
+- Zero shutter lag: the gate checks readiness before requesting the still and lets AVFoundation select the buffered frame.
+
+- Android exposure compensation now defers during a capture as on iOS; the last capture to end applies the latest requested value, so a slider moved several times applies only its final position, and no valid prop update fails by timing.
+- Both gates restart the steadiness window when focus, with its page, is accepted again after a loss, as the view restarts its frame count; a refocus that ends late no longer leaves too little time for four fresh frames. Scans stay capped at two. Shared fixture: `capture-events.tsv` scenario `refocus`.
+- iOS exposure bias acknowledges with Apple's first-affected-buffer timestamp (`setExposureTargetBias` completion), converted to the frame host clock, as its light cutoff; torch and frame rate keep the acknowledgement's arrival, since AVFoundation reports no frame for them. The light cutoff never moves back.
