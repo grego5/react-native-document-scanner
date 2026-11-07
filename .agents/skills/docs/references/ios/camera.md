@@ -1,0 +1,17 @@
+# iOS camera
+
+## Owners
+
+- The camera view owns admission and the capture phase. `AVCameraSession` owns device commands, focus observations and acknowledgements on its session queue. Frames arrive on a separate serial queue with late-frame discard. UIKit publication runs on main. Run IDs retire stale callbacks.
+- Camera use requires an active, visible and sized view, foreground and permission. First-frame readiness is armed after the previous run drains. Square framing uses delivered buffer dimensions and can change without restarting. Overlay placement maps detection corners through raw frame space into the preview's framing.
+- The detector owns its live inference lease for the run. Model generation changes invalidate live guide evidence. See [Processing](processing.md) for selection ownership.
+
+## Capture
+
+- One admitted request moves through waiting, exposing and saving. Waiting cancellation releases the slot immediately. A cancelled physical capture retains the slot until its delegate and writer settle. The view borrows its session and never closes it.
+- Camera reconfiguration and torch, exposure and frame-rate prop changes can defer until the capture finishes. Orientation changes while waiting invalidate steady evidence. The still uses shutter framing; the seed requires matching guide framing. A thumbnail frame with a different orientation stays upright and uncropped by that guide.
+- Focus observations and command acknowledgements are ordered by the session queue. AVFoundation reports lens motion and scan settlement, with no success signal. Capture readiness uses subsequent frame evidence, with focus after page arrival when a page is required. The gate consumes optical-flow evidence; iOS has no gyro fallback or CameraX buffer-readiness check.
+- Video presentation timestamps use the capture session clock. Exposure-bias completion uses the video input clock and identifies the first affected buffer. The adapter converts both to host time before comparison. If the bias timestamp cannot be converted, readiness uses the command acknowledgement as the cutoff.
+- The gate controls when to request the still. AVFoundation owns the delivered exposure, including ZSL selection. The package accepts the delivered still without a post-capture timestamp check.
+
+See [Shared engine](../engine.md) for gate and guide contracts and [iOS setup](setup.md) for validation.

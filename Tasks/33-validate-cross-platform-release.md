@@ -19,7 +19,7 @@ Do not implement later task outcomes, redesign unrelated Android behavior, chang
 This is a lookup map. Locate symbols and read only the ranges needed for the next implementation decision. Prefer a configured matching LSP project; use focused rg when indexing is unavailable.
 
 - .agents/skills/docs/references/development.md
-- tools/models/README.md
+- [Model export and private fixtures](../.agents/skills/docs/references/tools.md#model-export-and-private-fixtures)
 - tests/scanner-contracts.test.cjs
 - TASKS.md — completed task dependencies and explicit platform differences
 

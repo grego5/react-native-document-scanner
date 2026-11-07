@@ -25,7 +25,7 @@ Locate declarations/callers with LSP, then inspect bounded source; use focused r
 - android/src/test/java/com/margelo/nitro/documentscanner/CaptureGateTest.kt
 - ios/CameraControls.swift and ios/CameraControlPolicies.swift — existing focus/torch owners and unknown scan outcomes
 - ios/CameraSession.swift, ios/HybridDocumentScannerCameraView.swift and ios/StillCapture.swift — ordered observations, admission, exposure and terminal settlement
-- src/DocumentScannerCamera.nitro.ts and .agents/skills/docs/references/algorithm-notes.md — current public behavior and platform limitations
+- `src/DocumentScannerCamera.nitro.ts`, [shared engine](../.agents/skills/docs/references/engine.md), and [iOS camera](../.agents/skills/docs/references/ios/camera.md) for public behavior and platform limitations
 
 ## Current behavior and invariants
 
