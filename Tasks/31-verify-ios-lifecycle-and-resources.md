@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Implemented (native validation pending)
 Complexity: High
 Dependencies: [18](18-implement-ios-camera-permission.md), [21](21-implement-ios-processor.md), [22](22-implement-ios-image-viewer.md), [23](23-implement-ios-image-pager.md), [24](24-implement-ios-crop-editor.md), [25](25-implement-ios-camera-session.md), [26](26-implement-ios-live-guidance.md), [27](27-implement-ios-camera-controls.md), [28](28-implement-ios-still-capture.md), [29](29-implement-ios-capture-gating.md), [30](30-implement-ios-capture-feedback.md)
 
@@ -58,4 +58,12 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 ## Proposed commit title
 
 test(ios): verify scanner lifecycle and resource ownership
+
+## Implementation and validation
+
+- `CameraSession.swift` scopes notifications to each start and frames, commands and focus observations to each uninterrupted epoch. A media-services reset retires the pipeline and asks the view's eligibility owner to rebuild it.
+- `HybridDocumentScannerCameraView.swift`, `LiveDocumentDetector.swift`, `CameraControls.swift` and `CameraControlPolicies.swift` invalidate request, model, rotation, frame and control callbacks at their owning boundaries. A cancelled physical still keeps its slot through settlement. Interrupted auto torch retains a completed decision and drops partial evidence.
+- `CameraSessionTests.swift`, `CameraControlsTests.swift` and `CropEditorTests.swift` cover a reset during a still, stale model loads and acknowledgements, resumed focus sampling, interrupted torch evidence, and cancellation with a decode queued behind a blocked worker. The repeated capture sequence waits for both pager and crop images before backgrounding, then checks that the isolated source and session directories return to empty after close.
+- Windows `npm run check` passed both typechecks and 45 JS contracts. `git diff --check` passed. The Windows Swift parser exited before producing diagnostics.
+- Native validation remains pending. vMac was deferred at the user's request. The configured GitHub CLI credential is invalid, so the simulator workflow was not dispatched. Physical-camera recovery, memory pressure and sanitizer evidence remain pending.
 

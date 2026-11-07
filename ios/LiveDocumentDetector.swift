@@ -145,6 +145,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
   private var run = 0
   private var framesListener: (() -> Void)?
   private var framesScheduled = false
+  private var framesListenerRevision = 0
   /// When the latest focus sample after movement found the lens still; between frames, so a
   /// movement too short for any frame to show still counts.
   private var sampledAdjusting = false
@@ -156,7 +157,13 @@ final class LiveDocumentDetector: @unchecked Sendable {
   /// Called on main after frames were appended, coalesced; nil while nothing waits for them.
   var onFrames: (() -> Void)? {
     get { lock.lock(); defer { lock.unlock() }; return framesListener }
-    set { lock.lock(); framesListener = newValue; lock.unlock() }
+    set {
+      lock.lock()
+      framesListener = newValue
+      framesListenerRevision += 1
+      framesScheduled = false
+      lock.unlock()
+    }
   }
 
   // Main only.
@@ -235,7 +242,8 @@ final class LiveDocumentDetector: @unchecked Sendable {
   func stop() {
     state.stop()
     cancelDelivery()
-    lock.lock(); running = false; let released = lease; lease = nil; lock.unlock()
+    lock.lock(); running = false; let released = lease; lease = nil; frameRequest = nil; lock.unlock()
+    frames.clear()
     released?.close()
   }
 
@@ -243,6 +251,10 @@ final class LiveDocumentDetector: @unchecked Sendable {
   /// request replaces one still waiting, whose receiver is never called.
   func requestFrame(_ receiver: @escaping (LiveFrame) -> Void) {
     lock.lock(); frameRequest = receiver; lock.unlock()
+  }
+
+  func cancelFrameRequest() {
+    lock.lock(); frameRequest = nil; lock.unlock()
   }
 
   private func preload() {
@@ -263,11 +275,12 @@ final class LiveDocumentDetector: @unchecked Sendable {
     lock.lock()
     if let lease { lock.unlock(); return lease }
     let wanted = running
+    let owner = run
     lock.unlock()
     guard wanted else { return nil }
     let acquired = acquireLease()
     lock.lock()
-    let kept = running ? (lease ?? acquired) : nil
+    let kept = running && run == owner ? (lease ?? acquired) : nil
     if kept === acquired { lease = acquired }
     lock.unlock()
     if kept !== acquired { acquired.close() }
@@ -298,13 +311,14 @@ final class LiveDocumentDetector: @unchecked Sendable {
   /// Analyzes one camera buffer in sensor axes; `sensorNs` is its presentation time.
   func analyze(_ buffer: CVPixelBuffer, sensorNs: Int64) {
     lock.lock()
+    let metadata = self.metadata.flatMap { $0.hostNs == sensorNs ? $0 : nil }
+    self.metadata = nil
+    guard running else { lock.unlock(); return }
     let settings = settings
     let request = frameRequest
     frameRequest = nil
     let run = run
     lock.unlock()
-    let metadata = self.metadata.flatMap { $0.hostNs == sensorNs ? $0 : nil }
-    self.metadata = nil
     guard let framing = CameraFraming(buffer: PixelSize(CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer)),
                                       rotationAngle: settings.rotationAngle, square: settings.square) else { return }
     sequence += 1
@@ -369,19 +383,25 @@ final class LiveDocumentDetector: @unchecked Sendable {
       return speed * Double(exposure) * 1e-9 / Double(flow.sourceWidth)
     }
     let reached = focusReachedNs, arrived = pageArrivedNs
+    lock.lock()
+    guard running, self.run == run else { lock.unlock(); return }
     frames.append { sequence in
       FrameRecord(sequence: sequence, sensorNs: sensorNs, framing: framing, flow: flow, exposureNs: exposure,
                   iso: metadata?.iso, exposureEstimated: metadata?.estimated ?? false, blur: blur,
                   focusAdjusting: adjusting, focusReachedNs: reached, pageArrivedNs: arrived, guide: guide)
     }
-    lock.lock()
     let wake = framesListener != nil && !framesScheduled
+    let revision = framesListenerRevision
     if wake { framesScheduled = true }
     lock.unlock()
     guard wake else { return }
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
-      lock.lock(); framesScheduled = false; let listener = framesListener; lock.unlock()
+      lock.lock()
+      guard running, self.run == run, framesListenerRevision == revision else { lock.unlock(); return }
+      framesScheduled = false
+      let listener = framesListener
+      lock.unlock()
       listener?()
     }
   }
@@ -441,8 +461,11 @@ final class LiveDocumentDetector: @unchecked Sendable {
     } catch {
       if state.fail(token) {
         logger.error("live detection unavailable: \(String(describing: error), privacy: .public)")
-        lock.lock(); let released = self.lease; self.lease = nil; lock.unlock()
-        released?.close()
+        lock.lock()
+        let ownsLease = self.lease === lease
+        if ownsLease { self.lease = nil }
+        lock.unlock()
+        if ownsLease { lease.close() }
         resetTracking()
         publish(LiveGuideResult(status: .unavailable, generation: token))
       }

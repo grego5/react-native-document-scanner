@@ -36,6 +36,8 @@ enum CameraSessionEvent: Equatable {
   case frameSize(PixelSize)
   /// The system interrupted the running session; `streaming` follows when it resumes.
   case interrupted
+  /// Media services reset and the pipeline must be configured again.
+  case mediaServicesReset
   /// No bounded configuration, no camera, or a runtime failure; the session has stopped.
   case failed(ScannerErrorCode)
 }
@@ -59,6 +61,8 @@ protocol CameraSessionControl: AnyObject {
   func attachPreview(_ layer: AVCaptureVideoPreviewLayer)
   func start(_ request: CameraRequest)
   func stop()
+  /// Queues a fresh focus sample in command order for consumers that just became ready.
+  func requestFocusObservation()
   /// Applies `command` on the session owner after every earlier command and configuration, and
   /// calls `completion` on main with whether the device accepted it, ordered with `focusEvents`. An
   /// accepted exposure bias completes later instead, once the first frame exposed with it arrives,
@@ -74,6 +78,7 @@ protocol CameraSessionControl: AnyObject {
 extension CameraSessionControl {
   var metadataSink: ((CameraFrameMetadata) -> Void)? { get { nil } set {} }
   var focusEvents: ((FocusObservation) -> Void)? { get { nil } set {} }
+  func requestFocusObservation() {}
   func perform(_ command: CameraCommand, completion: @escaping (CommandOutcome) -> Void) {}
   func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) {
     DispatchQueue.main.async { events(.failed(.cameraUnavailable)) }
@@ -103,12 +108,6 @@ final class CameraFrameMonitor: @unchecked Sendable {
     run = generation; awaitingFirst = true; size = nil
   }
 
-  /// An interruption of the armed run waits for its next frame again.
-  func rearm(_ generation: Int) {
-    lock.lock(); defer { lock.unlock() }
-    if run == generation { awaitingFirst = true }
-  }
-
   func disarm() {
     lock.lock(); defer { lock.unlock() }
     run = nil; awaitingFirst = false; size = nil
@@ -132,7 +131,7 @@ final class CameraFrameMonitor: @unchecked Sendable {
   func drop() { lock.lock(); dropped += 1; lock.unlock() }
 
   /// Whether a run's frames currently report; frames of no run are not analyzed.
-  var isArmed: Bool { lock.lock(); defer { lock.unlock() }; return run != nil }
+  var armedRun: Int? { lock.lock(); defer { lock.unlock() }; return run }
 
   /// Frames delivered and dropped since the last call.
   func takeCounts() -> (delivered: Int, dropped: Int) {
@@ -184,7 +183,8 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
   private var deviceObservations: [NSKeyValueObservation] = []
   // Shared by main, the queue and the frame queue.
   private let lock = NSLock()
-  private var running = false
+  private var activeRun: Int?
+  private var activeEpoch: Int?
   private var configuredDevice: AVCaptureDevice?
   private var liveSession: AVCaptureSession?
   private var sink: ((CVPixelBuffer, Int64) -> Void)?
@@ -209,26 +209,87 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
   private func makePipeline() -> Pipeline {
     if let pipeline { return pipeline }
     let created = Pipeline()
-    let session = created.session
+    lock.lock(); liveSession = created.session; lock.unlock()
+    pipeline = created
+    return created
+  }
+
+  /// Observe one start. A notification already queued for an earlier start cannot stop this one.
+  private func observeSession(_ session: AVCaptureSession, run: Int) {
     let center = NotificationCenter.default
-    let added = [
-      center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: .main) {
+    observers = [
+      center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) {
         [weak self] note in
         let error = note.userInfo?[AVCaptureSessionErrorKey] as? NSError
         CameraLog.logger.error("camera runtime error \(error?.localizedDescription ?? "unknown", privacy: .public)")
-        self?.fail(.cameraUnavailable)
+        let reset = error?.domain == AVFoundationErrorDomain
+          && error?.code == AVError.Code.mediaServicesWereReset.rawValue
+        DispatchQueue.main.async { [weak self] in
+          guard let self, isActive(run) else { return }
+          if reset { resetMediaServices() } else { fail(.cameraUnavailable) }
+        }
       },
-      center.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: .main) {
+      center.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: nil) {
         [weak self] note in
-        guard let self, isRunning else { return }
         CameraLog.logger.info("camera interrupted \(String(describing: note.userInfo), privacy: .public)")
-        frames.rearm(generation)
-        onEvent?(.interrupted)
+        DispatchQueue.main.async { [weak self] in
+          self?.interrupt(run: run)
+        }
+      },
+      center.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil) {
+        [weak self] _ in
+        DispatchQueue.main.async { [weak self] in
+          guard let self, isActive(run) else { return }
+          resumeRun()
+        }
       },
     ]
-    lock.lock(); liveSession = session; observers = added; lock.unlock()
-    pipeline = created
-    return created
+  }
+
+  private func resetMediaServices() {
+    stop()
+    queue.async { [self] in
+      configured = nil
+      input = nil
+      pipeline = nil
+      lock.lock(); liveSession = nil; configuredDevice = nil; lock.unlock()
+    }
+    onEvent?(.mediaServicesReset)
+  }
+
+  func interrupt(run: Int) {
+    dispatchPrecondition(condition: .onQueue(.main))
+    guard isActive(run) else { return }
+    lock.lock()
+    guard activeEpoch != nil else { lock.unlock(); return }
+    activeEpoch = nil
+    lock.unlock()
+    generation += 1
+    frames.disarm()
+    queue.async { [self] in
+      deviceObservations.forEach { $0.invalidate() }
+      deviceObservations = []
+    }
+    onEvent?(.interrupted)
+  }
+
+  private func resumeRun() {
+    lock.lock()
+    guard activeEpoch == nil else { lock.unlock(); return }
+    generation += 1
+    let epoch = generation
+    activeEpoch = epoch
+    lock.unlock()
+    queue.async { [self] in
+      guard isCurrent(epoch), let session = pipeline?.session else { return }
+      frameQueue.sync {}
+      if let device = input?.device { observeFocus(device, run: epoch) }
+      frames.arm(epoch)
+      if !session.isRunning { session.startRunning() }
+      if !session.isRunning && !session.isInterrupted {
+        publish(epoch) { $0.fail(.cameraUnavailable) }
+      }
+    }
   }
 
   deinit {
@@ -244,15 +305,17 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
 
   private func connectPreview() {
     lock.lock(); let session = liveSession; lock.unlock()
-    if let session, let previewLayer, previewLayer.session !== session { previewLayer.session = session }
+    if let previewLayer, previewLayer.session !== session { previewLayer.session = session }
   }
 
   func start(_ request: CameraRequest) {
     dispatchPrecondition(condition: .onQueue(.main))
     generation += 1
     let current = generation
-    lock.lock(); running = true; lock.unlock()
+    lock.lock(); activeRun = current; activeEpoch = current; lock.unlock()
     queue.async { [self] in
+      guard isCurrent(current) else { return }
+      stopSession()
       let configuration: CameraConfiguration
       do {
         configuration = try configure(request)
@@ -264,18 +327,16 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
         stopSession()
         return publish(current) { $0.fail(.cameraUnavailable) }
       }
+      guard isCurrent(current), let session = pipeline?.session else { return }
       lock.lock(); configuredDevice = input?.device; lock.unlock()
+      observeSession(session, run: current)
       if let device = input?.device { observeFocus(device, run: current) }
-      publish(current) { owner in
-        owner.connectPreview()
-        owner.onEvent?(.configured(configuration))
-      }
-      guard let session = pipeline?.session else { return }
-      // A start without a stop still ends the earlier run before this one is armed.
-      if session.isRunning { stopSession() }
+      publishConfiguration(configuration, run: current)
       frames.arm(current)
       session.startRunning()
-      if !session.isRunning {
+      if session.isInterrupted {
+        publish(current) { if session.isInterrupted { $0.interrupt(run: current) } }
+      } else if !session.isRunning {
         CameraLog.logger.error("camera session did not start")
         publish(current) { $0.fail(.cameraUnavailable) }
       }
@@ -285,8 +346,9 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
   func stop() {
     dispatchPrecondition(condition: .onQueue(.main))
     generation += 1
-    lock.lock(); running = false; lock.unlock()
+    lock.lock(); activeRun = nil; activeEpoch = nil; lock.unlock()
     frames.disarm()
+    previewLayer?.session = nil
     queue.async { [self] in stopSession() }
   }
 
@@ -302,7 +364,8 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
           completion(outcome)
         }
       }
-      guard isRunning, configured != nil, let input else { return finish(.refused) }
+      guard isCurrent(current), pipeline?.session.isInterrupted == false,
+            configured != nil, let input else { return finish(.refused) }
       var firstBuffer: (@Sendable (CMTime) -> Void)?
       if case .exposureBias = command {
         // The bias callback uses the device clock. Video output timestamps use the session clock.
@@ -320,8 +383,9 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
 
   func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) {
     dispatchPrecondition(condition: .onQueue(.main))
+    let current = generation
     queue.async { [self] in
-      guard isRunning, let configured, let pipeline, pipeline.session.isRunning,
+      guard isCurrent(current), let configured, let pipeline, pipeline.session.isRunning, !pipeline.session.isInterrupted,
             let connection = pipeline.photoOutput.connection(with: .video), connection.isEnabled, connection.isActive,
             let format = StillFormat.choose(codecs: pipeline.photoOutput.availablePhotoCodecTypes,
                                             pixelFormats: pipeline.photoOutput.availablePhotoPixelFormatTypes)
@@ -490,14 +554,22 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     ]
   }
 
+  func requestFocusObservation() {
+    dispatchPrecondition(condition: .onQueue(.main))
+    let run = generation
+    reportFocus(run: run) { [weak self] in
+      guard let self, isCurrent(run), let device = input?.device else { return nil }
+      return CameraDeviceAdapter.focusObservation(device)
+    }
+  }
+
   /// Samples focus on the queue and delivers it to main for run `run`. Commands apply on the same
   /// queue and complete to main from it, so a sample taken after a command applied reaches main
   /// after that command's completion, and one taken before it reaches main first. AVFoundation
   /// notifies on its own threads, so a notification's thread never decides the order. Any thread.
-  func reportFocus(run: Int, _ sample: @escaping () -> FocusObservation) {
+  func reportFocus(run: Int, _ sample: @escaping () -> FocusObservation?) {
     queue.async { [weak self] in
-      guard self != nil else { return }
-      let observation = sample()
+      guard self != nil, let observation = sample() else { return }
       DispatchQueue.main.async { [weak self] in
         guard let self, self.generation == run else { return }
         self.focusEvents?(observation)
@@ -507,6 +579,8 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
 
   /// Returns once the run has stopped and its already queued frame callbacks have finished.
   private func stopSession() {
+    observers.forEach(NotificationCenter.default.removeObserver)
+    observers = []
     deviceObservations.forEach { $0.invalidate() }
     deviceObservations = []
     frames.disarm()
@@ -520,6 +594,15 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
 
   // MARK: - Main
 
+  /// Configuration survives interruption of this start, but never a stop or replacement.
+  func publishConfiguration(_ configuration: CameraConfiguration, run: Int) {
+    DispatchQueue.main.async { [self] in
+      guard isActive(run) else { return }
+      connectPreview()
+      onEvent?(.configured(configuration))
+    }
+  }
+
   private func publish(_ current: Int, _ deliver: @escaping @Sendable (AVCameraSession) -> Void) {
     DispatchQueue.main.async { [self] in
       guard generation == current else { return }
@@ -527,11 +610,16 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     }
   }
 
-  private var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return running }
+  private func isActive(_ run: Int) -> Bool {
+    lock.lock(); defer { lock.unlock() }; return activeRun == run
+  }
+
+  private func isCurrent(_ epoch: Int) -> Bool {
+    lock.lock(); defer { lock.unlock() }; return activeEpoch == epoch
+  }
 
   private func fail(_ code: ScannerErrorCode) {
     dispatchPrecondition(condition: .onQueue(.main))
-    guard isRunning else { return }
     stop()
     onEvent?(.failed(code))
   }
@@ -543,8 +631,9 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     // Nothing is retained past this call; live analysis borrows the buffer synchronously.
     guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
     frameArrived(PixelSize(CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer)))
-    guard frames.isArmed else { return }
+    guard let run = frames.armedRun else { return }
     lock.lock()
+    guard activeEpoch == run else { lock.unlock(); return }
     let sink = sink, metadata = metadata, device = configuredDevice, clock = liveSession?.synchronizationClock
     lock.unlock()
     guard sink != nil || metadata != nil else { return }

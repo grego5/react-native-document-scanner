@@ -5,6 +5,8 @@
 - The camera view owns admission and the capture phase. `AVCameraSession` owns device commands, focus observations and acknowledgements on its session queue. Frames arrive on a separate serial queue with late-frame discard. UIKit publication runs on main. Run IDs retire stale callbacks.
 - Camera use requires an active, visible and sized view, foreground and permission. First-frame readiness is armed after the previous run drains. Square framing uses delivered buffer dimensions and can change without restarting. Overlay placement maps detection corners through raw frame space into the preview's framing.
 - The detector owns its live inference lease for the run. Model generation changes invalidate live guide evidence. See [Processing](processing.md) for selection ownership.
+- An AVFoundation interruption disarms the frame stream and invalidates focus, command acknowledgements and live guide evidence. The first frame after interruption end restores readiness. A resumed run reapplies settings after any submitted still settles. Auto torch keeps an established light decision on interruption and restarts partial darkness evidence. A full stop resets the decision.
+- A media-services reset retires the pipeline. An eligible view tries to rebuild it once before the next first frame, after any physical still settles. Other runtime failures suspend the camera until an eligibility or request change retries it.
 
 ## Capture
 

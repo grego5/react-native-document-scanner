@@ -74,7 +74,7 @@ final class CameraControls: @unchecked Sendable {
   private var torchPolicy = TorchPolicy()
   private var torchAuto = false
   /// Frames are admitted only while bound: a frame of a stopped run never reaches the next one.
-  private var torchAdmitting = false
+  private var torchBinding: Int?
 
   private final class Scan {
     let token: Int64
@@ -106,7 +106,7 @@ final class CameraControls: @unchecked Sendable {
     torchRequest = nil
     torchApplied = nil
     exposurePending = 0
-    torchLock.lock(); torchPolicy.reset(); torchAdmitting = true; torchLock.unlock()
+    torchLock.lock(); torchBinding = binding; torchLock.unlock()
     aimContinuousFocus()
     applyExposure()
     applyTorch()
@@ -114,7 +114,7 @@ final class CameraControls: @unchecked Sendable {
 
   /// The run stopped: scans end, observations and completions of this binding are ignored, and the
   /// auto-torch latch resets.
-  func unbind() {
+  func unbind(preservingTorchDecision: Bool = false) {
     binding += 1
     capabilities = nil
     scan = nil
@@ -123,7 +123,12 @@ final class CameraControls: @unchecked Sendable {
     torchRequest = nil
     torchApplied = nil
     exposurePending = 0
-    torchLock.lock(); torchPolicy.reset(); torchAdmitting = false; torchLock.unlock()
+    exposureDeferred = false
+    lightChangedNs = 0
+    torchLock.lock()
+    if preservingTorchDecision { torchPolicy.interrupt() } else { torchPolicy.reset() }
+    torchBinding = nil
+    torchLock.unlock()
     autofocus = .inactive
     publish()
   }
@@ -269,11 +274,15 @@ final class CameraControls: @unchecked Sendable {
   /// no evidence of darkness, so it restarts the sustained-darkness wait like a bright one.
   func frameObserved(_ metadata: CameraFrameMetadata) {
     torchLock.lock()
-    let light = torchAdmitting && torchAuto
+    let owner = torchBinding
+    let light = owner != nil && torchAuto
       && torchPolicy.observe(observationNs: metadata.hostNs, exposureNs: metadata.exposureNs ?? 0, iso: metadata.iso)
     torchLock.unlock()
     guard light else { return }
-    DispatchQueue.main.async { [weak self] in self?.applyTorch() }
+    DispatchQueue.main.async { [weak self] in
+      guard let self, binding == owner else { return }
+      applyTorch()
+    }
   }
 
   private var autoLit: Bool { torchLock.lock(); defer { torchLock.unlock() }; return torchPolicy.lit }

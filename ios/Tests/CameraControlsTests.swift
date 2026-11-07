@@ -282,6 +282,51 @@ final class CameraControlsTests: XCTestCase {
     XCTAssertEqual(camera.commands.last, .torch(true))
   }
 
+  func testInterruptionRestartsPartialTorchEvidenceAndReappliesAnEstablishedDecision() {
+    let (camera, _, controls) = rig(settings: .init(torch: .auto))
+    let dark = { (ns: Int64) in CameraFrameMetadata(hostNs: ns, exposureNs: 66_000_000, iso: 1600, estimated: false) }
+    let torches = { camera.commands.filter { if case .torch = $0 { return true } else { return false } } }
+    controls.frameObserved(dark(0))
+    controls.frameObserved(dark(500_000_000))
+    controls.unbind(preservingTorchDecision: true)
+    controls.bind(full)
+    controls.frameObserved(dark(60_000_000_000))
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    XCTAssertEqual(torches(), [.torch(false), .torch(false)])
+    controls.frameObserved(dark(61_000_000_000))
+    // Interrupt before the queued light decision reaches main.
+    controls.unbind(preservingTorchDecision: true)
+    controls.bind(full)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    XCTAssertEqual(torches(), [.torch(false), .torch(false), .torch(true)])
+  }
+
+  func testInterruptedAcknowledgementsCannotSettleAReplacementBinding() {
+    let (camera, timers, controls) = rig(nil, settings: .init(torch: .on))
+    camera.held = []
+    controls.bind(full)
+    controls.tap(at: CGPoint(x: 0.2, y: 0.3))
+    let old = camera.held ?? []
+    controls.capturePending = { true }
+    controls.update(.init(exposureBias: 1, torch: .off))
+    controls.unbind(preservingTorchDecision: true)
+    controls.afterCapture()
+    controls.capturePending = { false }
+    camera.commands = []
+    camera.held = []
+    controls.bind(full)
+    old.forEach { $0(.accepted) }
+    timers.advance(by: 60_000_000_000)
+    XCTAssertTrue(controls.lightPending)
+    XCTAssertNil(controls.torchApplied)
+    XCTAssertNil(controls.snapshot.owner)
+    XCTAssertEqual(camera.commands.filter { $0 == .torch(false) }.count, 1)
+    XCTAssertEqual(camera.commands.filter { $0 == .exposureBias(1) }.count, 1)
+    camera.held?.forEach { $0(.accepted) }
+    XCTAssertFalse(controls.lightPending)
+    XCTAssertEqual(controls.torchApplied, false)
+  }
+
   func testAFrameOfAStoppedRunNeverReachesTheNextBinding() {
     let (camera, _, controls) = rig(settings: .init(torch: .auto))
     let dark = { (ns: Int64) in CameraFrameMetadata(hostNs: ns, exposureNs: 66_000_000, iso: 1600, estimated: false) }
@@ -335,12 +380,13 @@ final class CameraControlsTests: XCTestCase {
     XCTAssertEqual(camera.starts, 1)
     camera.onEvent?(.configured(CameraConfiguration(photo: PixelSize(4032, 3024), video: PixelSize(640, 480),
                                                     capabilities: full)))
-    XCTAssertTrue(camera.commands.contains(.torch(true)), "the torch prop applies without a restart")
+    XCTAssertFalse(camera.commands.contains(.torch(true)), "controls wait for the first frame")
     let preview = view.view as! CameraPreviewView
     preview.onTap?(CGPoint(x: 0.25, y: 0.75))
     XCTAssertFalse(camera.commands.contains { if case .scanFocus = $0 { return true } else { return false } },
                    "taps wait for the first frame")
     camera.onEvent?(.streaming(PixelSize(640, 480)))
+    XCTAssertTrue(camera.commands.contains(.torch(true)), "the torch prop applies without a restart")
     preview.onTap?(CGPoint(x: 0.25, y: 0.75))
     XCTAssertEqual(camera.commands.last, .scanFocus(CGPoint(x: 0.25, y: 0.75), meter: CGPoint(x: 0.25, y: 0.75)))
     camera.focusEvents?(FocusObservation(adjusting: true, locked: false))

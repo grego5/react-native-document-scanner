@@ -105,9 +105,11 @@ struct TorchPolicy {
   private(set) var lit = false
 
   mutating func reset() {
-    darkSince = nil
+    interrupt()
     lit = false
   }
+
+  mutating func interrupt() { darkSince = nil }
 
   /// Returns true on the observation that lights the torch. `observationNs` is a monotonic time,
   /// separate from the exposure duration; `iso` is nil when unreported.

@@ -15,6 +15,8 @@ private final class GrantedAuthorization: CameraAuthorization {
 private final class FakeCamera: CameraSessionControl {
   var onEvent: ((CameraSessionEvent) -> Void)?
   var frameSink: ((CVPixelBuffer, Int64) -> Void)?
+  var focusEvents: ((FocusObservation) -> Void)?
+  var focusSample: FocusObservation?
   var device: AVCaptureDevice? { nil }
   var starts: [CameraRequest] = []
   var stops = 0
@@ -22,6 +24,9 @@ private final class FakeCamera: CameraSessionControl {
   func attachPreview(_ layer: AVCaptureVideoPreviewLayer) {}
   func start(_ request: CameraRequest) { starts.append(request) }
   func stop() { stops += 1 }
+  func requestFocusObservation() {
+    if let focusSample { focusEvents?(focusSample) }
+  }
   func emit(_ event: CameraSessionEvent) { onEvent?(event) }
   var stills: [(settings: StillSettings, events: @Sendable (StillEvent) -> Void)] = []
   func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) { stills.append((settings, events)) }
@@ -234,13 +239,13 @@ final class CameraSessionTests: XCTestCase {
     /// Added to the host clock the view judges captures by.
     var clockOffsetNs: Int64 = 0
 
-    init() {
+    init(models: @escaping (String, @escaping (ScannerErrorCode?) -> Void) -> Void = { _, done in done(nil) }) {
       let permissions = CameraPermissions(authorization: authorization, notifications: notifications)
       weak var harness: Harness?
       controls = CameraControls(camera: fake)
       view = HybridDocumentScannerCameraView(camera: fake, permissions: permissions, notifications: notifications,
                                              inBackground: { harness?.background ?? false },
-                                             models: { _, done in done(nil) },
+                                             models: models,
                                              detector: detector, controls: controls,
                                              clock: { hostClockNs() + (harness?.clockOffsetNs ?? 0) })
       harness = self
@@ -507,21 +512,65 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertEqual(frames.frame(PixelSize(1920, 1440)), .first(1, PixelSize(1920, 1440)))
     XCTAssertNil(frames.frame(PixelSize(1920, 1440)))
     XCTAssertEqual(frames.frame(PixelSize(1280, 960)), .resized(1, PixelSize(1280, 960)))
-    frames.rearm(1)
-    XCTAssertEqual(frames.frame(PixelSize(1280, 960)), .first(1, PixelSize(1280, 960)), "after an interruption")
-    frames.rearm(2)
-    XCTAssertNil(frames.frame(PixelSize(1280, 960)), "a stale interruption arms nothing")
-    // Restart: the stop disarms, so a late frame of run 1 reports nothing until run 2 is armed.
+    // Interruption disarms. Only the resumed epoch can publish the next first frame.
     frames.disarm()
     XCTAssertNil(frames.frame(PixelSize(1920, 1440)))
     frames.arm(2)
     XCTAssertEqual(frames.frame(PixelSize(640, 480)), .first(2, PixelSize(640, 480)))
-    XCTAssertEqual(frames.takeCounts().delivered, 8)
+    XCTAssertNil(frames.frame(PixelSize(640, 480)))
+    XCTAssertEqual(frames.takeCounts().delivered, 6)
     XCTAssertEqual(frames.takeCounts().delivered, 0)
   }
 
   /// A frame arriving while a start waits on the camera queue cannot mark that start ready:
   /// the start arms frame reporting only on the queue, after the earlier run has drained.
+  @MainActor
+  func testStartupConfigurationSurvivesAnInterruptionBeforeMainDelivery() {
+    let gate = DispatchSemaphore(value: 0)
+    defer { gate.signal() }
+    let camera = AVCameraSession(discovery: { gate.wait(); return nil })
+    let size = PixelSize(640, 480)
+    let configuration = CameraConfiguration(photo: size, video: size)
+    let delivered = expectation(description: "configuration delivered")
+    var events: [CameraSessionEvent] = []
+    camera.onEvent = {
+      events.append($0)
+      if $0 == .configured(configuration) { delivered.fulfill() }
+    }
+    camera.start(CameraRequest(analysisFrameWidth: 640))
+    camera.publishConfiguration(configuration, run: 1)
+    camera.interrupt(run: 1)
+    wait(for: [delivered], timeout: 5)
+    XCTAssertEqual(events, [.interrupted, .configured(configuration)])
+    camera.stop()
+  }
+
+  @MainActor
+  func testReplacementStartIgnoresQueuedConfigurationAndFramesFromTheOldStart() {
+    let gate = DispatchSemaphore(value: 0)
+    defer { gate.signal(); gate.signal() }
+    let camera = AVCameraSession(discovery: { gate.wait(); return nil })
+    let oldSize = PixelSize(640, 480)
+    let newSize = PixelSize(1280, 960)
+    let replacement = CameraConfiguration(photo: newSize, video: newSize)
+    let delivered = expectation(description: "replacement configuration delivered")
+    var events: [CameraSessionEvent] = []
+    camera.onEvent = {
+      events.append($0)
+      if $0 == .configured(replacement) { delivered.fulfill() }
+    }
+    camera.start(CameraRequest(analysisFrameWidth: 640))
+    camera.publishConfiguration(CameraConfiguration(photo: oldSize, video: oldSize), run: 1)
+    camera.frames.arm(1)
+    camera.frameArrived(oldSize)
+    camera.stop()
+    camera.start(CameraRequest(analysisFrameWidth: 1280))
+    camera.publishConfiguration(replacement, run: 3)
+    wait(for: [delivered], timeout: 5)
+    XCTAssertEqual(events, [.configured(replacement)])
+    camera.stop()
+  }
+
   @MainActor
   func testAFrameBeforeTheQueueArmsTheStartIsIgnored() {
     let gate = DispatchSemaphore(value: 0)
@@ -1084,6 +1133,204 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertEqual(outcome(failed), .second(.cameraUnavailable), "rejected at once, not at a quality deadline")
     frames.feed(5)
     XCTAssertTrue(h.fake.stills.isEmpty)
+  }
+
+  @MainActor
+  func testMediaResetWaitsForThePhysicalSlotAndRetriesOnlyOnceBeforeStreaming() throws {
+    let (h, state) = try gated()
+    defer { _ = state.close() }
+    let shot = photo(h.view)
+    let deliver = try XCTUnwrap(h.fake.stills.first?.events)
+    h.fake.stop()
+    h.fake.emit(.mediaServicesReset)
+    XCTAssertEqual(outcome(shot), .second(.cameraUnavailable))
+    XCTAssertEqual(h.fake.starts.count, 1)
+    XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy))
+    deliver(.exposed)
+    deliver(.delivered(try encodedStill(width: 320, height: 240)))
+    XCTAssertTrue(state.snapshot().pages.isEmpty)
+    XCTAssertEqual(h.fake.starts.count, 2)
+    h.fake.stop()
+    h.fake.emit(.mediaServicesReset)
+    XCTAssertEqual(h.fake.starts.count, 2)
+    XCTAssertEqual(h.errors, [.cameraUnavailable])
+    h.post(UIApplication.didEnterBackgroundNotification)
+    h.post(UIApplication.willEnterForegroundNotification)
+    XCTAssertEqual(h.fake.starts.count, 3)
+  }
+
+  @MainActor
+  func testReturningToTheSameModelIgnoresTheEarlierLoadAndDisposalIgnoresTheCurrentLoad() {
+    var loads: [(ScannerErrorCode?) -> Void] = []
+    let h = Harness { _, completion in loads.append(completion) }
+    h.attach()
+    h.view.afterUpdate()
+    h.view.cornerDetectionModel = "other.tflite"
+    h.view.afterUpdate()
+    h.view.cornerDetectionModel = "model.tflite"
+    h.view.afterUpdate()
+    XCTAssertEqual(loads.count, 3)
+    loads.first?(nil)
+    XCTAssertTrue(h.fake.starts.isEmpty)
+    h.view.onDropView()
+    loads.last?(nil)
+    XCTAssertTrue(h.fake.starts.isEmpty)
+  }
+
+  @MainActor
+  func testConfigurationDeliveredWhileInterruptedBindsOnTheFirstFrame() {
+    let h = Harness()
+    h.view.afterUpdate()
+    h.attach()
+    let size = PixelSize(640, 480)
+    var capabilities = CameraCapabilities()
+    capabilities.torch = true
+    let configuration = CameraConfiguration(photo: size, video: size, capabilities: capabilities)
+    h.fake.emit(.interrupted)
+    h.fake.emit(.configured(configuration))
+    XCTAssertEqual(h.view.configuration, configuration)
+    XCTAssertEqual(h.view.cameraState, .starting)
+    XCTAssertFalse(h.controls.isBound)
+    XCTAssertTrue(h.fake.commands.isEmpty)
+    h.fake.emit(.streaming(size))
+    XCTAssertEqual(h.view.cameraState, .ready)
+    XCTAssertTrue(h.controls.isBound)
+    XCTAssertEqual(h.fake.commands.filter { $0 == .torch(false) }.count, 1)
+  }
+
+  @MainActor
+  func testResumingWhileACancelledStillSettlesStartsTheStreamAndBindsControlsOnce() throws {
+    var capabilities = CameraCapabilities()
+    capabilities.torch = true
+    let (h, state) = try gated(capabilities)
+    defer { _ = state.close() }
+    let shot = photo(h.view)
+    let deliver = try XCTUnwrap(h.fake.stills.first?.events)
+    h.fake.emit(.interrupted)
+    XCTAssertEqual(outcome(shot), .second(.cameraUnavailable))
+    h.view.torch = .on
+    h.view.afterUpdate()
+
+    let size = PixelSize(640, 480)
+    h.fake.emit(.streaming(size))
+    let resumedGeneration = h.detector.state.current
+    h.fake.emit(.streaming(size))
+    XCTAssertEqual(h.detector.state.current, resumedGeneration)
+    XCTAssertFalse(h.controls.isBound)
+    XCTAssertFalse(h.fake.commands.contains(.torch(true)))
+    XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy))
+
+    deliver(.failed(.cameraUnavailable))
+    XCTAssertTrue(h.controls.isBound)
+    XCTAssertEqual(h.fake.commands.filter { $0 == .torch(true) }.count, 1)
+    XCTAssertEqual(h.detector.state.current, resumedGeneration)
+    XCTAssertTrue(state.snapshot().pageIds.isEmpty)
+  }
+
+  @MainActor
+  func testResumedStreamingSamplesFocusAfterConsumersAreReady() throws {
+    let (h, state) = try gated()
+    defer { _ = state.close() }
+    var autofocus: [AutofocusState] = []
+    h.view.onAutofocusChange = { autofocus.append($0) }
+    h.fake.emit(.interrupted)
+    let scanning = FocusObservation(adjusting: true, locked: false)
+    h.fake.focusSample = scanning
+    h.fake.focusEvents?(scanning)
+    XCTAssertEqual(autofocus.last, .inactive)
+    // The lens is still moving, so KVO has no change to report after the first frame.
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    XCTAssertEqual(autofocus.last, .scan)
+  }
+
+  @MainActor
+  func testRepeatedCaptureReviewBackgroundAndSessionReplacementRetiresStorage() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let sources = root.appendingPathComponent("sources")
+    let sessions = root.appendingPathComponent("sessions")
+    let store = SourceStore(directory: sources)
+    let registry = ScanSessionRegistry(root: sessions, store: store,
+                                       queue: ScannerWorkQueue(worker: DispatchQueue(label: "test.lifecycle")))
+    defer {
+      store.shutdown()
+      store.drain()
+      try? FileManager.default.removeItem(at: root)
+    }
+    let h = Harness()
+    defer { h.view.onDropView(); h.window.isHidden = true }
+    h.window.isHidden = false
+    let size = PixelSize(320, 240)
+    let still = try encodedStill(width: 320, height: 240)
+    h.attach()
+
+    for iteration in 0..<6 {
+      let state = try registry.createState(actions: { _ in RecordedCornerSets() })
+      let session = HybridScanSession(state: state)
+      h.view.session = session
+      h.view.afterUpdate()
+      h.fake.emit(.configured(CameraConfiguration(photo: size, video: size)))
+      h.fake.emit(.streaming(size))
+      let capture = photo(h.view)
+      guard let deliver = h.fake.stills.popLast()?.events else { return XCTFail("missing still") }
+      deliver(.exposed)
+      deliver(.delivered(still))
+      guard case .first(let id) = outcome(capture) else { return XCTFail("capture did not publish") }
+      XCTAssertEqual(state.snapshot().pageIds, [id])
+      let pager = HybridImagePagerView()
+      pager.session = session
+      pager.selectedPageId = id
+      let crop = HybridDocumentCropEditorView()
+      crop.session = session
+      crop.pageId = id
+      let pagerLoaded = expectation(description: "pager loaded session \(iteration)")
+      let cropLoaded = expectation(description: "crop loaded session \(iteration)")
+      var pagerLoads: [String] = []
+      var cropLoads = 0
+      pager.onLoad = { page in
+        pagerLoads.append(page)
+        if pagerLoads.count == 1 { pagerLoaded.fulfill() }
+      }
+      crop.onLoad = { _, _ in
+        cropLoads += 1
+        if cropLoads == 1 { cropLoaded.fulfill() }
+      }
+      for view in [pager.view, crop.view] {
+        view.frame = h.window.bounds
+        h.window.addSubview(view)
+      }
+      pager.afterUpdate()
+      crop.afterUpdate()
+      h.window.layoutIfNeeded()
+      wait(for: [pagerLoaded, cropLoaded], timeout: 10)
+      XCTAssertEqual(pagerLoads.last, id)
+      XCTAssertNotNil((pager.view as? ImagePagerView)?.shownCell?.image.image)
+      XCTAssertNotNil(crop.photo)
+      h.post(UIApplication.didEnterBackgroundNotification)
+      XCTAssertEqual(h.view.cameraState, .suspended)
+      let starts = h.fake.starts.count
+      h.post(UIApplication.willEnterForegroundNotification)
+      // A writer may still be handing the completed shot back to main.
+      let deadline = Date().addingTimeInterval(5)
+      while h.fake.starts.count == starts && Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+      }
+      XCTAssertEqual(h.fake.starts.count, starts + 1)
+      h.view.session = HybridScanSession.placeholder()
+      h.view.afterUpdate()
+      pager.onDropView()
+      crop.onDropView()
+      pager.view.removeFromSuperview()
+      crop.view.removeFromSuperview()
+      let closed = expectation(description: "closed session \(iteration)")
+      state.close().whenComplete { @Sendable error in
+        XCTAssertNil(error)
+        closed.fulfill()
+      }
+      wait(for: [closed], timeout: 10)
+      store.drain()
+      XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: sources.path), [])
+      XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: sessions.path), [])
+    }
   }
 
   @MainActor

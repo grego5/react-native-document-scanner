@@ -728,6 +728,27 @@ final class CropEditorTests: XCTestCase {
   // MARK: Lifecycle
 
   @MainActor
+  func testDroppingEditorWithAQueuedDecodeReleasesTheSourceWithoutPublishing() throws {
+    let state = try session()
+    let url = try admit(state, "page")
+    drain()
+    let gate = block()
+    let reports = Reports()
+    let hybrid = makeHybrid(state, "page", reports: reports)
+    host(hybrid.view)
+    XCTAssertTrue(reports.loads.isEmpty)
+    hybrid.onDropView()
+    gate.signal()
+    drain()
+    XCTAssertNil(editorView(hybrid).image)
+    XCTAssertTrue(reports.loads.isEmpty)
+    XCTAssertTrue(reports.errors.isEmpty)
+    try state.removePage("page")
+    waitUntil("original deleted") { !FileManager.default.fileExists(atPath: url.path) }
+    _ = state.close()
+  }
+
+  @MainActor
   func testDetachReleasesTheImageAndRemovalCancelsADragAndInvalidatesTheDraftSilently() throws {
     let state = try session()
     let url = try admit(state, "page")

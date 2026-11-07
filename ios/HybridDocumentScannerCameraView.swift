@@ -80,6 +80,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var started: CameraRequest?
   /// A failed start stays suspended until a lifecycle change or a new request retries it.
   private var failed = false
+  private var retriedMediaReset = false
   private var streaming = false
   private(set) var configuration: CameraConfiguration?
   /// The size of the latest delivered video buffer; nil until the first frame.
@@ -97,6 +98,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var reportedDocument: DocumentState?
   /// The source the camera waits for; nil before the first update.
   private var requestedModel: String?
+  private var modelRequestID = UUID()
   private var modelReady = false
   private var guideOn = true
   private var resolvedScore = 0.95
@@ -157,10 +159,10 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       guard !dropped else { return }
       updateSession()
       let nextActive = active ?? true
-      if nextActive != activeApplied { activeApplied = nextActive; failed = false }
+      if nextActive != activeApplied { activeApplied = nextActive; failed = false; retriedMediaReset = false }
       let next = CameraRequest(analysisFrameWidth: CameraFormatPolicy.analysisFrameWidth(analysisFrameWidth),
                                highResolutionPhoto: highResolutionPhoto ?? true)
-      if next != request { request = next; failed = false }
+      if next != request { request = next; failed = false; retriedMediaReset = false }
       applyFraming()
       controls.update(controlSettings)
       updateGuide()
@@ -181,7 +183,6 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       stopObserving()
       removeSessionObserver?(); removeSessionObserver = nil
       borrowed = nil
-      cancelCapture(.cameraUnavailable)
       evaluate()
     }
   }
@@ -222,6 +223,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     if inWindow == attached { return }
     attached = inWindow
     failed = false
+    retriedMediaReset = false
     if inWindow { startObserving() } else { stopObserving() }
     evaluate()
   }
@@ -231,6 +233,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     removePermissionListener = permissions.addListener { [weak self] _ in
       guard let self else { return }
       failed = false
+      retriedMediaReset = false
       evaluate()
     }
     lifecycleObservers = [
@@ -253,6 +256,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     guard foreground != value else { return }
     foreground = value
     failed = false
+    retriedMediaReset = false
     evaluate()
   }
 
@@ -269,7 +273,6 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       // Inactivity and a new request wait for the shot; losing availability cancels it.
       stopCamera()
       started = request
-      detector.begin(enabled: guideOn)
       camera.start(request)
       setDocumentState(boundDocumentState)
     }
@@ -279,11 +282,12 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// A stop invalidates the capture at once; a physical shot's slot stays busy until the camera
   /// settles it. Inactivity alone defers this stop until the capture finishes.
   private func stopCamera(keepFrozen: Bool = false) {
+    if started != nil {
+      camera.stop()
+      started = nil
+      reset()
+    }
     cancelCapture(.cameraUnavailable, keepFrozen: keepFrozen)
-    guard started != nil else { return }
-    camera.stop()
-    started = nil
-    reset()
   }
 
   private func reset() {
@@ -305,26 +309,55 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     switch event {
     case .configured(let configuration):
       self.configuration = configuration
-      controls.bind(configuration.capabilities)
-      trackRotation()
       MainActor.assumeIsolated { preview.video = configuration.video }
     case .streaming(let size):
-      streaming = true
       frameSize = size
+      if !streaming {
+        streaming = true
+        retriedMediaReset = false
+        detector.begin(enabled: guideOn)
+        trackRotation()
+        setDocumentState(boundDocumentState)
+        bindControlsIfReady()
+        camera.requestFocusObservation()
+      }
     case .frameSize(let size):
       frameSize = size
     case .interrupted:
-      // Evidence from before the interruption no longer describes the camera.
       streaming = false
+      frameSize = nil
+      latestGuide = nil
+      detector.stop()
+      controls.unbind(preservingTorchDecision: true)
+      rotationObservations = []
+      rotation = nil
+      MainActor.assumeIsolated { preview.guide.clear() }
+      setDocumentState(.off)
       cancelCapture(.cameraUnavailable, reportFailure: true)
+    case .mediaServicesReset:
+      started = nil
+      reset()
+      cancelCapture(.cameraUnavailable, reportFailure: true)
+      failed = retriedMediaReset
+      if failed {
+        onError?(ScannerFailure(code: .cameraUnavailable))
+      } else {
+        retriedMediaReset = true
+        evaluate()
+      }
     case .failed(let code):
-      cancelCapture(code, reportFailure: true)
       started = nil
       failed = true
       reset()
+      cancelCapture(code, reportFailure: true)
       onError?(ScannerFailure(code: code))
     }
     report()
+  }
+
+  private func bindControlsIfReady() {
+    guard streaming, !capturing, !controls.isBound, let configuration else { return }
+    controls.bind(configuration.capabilities)
   }
 
   private func trackRotation() {
@@ -336,14 +369,18 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
         coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.initial, .new]) {
           [weak self] coordinator, _ in
           let angle = Double(coordinator.videoRotationAngleForHorizonLevelPreview)
-          DispatchQueue.main.async { MainActor.assumeIsolated { self?.preview.rotationAngle = angle } }
+          DispatchQueue.main.async { [weak coordinator] in
+            guard let self, let coordinator, rotation === coordinator else { return }
+            MainActor.assumeIsolated { preview.rotationAngle = angle }
+          }
         },
         coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.initial, .new]) {
           [weak self] coordinator, _ in
           let angle = Double(coordinator.videoRotationAngleForHorizonLevelCapture)
-          DispatchQueue.main.async {
-            self?.captureAngle = angle
-            self?.updateDetectorSettings()
+          DispatchQueue.main.async { [weak coordinator] in
+            guard let self, let coordinator, rotation === coordinator else { return }
+            captureAngle = angle
+            updateDetectorSettings()
           }
         },
       ]
@@ -392,7 +429,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     guard nextGuide != guideOn else { return }
     guideOn = nextGuide
     latestGuide = nil
-    guard started != nil else { return }
+    guard started != nil, configuration == nil || streaming || controls.isBound else { return }
     detector.setEnabled(nextGuide)
     MainActor.assumeIsolated { preview.guide.clear() }
     setDocumentState(boundDocumentState)
@@ -433,12 +470,15 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     let source = cornerDetectionModel ?? ""
     guard source != requestedModel else { return }
     requestedModel = source
+    let id = UUID()
+    modelRequestID = id
     modelReady = false
     failed = false
+    retriedMediaReset = false
     detector.invalidate()
     // Completions arrive on main.
     models(source) { [weak self] code in
-      guard let self, !dropped, requestedModel == source, code != .modelSuperseded else { return }
+      guard let self, !dropped, modelRequestID == id, code != .modelSuperseded else { return }
       if let code {
         stopCamera()
         setDocumentState(.unavailable)
@@ -632,10 +672,10 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   /// Coalesces events that arrive in one main turn, such as a focus change and a torch completion.
   private func scheduleCaptureEvaluation() {
-    guard waiting != nil, !evaluationScheduled else { return }
+    guard let capture = waiting, !evaluationScheduled else { return }
     evaluationScheduled = true
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
+    DispatchQueue.main.async { [weak self, weak capture] in
+      guard let self, let capture, waiting === capture else { return }
       evaluationScheduled = false
       evaluateCapture()
     }
@@ -816,6 +856,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   /// The capture stops waiting: its deadline and frame wake-ups end. The caller sets the next phase.
   private func endWaiting(_ capture: GatedCapture) {
+    evaluationScheduled = false
     capture.deadline?.cancel()
     capture.deadline = nil
     detector.onFrames = nil
@@ -846,7 +887,9 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     let rejected: Bool
     switch phase {
     case .idle: return
-    case .exposing(let shot), .saving(let shot): rejected = shot.ticket.reject(code, invalidating: true)
+    case .exposing(let shot), .saving(let shot):
+      detector.cancelFrameRequest()
+      rejected = shot.ticket.reject(code, invalidating: true)
     case .waiting(let capture):
       rejected = capture.ticket.reject(code)
       release(capture)
@@ -943,10 +986,18 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// review. An inactive one keeps the frozen frame until its usual release.
   private func finishShot(_ shot: StillShot) {
     guard physical === shot else { return }
+    detector.cancelFrameRequest()
     phase = .idle
     guard !dropped else { return }
     // Releases focus held for the shot and applies torch and exposure changes that waited for it.
-    controls.afterCapture()
+    if controls.isBound {
+      controls.afterCapture()
+    } else {
+      bindControlsIfReady()
+      if controls.isBound {
+        camera.requestFocusObservation()
+      }
+    }
     applyFraming()
     evaluate()
     if activeApplied { MainActor.assumeIsolated { preview.clearFrozen(id: shot.id) } }
