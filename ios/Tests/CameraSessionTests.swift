@@ -591,6 +591,8 @@ final class CameraSessionTests: XCTestCase {
     h.view.afterUpdate()
     h.attach()
     h.fake.emit(.streaming(PixelSize(640, 480)))
+    var stages: [CaptureStage] = []
+    h.view.onCaptureStage = { stage, _ in stages.append(stage) }
     let shot = photo(h.view)
     let replacement = HybridScanSession()
     defer { _ = replacement.state?.close() }
@@ -598,11 +600,15 @@ final class CameraSessionTests: XCTestCase {
     h.view.afterUpdate()
     XCTAssertEqual(outcome(shot), .second(.processorSuperseded), "rejected at once")
     XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy), "the physical shot still owns the slot")
+    h.fake.stills[0].events(.exposed)
     h.fake.stills[0].events(.delivered(try encodedStill(width: 320, height: 240)))
+    XCTAssertEqual(stages, [.waiting, .shooting], "obsolete stages do not reach the replacement")
     XCTAssertTrue(state.snapshot().pages.isEmpty, "nothing reaches the old session")
     XCTAssertTrue(replacement.state?.snapshot().pages.isEmpty ?? false, "nor the new one")
     let next = photo(h.view)
     XCTAssertEqual(h.fake.stills.count, 2, "the slot is free again")
+    h.fake.stills[0].events(.exposed)
+    XCTAssertEqual(stages, [.waiting, .shooting, .waiting, .shooting])
     h.view.onDropView()
     XCTAssertEqual(outcome(next), .second(.cameraUnavailable), "unmount rejects the shot in flight")
   }
@@ -808,15 +814,16 @@ final class CameraSessionTests: XCTestCase {
     defer { _ = state.close() }
     var stages: [CaptureWaitReason?] = []
     var capture: [CameraCaptureState] = []
+    var events: [CaptureStage] = []
     h.view.onCaptureStage = { stage, reason in
-      XCTAssertEqual(stage, .waiting)
-      stages.append(reason)
+      events.append(stage)
+      if stage == .waiting { stages.append(reason) }
     }
     h.view.onCaptureStateChange = { capture.append($0) }
     let frames = Frames(h)
     let shot = photo(h.view, gated: true)
     XCTAssertTrue(h.fake.stills.isEmpty, "no page yet")
-    XCTAssertEqual(stages, [.document])
+    XCTAssertEqual(stages, [nil, .document])
     XCTAssertEqual(capture.last, .waiting)
     XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy), "a waiting capture owns the slot")
     h.view.squareAspectRatio = true
@@ -824,14 +831,41 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertEqual(h.view.analysisFraming?.square, false, "framing waits for the capture")
     frames.feed(3)
     XCTAssertTrue(h.fake.stills.isEmpty, "three steady frames are not enough")
-    XCTAssertEqual(stages, [.document, .steady])
+    XCTAssertEqual(stages, [nil, .document, .steady])
     frames.feed()
     XCTAssertEqual(h.fake.stills.count, 1, "the fourth steady frame shoots")
     frames.feed(2)
     XCTAssertEqual(h.fake.stills.count, 1, "the gate shoots once")
+    XCTAssertEqual(events, [.waiting, .waiting, .waiting, .shooting])
+    h.fake.stills[0].events(.exposed)
+    h.fake.stills[0].events(.exposed)
+    XCTAssertEqual(events.last, .captured)
+    XCTAssertEqual(events.count, 5)
     h.fake.stills[0].events(.delivered(try encodedStill(width: 640, height: 480, orientation: 6)))
     guard case .first(let id) = outcome(shot) else { return XCTFail("the gated shot is admitted") }
     XCTAssertNotNil(state.snapshot().pages[id])
+  }
+
+  @MainActor
+  func testDisabledFeedbackStillReportsExposureAndWriteFailureWithoutReplay() throws {
+    let (h, state) = try gated()
+    defer { _ = state.close() }
+    h.view.captureFeedback = false
+    h.view.afterUpdate()
+    var stages: [CaptureStage] = []
+    h.view.onCaptureStage = { stage, _ in stages.append(stage) }
+    let shot = photo(h.view)
+    XCTAssertEqual(stages, [.waiting, .shooting])
+    XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy))
+    XCTAssertEqual(stages, [.waiting, .shooting])
+    h.view.onCaptureStage = { stage, _ in stages.append(stage) }
+    h.view.afterUpdate()
+    XCTAssertEqual(stages, [.waiting, .shooting])
+    h.fake.stills[0].events(.exposed)
+    h.fake.stills[0].events(.delivered(Data()))
+    guard case .second = outcome(shot) else { return XCTFail("invalid data must fail to save") }
+    settle()
+    XCTAssertEqual(stages, [.waiting, .shooting, .captured, .failed])
   }
 
   @MainActor
@@ -888,7 +922,7 @@ final class CameraSessionTests: XCTestCase {
     h.view.onCaptureStage = { stages.append($1) }
     let lit = try XCTUnwrap(h.fake.commands.lastIndex(of: .torch(true)), "the torch was sent at bind")
     let shot = photo(h.view, gated: true)
-    XCTAssertEqual(stages, [.light], "an unanswered torch command holds the shot")
+    XCTAssertEqual(stages, [nil, .light], "an unanswered torch command holds the shot")
     XCTAssertTrue(h.fake.stills.isEmpty)
     h.view.torch = .off
     h.view.afterUpdate()

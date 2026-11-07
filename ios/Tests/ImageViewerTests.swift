@@ -290,6 +290,33 @@ final class ImageViewerTests: XCTestCase {
   }
 
   @MainActor
+  func testCapturePreviewCoversTheCurrentThumbnailDecode() throws {
+    let state = try session(failures: 1)
+    let preview = picture(width: 64, height: 48)
+    let source = try store.publish(image: picture(width: 480, height: 360))
+    try state.admitSource(id: "shot", source: source, selection: nil, preview: preview)
+    drain()
+    let gate = block()
+    let viewer = Viewer(thumbnails: thumbnails)
+    let window = host(viewer.view)
+    viewer.loader.bind(state, "shot")
+    XCTAssertEqual(size(viewer.view.image), CGSize(width: 64, height: 48))
+    XCTAssertTrue(viewer.loaded.isEmpty)
+    XCTAssertNotNil(state.retainedPreview("shot"))
+    gate.signal()
+    waitUntil("capture thumbnail installed") { viewer.loaded == ["shot"] }
+    XCTAssertEqual(size(viewer.view.image), CGSize(width: 480, height: 360))
+    XCTAssertNil(state.retainedPreview("shot"))
+    viewer.loader.clear()
+    let another = try store.publish(image: picture(width: 320, height: 240))
+    try state.admitSource(id: "another", source: another, selection: nil, preview: preview)
+    XCTAssertNotNil(state.retainedPreview("another"))
+    close(state)
+    XCTAssertNil(state.retainedPreview("another"))
+    _ = window
+  }
+
+  @MainActor
   func testOriginalThenPngRenderKeepsPreviousImageUntilReplacementInstalls() throws {
     let lock = NSLock()
     var deliveries: [() -> Void] = []

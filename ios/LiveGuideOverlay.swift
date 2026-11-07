@@ -111,6 +111,9 @@ final class LiveGuideOverlay: UIView {
   var drawnPoints: [CGFloat] { transition.points }
   var strokeAlpha: CGFloat { stateAlpha }
   var showsViewfinder: Bool { viewfinder && !transition.hasPoints && brackets.path != nil }
+  var feedbackPath: CGPath? {
+    outline.path ?? (viewfinderRect.isEmpty ? nil : CGPath(rect: viewfinderRect, transform: nil))
+  }
 
   init(clock: @escaping () -> Int64 = { Int64(DispatchTime.now().uptimeNanoseconds) }) {
     self.clock = clock
@@ -245,15 +248,19 @@ final class LiveGuideOverlay: UIView {
 
   /// Corner brackets around the largest A-series portrait page that fits 80% of the view, or of
   /// its centered square, centered.
-  private func viewfinderPath() -> CGPath? {
-    guard bounds.width > 0, bounds.height > 0 else { return nil }
+  private var viewfinderRect: CGRect {
     let w = square ? min(bounds.width, bounds.height) : bounds.width
     let h = square ? w : bounds.height
     let pageWidth = min(w * Self.viewfinderFill, h * Self.viewfinderFill / Self.pageAspect)
     let pageHeight = pageWidth * Self.pageAspect
-    let rect = CGRect(x: bounds.midX - pageWidth / 2, y: bounds.midY - pageHeight / 2,
-                      width: pageWidth, height: pageHeight)
-    let arm = pageWidth * Self.viewfinderArm
+    return CGRect(x: bounds.midX - pageWidth / 2, y: bounds.midY - pageHeight / 2,
+                  width: pageWidth, height: pageHeight)
+  }
+
+  private func viewfinderPath() -> CGPath? {
+    let rect = viewfinderRect
+    guard !rect.isEmpty else { return nil }
+    let arm = rect.width * Self.viewfinderArm
     let path = CGMutablePath()
     for (x, y) in [(rect.minX, rect.minY), (rect.maxX, rect.minY), (rect.maxX, rect.maxY), (rect.minX, rect.maxY)] {
       let dx = x == rect.minX ? arm : -arm, dy = y == rect.minY ? arm : -arm

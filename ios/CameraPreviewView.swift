@@ -7,6 +7,9 @@ import UIKit
 final class CameraPreviewView: UIView {
   let previewLayer = AVCaptureVideoPreviewLayer()
   let guide = LiveGuideOverlay()
+  lazy var feedback = CaptureFeedbackOverlay(guide: guide)
+  private let frozen = UIImageView()
+  private var frozenID: String?
   var onWindowChange: (() -> Void)?
   var onResize: (() -> Void)?
   /// A tap on the shown preview, as an AVFoundation device point (unit sensor coordinates).
@@ -26,7 +29,12 @@ final class CameraPreviewView: UIView {
     previewLayer.videoGravity = .resizeAspectFill
     previewLayer.isHidden = true
     layer.addSublayer(previewLayer)
+    frozen.contentMode = .scaleAspectFit
+    frozen.backgroundColor = .black
+    frozen.isHidden = true
+    addSubview(frozen)
     addSubview(guide)
+    addSubview(feedback)
     addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
   }
 
@@ -59,12 +67,36 @@ final class CameraPreviewView: UIView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    frozen.frame = bounds
     guide.frame = bounds
+    feedback.frame = bounds
     place()
     if bounds.size != placedSize {
       placedSize = bounds.size
       onResize?()
     }
+  }
+
+  func freeze(_ image: CGImage, rotation: Int, id: String) {
+    frozenID = id
+    let orientation: UIImage.Orientation
+    switch rotation {
+    case 90: orientation = .right
+    case 180: orientation = .down
+    case 270: orientation = .left
+    default: orientation = .up
+    }
+    frozen.image = UIImage(cgImage: image, scale: 1, orientation: orientation)
+    frozen.isHidden = false
+    guide.isHidden = true
+  }
+
+  func clearFrozen(id: String? = nil) {
+    guard id == nil || id == frozenID else { return }
+    frozenID = nil
+    frozen.image = nil
+    frozen.isHidden = true
+    guide.isHidden = false
   }
 
   /// Applies the angle to the preview connection, which exists once the session has an input.

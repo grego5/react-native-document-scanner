@@ -277,7 +277,7 @@ final class StillCaptureTests: XCTestCase {
 
   private func save(_ shot: StillShot, _ data: Data) {
     let done = expectation(description: "saved")
-    shot.save(data) { done.fulfill() }
+    shot.save(data) { _ in done.fulfill() }
     wait(for: [done], timeout: 20)
   }
 
@@ -298,6 +298,11 @@ final class StillCaptureTests: XCTestCase {
     let thumbnail = try XCTUnwrap(state.thumbnailSource(shot.id), "the shutter frame is the page's thumbnail")
     let header = try SourceImageLoader.inspect(thumbnail.url)
     XCTAssertLessThan(header.width, 48, "straightened to the guide")
+    let preview = try XCTUnwrap(state.retainedPreview(shot.id))
+    XCTAssertEqual(PixelSize(preview.width, preview.height), PixelSize(48, 64))
+    thumbnail.close()
+    try state.removePage(shot.id)
+    XCTAssertNil(state.retainedPreview(shot.id))
   }
 
   func testAFrameRotatedAfterAcceptanceIsNotStraightenedToTheFrozenGuide() throws {

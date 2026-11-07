@@ -261,8 +261,10 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     let sized = MainActor.assumeIsolated { preview.bounds.width > 0 && preview.bounds.height > 0 }
     let available = !dropped && attached && foreground && sized && modelReady
       && permissions.status() == .granted
-    if !available || (!activeApplied && !capturing) {
+    if !available {
       stopCamera()
+    } else if !activeApplied && !capturing {
+      stopCamera(keepFrozen: true)
     } else if activeApplied && started != request && !failed && !capturing {
       // Inactivity and a new request wait for the shot; losing availability cancels it.
       stopCamera()
@@ -276,8 +278,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   /// A stop invalidates the capture at once; a physical shot's slot stays busy until the camera
   /// settles it. Inactivity alone defers this stop until the capture finishes.
-  private func stopCamera() {
-    cancelCapture(.cameraUnavailable)
+  private func stopCamera(keepFrozen: Bool = false) {
+    cancelCapture(.cameraUnavailable, keepFrozen: keepFrozen)
     guard started != nil else { return }
     camera.stop()
     started = nil
@@ -314,9 +316,9 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     case .interrupted:
       // Evidence from before the interruption no longer describes the camera.
       streaming = false
-      cancelCapture(.cameraUnavailable)
+      cancelCapture(.cameraUnavailable, reportFailure: true)
     case .failed(let code):
-      cancelCapture(code)
+      cancelCapture(code, reportFailure: true)
       started = nil
       failed = true
       reset()
@@ -378,6 +380,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     resolvedScore = score
     MainActor.assumeIsolated {
       let overlay = preview.guide
+      preview.feedback.color = captureColor.flatMap { UInt32(exactly: $0) } ?? 0xFFFFFFFF
+      if captureFeedback == false { preview.feedback.clear() }
       overlay.color = guideColor.flatMap { $0.isFinite ? UInt32(truncatingIfNeeded: Int64($0)) : nil }
         ?? LiveGuideOverlay.defaultColor
       overlay.transitionNs = guideTransitionDuration.flatMap { $0.isFinite ? Int64(max(0, $0) * 1_000_000) : nil }
@@ -616,10 +620,12 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
                                cursor: detector.frames.cursor(), focus: controls.snapshot,
                                lightChangedNs: controls.lightChangedNs)
     phase = .waiting(capture)
+    MainActor.assumeIsolated { preview.clearFrozen() }
     updateDetectorSettings()
     detector.onFrames = { [weak self] in self?.evaluateCapture() }
     CameraLog.logger.info(
       "capture requested skip=\(skipLowQualityControl, privacy: .public) config=\(String(describing: capture.config), privacy: .public)")
+    emitStage(.waiting)
     report()
     evaluateCapture()
   }
@@ -798,6 +804,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       CameraLog.logger.info(
         "capture rejected \(String(describing: code), privacy: .public) waiting for \(String(describing: reason), privacy: .public) stableFrames=\(capture.stability.count, privacy: .public) break=\(String(describing: capture.stability.lastBreak), privacy: .public)")
       capture.ticket.reject(code)
+      emitStage(.failed)
       release(capture)
       evaluate()
     case .shoot:
@@ -828,15 +835,23 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   /// The one cancellation path, for stop, interruption, failure, session replacement or close and
   /// unmount. A waiting capture rejects and frees its slot at once; a physical shot rejects and
-  /// keeps its slot until the camera or the writer settles it.
-  private func cancelCapture(_ code: ScannerErrorCode) {
+  /// keeps its slot until the camera or the writer settles it. With `reportFailure` (interruption or
+  /// runtime failure) the rejected request ends its stages with `failed`, once; otherwise its
+  /// feedback is simply invalidated. Either way the invalidated shot's later callbacks report nothing.
+  private func cancelCapture(_ code: ScannerErrorCode, keepFrozen: Bool = false, reportFailure: Bool = false) {
+    MainActor.assumeIsolated {
+      preview.feedback.clear()
+      if !keepFrozen { preview.clearFrozen() }
+    }
+    let rejected: Bool
     switch phase {
     case .idle: return
-    case .exposing(let shot), .saving(let shot): shot.ticket.reject(code)
+    case .exposing(let shot), .saving(let shot): rejected = shot.ticket.reject(code, invalidating: true)
     case .waiting(let capture):
-      capture.ticket.reject(code)
+      rejected = capture.ticket.reject(code)
       release(capture)
     }
+    if rejected, reportFailure { emitStage(.failed) }
   }
 
   /// The gate's first shoot. The still's rotation, framing and live guide come from one moment, now:
@@ -861,9 +876,21 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
                           square: appliedSquare, guide: guide, autoCrop: capture.autoCrop)
     phase = .exposing(still)
     updateDetectorSettings()
-    detector.requestFrame { [slot = still.frame] in slot.fill($0) }
+    let previewFraming = MainActor.assumeIsolated { preview.framing }
+    detector.requestFrame { [weak self, weak still] frame in
+      guard let still, let sample = still.frame.fill(frame) else { return }
+      DispatchQueue.main.async { [weak self, weak still] in
+        guard let self, let still, physical === still, !still.ticket.isInvalidated,
+              let previewFraming, preview.framing == previewFraming, let framing,
+              sample.orientation == framing.orientation,
+              PixelSize(sample.image.width, sample.image.height) == framing.framed else { return }
+        let rotation = (previewFraming.rotation - framing.rotation + 360) % 360
+        preview.freeze(sample.image, rotation: rotation, id: still.id)
+      }
+    }
     CameraLog.logger.info(
       "still requested quality=\(settings.quality, privacy: .public) priority=\(String(describing: settings.priority), privacy: .public)")
+    emitStage(.shooting)
     camera.capture(settings) { [weak self] event in
       guard let self else { still.ticket.reject(.cameraUnavailable); return }
       shotEvent(still, event)
@@ -872,22 +899,37 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   }
 
   private func shotEvent(_ shot: StillShot, _ event: StillEvent) {
+    guard physical === shot else { return }
     switch event {
     case .exposed:
+      guard case .exposing = phase else { return }
       markSaving(shot)
+      if !shot.ticket.isInvalidated { emitStage(.captured) }
       report()
     case .failed(let code):
-      shot.ticket.reject(code)
+      if shot.ticket.reject(code), !shot.ticket.isInvalidated { failShotFeedback(shot) }
       finishShot(shot)
     case .delivered(let data):
       markSaving(shot)
       // An invalidated shot writes nothing; the slot frees at once.
       guard !shot.ticket.isSettled else { return finishShot(shot) }
-      shot.save(data) {
-        DispatchQueue.main.async { [weak self] in self?.finishShot(shot) }
+      let id = shot.id
+      shot.save(data, previewReleased: { [weak self] in
+        self?.preview.clearFrozen(id: id)
+      }) { [weak self] outcome in
+        DispatchQueue.main.async { [weak self] in
+          guard let self, physical === shot else { return }
+          if outcome == .failed, !shot.ticket.isInvalidated { failShotFeedback(shot) }
+          finishShot(shot)
+        }
       }
       report()
     }
+  }
+
+  private func failShotFeedback(_ shot: StillShot) {
+    MainActor.assumeIsolated { preview.clearFrozen(id: shot.id) }
+    emitStage(.failed)
   }
 
   /// The shot's exposure ended: focus may move again, and the capture state is saving.
@@ -896,7 +938,9 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     phase = .saving(shot)
   }
 
-  /// Frees the busy slot, then applies the changes and the restart that waited for the shot.
+  /// Frees the busy slot, then applies the changes and the restart that waited for the shot. A
+  /// camera that stays active shows live video again; the session keeps its retained frame for
+  /// review. An inactive one keeps the frozen frame until its usual release.
   private func finishShot(_ shot: StillShot) {
     guard physical === shot else { return }
     phase = .idle
@@ -905,6 +949,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     controls.afterCapture()
     applyFraming()
     evaluate()
+    if activeApplied { MainActor.assumeIsolated { preview.clearFrozen(id: shot.id) } }
   }
 
   private var captureState: CameraCaptureState {
@@ -917,6 +962,13 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   }
 
   // MARK: - Callbacks
+
+  private func emitStage(_ stage: CaptureStage) {
+    if captureFeedback != false {
+      MainActor.assumeIsolated { preview.feedback.show(stage) }
+    }
+    onCaptureStage?(stage, nil)
+  }
 
   private func report() {
     let state = cameraState

@@ -130,18 +130,18 @@ enum StillProcessor {
   /// frame's upright pixels) when given, and commits it as the page's retained frame.
   static func writeFrame(_ frame: LiveFrame, corners: CornerCoordinates?,
                          to output: SessionResources.Output) throws -> SessionResources.Resource {
+    guard let frame = ShutterFrame(frame) else {
+      output.close()
+      throw ScannerCodeError(code: .captureFailed)
+    }
+    return try writeFrame(frame, corners: corners, to: output)
+  }
+
+  static func writeFrame(_ frame: ShutterFrame, corners: CornerCoordinates?,
+                         to output: SessionResources.Output) throws -> SessionResources.Resource {
     defer { output.close() }
-    guard output.resource.kind == .frame, frame.width > 0, frame.height > 0,
-          frame.pixels.count >= frame.width * frame.height * 4,
-          let orientation = CGImagePropertyOrientation(rawValue: UInt32(frame.orientation)),
-          let provider = CGDataProvider(data: frame.pixels as CFData),
-          let raw = CGImage(width: frame.width, height: frame.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                            bytesPerRow: frame.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue
-                              | CGBitmapInfo.byteOrder32Little.rawValue),
-                            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
-    else { throw ScannerCodeError(code: .captureFailed) }
-    var image = CIImage(cgImage: raw).oriented(orientation)
+    guard output.resource.kind == .frame else { throw ScannerCodeError(code: .captureFailed) }
+    var image = CIImage(cgImage: frame.image)
     let extent = image.extent
     if let corners, corners.count == 8, let filter = CIFilter(name: "CIPerspectiveCorrection") {
       // Core Image's origin is bottom-left.
@@ -166,6 +166,32 @@ enum StillProcessor {
   }
 }
 
+/// The bounded analysis sample in upright pixels, shared by the preview and still writer.
+struct ShutterFrame: @unchecked Sendable {
+  let image: CGImage
+  let orientation: UInt8
+
+  init?(_ frame: LiveFrame) {
+    guard frame.width > 0, frame.height > 0, frame.pixels.count >= frame.width * frame.height * 4,
+          let orientation = CGImagePropertyOrientation(rawValue: UInt32(frame.orientation)),
+          let provider = CGDataProvider(data: frame.pixels as CFData),
+          let raw = CGImage(width: frame.width, height: frame.height, bitsPerComponent: 8, bitsPerPixel: 32,
+                            bytesPerRow: frame.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue
+                              | CGBitmapInfo.byteOrder32Little.rawValue),
+                            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    else { return nil }
+    let upright = CIImage(cgImage: raw).oriented(orientation)
+    guard let image = orientation == .up ? raw : Self.context.createCGImage(upright, from: upright.extent) else {
+      return nil
+    }
+    self.image = image
+    self.orientation = frame.orientation
+  }
+
+  private static let context = CIContext(options: [.cacheIntermediates: false])
+}
+
 /// One accepted shot's publication claim and exactly-once settlement. Main invalidates it when
 /// the bound session is replaced or closes, or the view unmounts; a worker admits the page only
 /// while holding the claim, so an invalidated shot never publishes and an admitted page is never
@@ -173,16 +199,19 @@ enum StillProcessor {
 final class CaptureTicket: @unchecked Sendable {
   private let lock = NSLock()
   private var settled = false
+  private var invalidated = false
   private let deliver: (Result<CameraCaptureResult, ScannerCodeError>) -> Void
 
   init(_ deliver: @escaping (Result<CameraCaptureResult, ScannerCodeError>) -> Void) { self.deliver = deliver }
 
   var isSettled: Bool { lock.lock(); defer { lock.unlock() }; return settled }
+  var isInvalidated: Bool { lock.lock(); defer { lock.unlock() }; return invalidated }
 
   /// Rejects once; false when the shot already settled.
   @discardableResult
-  func reject(_ code: ScannerErrorCode) -> Bool {
+  func reject(_ code: ScannerErrorCode, invalidating: Bool = false) -> Bool {
     lock.lock()
+    if invalidating { invalidated = true }
     let first = !settled
     settled = true
     lock.unlock()
@@ -209,13 +238,31 @@ final class CaptureTicket: @unchecked Sendable {
 /// the shot's worker. A frame that has not arrived by then is not waited for.
 final class ShutterFrameSlot: @unchecked Sendable {
   private let lock = NSLock()
-  private var frame: LiveFrame?
-  func fill(_ frame: LiveFrame) { lock.lock(); self.frame = frame; lock.unlock() }
-  func take() -> LiveFrame? { lock.lock(); defer { frame = nil; lock.unlock() }; return frame }
+  private var frame: ShutterFrame?
+  private var taken = false
+
+  @discardableResult
+  func fill(_ frame: LiveFrame) -> ShutterFrame? {
+    guard let sample = ShutterFrame(frame) else { return nil }
+    lock.lock(); defer { lock.unlock() }
+    guard !taken, self.frame == nil else { return nil }
+    self.frame = sample
+    return sample
+  }
+
+  func take() -> ShutterFrame? {
+    lock.lock(); defer { frame = nil; lock.unlock() }
+    taken = true
+    return frame
+  }
 }
 
 /// One accepted takePhoto: everything frozen at acceptance, its ticket and its shutter frame.
 final class StillShot: @unchecked Sendable {
+  enum SaveOutcome: Sendable {
+    case published, failed, invalidated
+  }
+
   let id = UUID().uuidString.lowercased()
   let ticket: CaptureTicket
   let session: ScanSessionState
@@ -239,12 +286,14 @@ final class StillShot: @unchecked Sendable {
   private struct Saved {
     let still: PublishedStill
     let frame: SessionResources.Resource?
+    let preview: CGImage?
   }
 
   /// Publishes the delivered still and admits it on the session's image worker, settling the
   /// ticket; `done` runs once, on that worker, after every file this shot wrote is either owned
   /// by the admitted page or retired.
-  func save(_ data: Data, done: @escaping () -> Void) {
+  func save(_ data: Data, previewReleased: @escaping ScanSessionState.PreviewReleased = {},
+            done: @escaping (SaveOutcome) -> Void) {
     let resources = session.resources
     let store = resources.registry.store
     let discard = { (saved: Saved) in
@@ -256,24 +305,26 @@ final class StillShot: @unchecked Sendable {
         // An invalidated shot writes nothing.
         if ticket.isSettled { throw ScannerCodeError(code: .processorSuperseded) }
         let still = try StillProcessor.publish(data, square: square, quality: settings.quality, store: store)
-        return Saved(still: still, frame: retainFrame())
+        let sample = frame.take()
+        return Saved(still: still, frame: sample.flatMap(retainFrame), preview: sample?.image)
       },
       onSuccess: { [self] saved in
         let corners = guide.flatMap { StillGeometry.map($0.corners, from: $0.framing, toStill: saved.still.upright, square: square) }
           .flatMap { SessionCorners.renderable($0) ? $0 : nil }
-        let admitted = ticket.publish {
+        var savedPage = false
+        let claimed = ticket.publish {
           // admitSource retires the source and frame itself when admission fails.
           try session.admitSource(id: id, source: saved.still.url, frame: saved.frame,
                                   liveCorners: corners.map(SessionCorners.corners), options: options, selection: selection,
-                                  autoCrop: autoCrop)
+                                  autoCrop: autoCrop, preview: saved.preview, previewReleased: previewReleased)
+          savedPage = true
           return CameraCaptureResult(pageId: id, snapshot: session.snapshot())
         }
-        if !admitted { discard(saved) }
-        done()
+        if !claimed { discard(saved) }
+        done(claimed ? (savedPage ? .published : .failed) : .invalidated)
       },
       onFailure: { [self] error in
-        ticket.reject(ScannerCodeError.code(error, fallback: .captureFailed))
-        done()
+        done(ticket.reject(ScannerCodeError.code(error, fallback: .captureFailed)) ? .failed : .invalidated)
       },
       onDiscard: { saved in discard(saved) })
   }
@@ -283,9 +334,9 @@ final class StillShot: @unchecked Sendable {
   /// be written. The frame comes from analysis after acceptance, so a rotation in between (a half
   /// turn keeps the size) leaves it upright but unstraightened. Without `autoCrop` the page keeps
   /// the whole photo, so the frame stays unstraightened too.
-  private func retainFrame() -> SessionResources.Resource? {
-    guard let frame = frame.take(), let output = try? session.resources.output(.frame) else { return nil }
-    let upright = frame.orientation >= 5 ? PixelSize(frame.height, frame.width) : PixelSize(frame.width, frame.height)
+  private func retainFrame(_ frame: ShutterFrame) -> SessionResources.Resource? {
+    guard let output = try? session.resources.output(.frame) else { return nil }
+    let upright = PixelSize(frame.image.width, frame.image.height)
     let corners = (autoCrop ? guide : nil).flatMap {
       $0.framing.orientation == frame.orientation && $0.framing.framed == upright ? $0.corners : nil
     }

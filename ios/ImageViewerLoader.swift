@@ -62,7 +62,7 @@ final class ImageViewerLoader {
       self?.restore()
       self?.retry()
     }
-    image.onAttach = { [weak self] in self?.binding?.start() }
+    image.onAttach = { [weak self] in self?.startBinding() }
     image.onDetach = { [weak self] in
       guard let self else { return }
       binding?.close()
@@ -73,7 +73,7 @@ final class ImageViewerLoader {
 
   func bind(_ state: ScanSessionState, _ id: String) {
     if boundState === state && pageId == id {
-      if image.window != nil { binding?.start() }
+      if image.window != nil { startBinding() }
       return
     }
     clear()
@@ -83,7 +83,14 @@ final class ImageViewerLoader {
       guard let self else { next?.close(); return }
       changed(next)
     }, failed: { [weak self] in self?.onFailed($0) })
-    if image.window != nil { binding?.start() }
+    if image.window != nil { startBinding() }
+  }
+
+  private func startBinding() {
+    if source == nil, let pageId, let preview = boundState?.retainedPreview(pageId) {
+      image.replace(preview)
+    }
+    binding?.start()
   }
 
   /// Drops the images, any pending decode and the binding.
@@ -159,7 +166,10 @@ final class ImageViewerLoader {
     let previous = displayedSource
     displayedSource = source?.retain()
     image.fadeIn(next) { previous?.close() }
-    if let pageId { onLoaded(pageId) }
+    if let pageId {
+      boundState?.releaseCapturePreview(pageId)
+      onLoaded(pageId)
+    }
   }
 
   private func loadFull() {

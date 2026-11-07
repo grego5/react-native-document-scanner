@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Engine work for one session; every call runs on the session's serial image worker.
@@ -14,11 +15,14 @@ protocol ScanSessionActions: AnyObject {
 /// image work is keyed FIFO metadata. Page transitions use the lock, image actions run
 /// outside it, and versioned changes are copied under it and delivered afterwards.
 final class ScanSessionState: @unchecked Sendable {
+  typealias PreviewReleased = @MainActor @Sendable () -> Void
+
   let resources: SessionResources
   private let actions: ScanSessionActions
   private let lock = NSRecursiveLock()
   private let events: ScanSessionEvents
   private var pages: [String: ScanPage] = [:]
+  private var capturePreview: (id: String, image: CGImage, released: PreviewReleased)?
   private var queue: ScannerWorkQueue { resources.workOwner.queue }
   private var closed = false
   private var publications = 0
@@ -56,6 +60,20 @@ final class ScanSessionState: @unchecked Sendable {
 
   func hasPage(_ id: String) -> Bool { locked { !closed && pages[id] != nil } }
 
+  func retainedPreview(_ id: String) -> CGImage? {
+    locked { capturePreview?.id == id ? capturePreview?.image : nil }
+  }
+
+  func releaseCapturePreview(_ id: String) {
+    let released: PreviewReleased? = locked {
+      guard capturePreview?.id == id else { return nil }
+      let released = capturePreview?.released
+      capturePreview = nil
+      return released
+    }
+    if let released { DispatchQueue.main.async { released() } }
+  }
+
   // MARK: Source admission
 
   /// The internal handoff used by captures and native fixtures. Takes a SourceStore-
@@ -64,7 +82,7 @@ final class ScanSessionState: @unchecked Sendable {
   func admitSource(id: String, source: URL, frame: SessionResources.Resource? = nil, liveCorners: DocumentCorners? = nil,
                    options: DocumentRenderOptions? = nil,
                    selection: CornerInference.Selection? = try? CornerInference.shared.selection(),
-                   autoCrop: Bool = true) throws {
+                   autoCrop: Bool = true, preview: CGImage? = nil, previewReleased: @escaping PreviewReleased = {}) throws {
     let original: SessionResources.Resource
     do { original = try resources.adoptSource(source) }
     catch {
@@ -77,7 +95,7 @@ final class ScanSessionState: @unchecked Sendable {
     }
     do {
       try admit(id: id, original: original, frame: frame, liveCorners: liveCorners.map(SessionCorners.coordinates),
-                options: options, selection: selection, autoCrop: autoCrop)
+                options: options, selection: selection, autoCrop: autoCrop, preview: preview, previewReleased: previewReleased)
     } catch {
       resources.remove(original)
       if let frame { resources.remove(frame) }
@@ -90,7 +108,7 @@ final class ScanSessionState: @unchecked Sendable {
   /// candidate is never applied by itself.
   func admit(id: String, original: SessionResources.Resource, frame: SessionResources.Resource?,
              liveCorners: CornerCoordinates?, options: DocumentRenderOptions?, selection: CornerInference.Selection?,
-             autoCrop: Bool = true) throws {
+             autoCrop: Bool = true, preview: CGImage? = nil, previewReleased: @escaping PreviewReleased = {}) throws {
     try transition {
       try requireOpen()
       guard !id.isEmpty, pages[id] == nil, original.owner === resources, original.kind == .original,
@@ -109,6 +127,10 @@ final class ScanSessionState: @unchecked Sendable {
                           selection: selection, liveCorners: liveCorners)
       page.explicitGeometry = !autoCrop
       pages[id] = page
+      if let preview {
+        if let capturePreview { releaseCapturePreview(capturePreview.id) }
+        capturePreview = (id, preview, previewReleased)
+      }
       changed(page)
       queue.submit(resources.workOwner, kind: .analysis, pageId: id,
         operation: { [self] in
@@ -163,6 +185,7 @@ final class ScanSessionState: @unchecked Sendable {
     try transition {
       let page = try page(id)
       pages.removeValue(forKey: id)
+      releaseCapturePreview(id)
       events.removePage(id)
       var artifacts = page.cache.map(\.artifact)
       if let displayed = page.displayed, !artifacts.contains(where: { $0 === displayed }) { artifacts.append(displayed) }
@@ -366,6 +389,7 @@ final class ScanSessionState: @unchecked Sendable {
       if let completion { return (completion, false) }
       closed = true
       pages.removeAll()
+      if let capturePreview { releaseCapturePreview(capturePreview.id) }
       events.close()
       let created = NativeCompletion()
       completion = created
