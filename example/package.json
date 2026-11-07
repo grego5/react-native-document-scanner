@@ -6,6 +6,8 @@
   "scripts": {
     "start": "expo start --dev-client --port 8088",
     "start:lan": "expo start --dev-client --host lan --port 8088",
+    "ios:prebuild": "expo prebuild --platform ios --no-install",
+    "ios": "expo run:ios",
     "android:prebuild": "expo prebuild --platform android --no-install",
     "android:clean": "expo prebuild --platform android --clean --no-install",
     "android": "pwsh -NoProfile -File ../tools/android.ps1",

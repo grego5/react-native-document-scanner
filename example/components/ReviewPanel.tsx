@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   CropEditor,
   ImagePager,
@@ -65,9 +65,19 @@ function PreviewMode({
   const review = session.screen.type === 'review' ? session.screen : null;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const closeExport = useCallback(() => setExportOpen(false), []);
-  const actions = usePhotoActions(session.native, session.run);
   const { pageIds, page, working } = session;
+  const closeExport = useCallback(() => {
+    if (!working) setExportOpen(false);
+  }, [working]);
+  const actions = usePhotoActions(session.native, (operation) => session.run(async () => {
+    // iOS presents native dialogs from the current controller. Keep the sheet mounted until they settle.
+    if (Platform.OS !== 'ios') closeExport();
+    try {
+      await operation();
+    } finally {
+      if (Platform.OS === 'ios') setExportOpen(false);
+    }
+  }));
   const newPhoto = review?.origin === 'capture';
   const selectedId = session.selectedId;
   const index = pageIds.indexOf(selectedId ?? '');
@@ -205,15 +215,10 @@ function PreviewMode({
       <SheetModal visible={exportOpen} onClose={closeExport}>
         <ExportSheet
           pageCount={pageIds.length}
+          disabled={working}
           onCancel={closeExport}
-          onSharePdf={(settings) => {
-            closeExport();
-            void actions.sharePdf(settings);
-          }}
-          onSaveImages={() => {
-            closeExport();
-            void actions.saveAll();
-          }}
+          onSharePdf={(settings) => { void actions.sharePdf(settings); }}
+          onSaveImages={() => { void actions.saveAll(); }}
         />
       </SheetModal>
     </SafeAreaView>

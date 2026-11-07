@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Validation in progress
 Complexity: High
 Dependencies: [16](16-verify-android-engine-migration.md), [32](32-integrate-ios-example.md)
 
@@ -58,6 +58,22 @@ Keep platform handles out of portable C++ interfaces; borrow pixels only through
 Required platform evidence passes, package is usable from a clean consumer install, and documented limitations match actual implementation.
 
 Required checks must pass before Status changes to Completed. A prerequisite may be prepared with unavailable validation explicitly recorded, but downstream release readiness must remain incomplete until required evidence exists. Record changed files, executed checks, actual results, and material limitations.
+
+## Validation checkpoint — 2026-11-07
+
+The Windows checks used the clean combined Android/iOS source at `8c246fb36320b6e9f9e6599005be74ff1ae3d883`. Task 16's Android migration evidence is historical. The current camera policy includes the adaptive pacing changes in `3a328c5b`.
+
+| Check | Result |
+| --- | --- |
+| `npm run check` with Node 26.5.0 and npm 12.2.2 | Library and example typechecks passed. JS contracts passed 47/47 with zero skips. |
+| `npm run nitrogen` | Nitrogen 0.37.2 generated eight Hybrid Objects and left the working tree clean. |
+| CMake Release rebuild and `ctest --test-dir .local/build/core-tests -C Release --output-on-failure` | Passed 9/9 after initializing the MSVC x64 environment and adding the OpenCV 4.12 DLL directory to PATH. Used CMake 3.30.3 and Visual Studio Build Tools 18.9.2. |
+| `npm pack --dry-run --json --cache .local/task33-npm-cache` | Listed 689 entries, including the model, Nitro config and native build metadata. Manifest at `.local/task33-pack.json`. Clean consumer installation and native linking remain pending. |
+| `npm run test:native` | Gradle 9.4.1 stopped in settings before executing tests. Gradle rejected the React Native plugin subproject directory. A follow-up filesystem check confirmed it exists. |
+| Android instrumentation and physical camera | `adb devices` listed zero devices. |
+| iOS native and simulator | vMac deferred by request. GitHub CLI reported invalid authentication. No Xcode results or simulator run ID recorded. |
+
+Cross-platform adapter parity, physical capture and lifecycle checks from Tasks 25–32, still-dimension and framing checks, paired source-format measurements, and the 50-page resource exercise remain open. The host fixture results cover the shared core only.
 
 ## Proposed commit title
 

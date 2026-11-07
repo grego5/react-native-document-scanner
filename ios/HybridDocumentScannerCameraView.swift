@@ -1076,30 +1076,32 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   }
 
   private var statsRows: [String] {
-    let frame = analysisFraming.map { "\($0.framed.width) × \($0.framed.height)" } ?? "—"
-    let score = statsScore.map { String(format: "%.4f", $0) } ?? "—"
+    let missing = "-"
+    let frame = analysisFraming.map { "\($0.framed.width)x\($0.framed.height)" } ?? missing
+    let score = statsScore.map { String(format: "%.4f", $0) } ?? missing
     let capture = configuration.map { config -> String in
       switch StillSettings.resolve(mode: captureMode, zeroShutterLag: config.zeroShutterLag).priority {
-      case .balanced: return "zero shutter lag"
-      case .quality: return "high quality"
-      case .speed: return "low latency"
+      case .balanced: return "ZSL"
+      case .quality: return "quality"
+      case .speed: return "latency"
       }
-    } ?? "—"
-    let torchState = controls.torchApplied.map { $0 ? "on" : "off" } ?? "—"
+    } ?? missing
+    let torchState = controls.torchApplied.map { $0 ? "on" : "off" } ?? missing
     let boost = configuration.map {
       if !$0.capabilities.lowLightBoost { return "unavailable" }
       if boostActive { return "active" }
       return lowLightBoost == false ? "off" : "auto (idle)"
-    } ?? "—"
+    } ?? missing
     return [
       "Camera: \(cameraState.stringValue)",
-      "Autofocus: \(controls.autofocus.stringValue)",
-      "Page: \(documentState.stringValue)  |  Score: \(score)",
-      "Analysis frame: \(frame)",
-      "Capture mode: \(capture)",
+      "AF: \(controls.autofocus.stringValue)",
+      "Page: \(documentState.stringValue)",
+      "Score: \(score)",
+      "Frame: \(frame)",
+      "Mode: \(capture)",
       "Torch: \(torchState)",
-      "Capture state: \(captureState.stringValue)",
-      "Low-light boost: \(boost)",
+      "Capture: \(captureState.stringValue)",
+      "Boost: \(boost)",
     ]
   }
 }

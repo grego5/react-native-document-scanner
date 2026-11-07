@@ -10,8 +10,8 @@ final class CameraPreviewView: UIView {
   lazy var feedback = CaptureFeedbackOverlay(guide: guide)
   private let frozen = UIImageView()
   private let statsPanel = UIScrollView()
-  private let statsLabel = UILabel()
-  private var statsContentSize = CGSize.zero
+  private var statsCells: [UILabel] = []
+  private let statsFont = UIFont.monospacedSystemFont(ofSize: 11, weight: .regular)
   private var frozenID: String?
   var onWindowChange: (() -> Void)?
   var onResize: (() -> Void)?
@@ -40,35 +40,41 @@ final class CameraPreviewView: UIView {
     addSubview(feedback)
     statsPanel.backgroundColor = UIColor(white: 0.07, alpha: 0.9)
     statsPanel.isHidden = true
-    statsLabel.textColor = .white
-    statsLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-    statsLabel.numberOfLines = 0
-    statsLabel.lineBreakMode = .byClipping
-    statsPanel.addSubview(statsLabel)
     addSubview(statsPanel)
     addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
   }
 
-  func showStats(_ rows: [String]?) {
-    statsPanel.isHidden = rows == nil
-    guard let rows else { return }
-    let text = rows.joined(separator: "\n")
-    guard text != statsLabel.text else { return }
-    statsLabel.text = text
-    let width = rows.map { ($0 as NSString).size(withAttributes: [.font: statsLabel.font as UIFont]).width }.max() ?? 0
-    let height = ceil(statsLabel.font.lineHeight) * CGFloat(rows.count)
-    statsContentSize = CGSize(width: ceil(width) + 1, height: height)
+  func showStats(_ entries: [String]?) {
+    statsPanel.isHidden = entries == nil
+    guard let entries else { return }
+    while statsCells.count < entries.count {
+      let cell = UILabel()
+      cell.textColor = .white
+      cell.font = statsFont
+      cell.lineBreakMode = .byTruncatingTail
+      statsPanel.addSubview(cell)
+      statsCells.append(cell)
+    }
+    for (cell, entry) in zip(statsCells, entries) where cell.text != entry {
+      cell.text = entry
+    }
     layoutStatsPanel()
   }
 
   private func layoutStatsPanel() {
-    let width = min(bounds.width, statsContentSize.width + 16)
-    let contentHeight = statsContentSize.height + 12
-    let tenRowsHeight = ceil(statsLabel.font.lineHeight) * 10 + 12
-    let height = min(contentHeight, tenRowsHeight, bounds.height / 2)
+    let width = bounds.width
+    let rowHeight = ceil(statsFont.lineHeight)
+    let rowCount = (statsCells.count + 1) / 2
+    let contentHeight = rowHeight * CGFloat(rowCount) + 12
+    let height = min(contentHeight, rowHeight * 10 + 12, bounds.height / 2)
     statsPanel.frame = CGRect(x: 0, y: 0, width: width, height: height)
     statsPanel.contentSize = CGSize(width: width, height: contentHeight)
-    statsLabel.frame = CGRect(x: 8, y: 6, width: max(0, width - 16), height: statsContentSize.height)
+    let columnWidth = width / 2
+    for (index, cell) in statsCells.enumerated() {
+      cell.frame = CGRect(x: CGFloat(index % 2) * columnWidth + 8,
+                          y: CGFloat(index / 2) * rowHeight + 6,
+                          width: max(0, columnWidth - 16), height: rowHeight)
+    }
   }
 
   @objc private func tapped(_ recognizer: UITapGestureRecognizer) {

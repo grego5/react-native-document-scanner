@@ -77,37 +77,47 @@ internal class AdaptiveInferenceCadence {
   private var checked = false
   private var movingSince: Long? = null
   private var steadyFrames = 0
-  private var unknownSince: Long? = null
+  private var waitingSince: Long? = null
   private var lastAttempt: Long? = null
 
-  fun gap(now: Long, searching: Boolean, moving: Boolean, measured: Boolean, trackingGap: Long): Long? {
+  fun gap(now: Long, searching: Boolean, moving: Boolean, measured: Boolean, trackingGap: Long,
+          blurFraction: Double? = null): Long? {
     if (searching && !this.searching) checked = false
     this.searching = searching
+    // A search or revalidation must make progress even if motion never settles.
+    waitingSince = if (searching || trackingGap != Long.MAX_VALUE) waitingSince ?: now else null
+    val earlyOrDue = waitingSince?.let { since ->
+      val previous = lastAttempt
+      val lowBlur = measured && blurFraction != null && blurFraction <= LOW_BLUR_FRACTION
+      now - maxOf(since, previous ?: since) >= RETRY_NS ||
+        lowBlur && (previous == null || previous < since)
+    }
+    val fallbackGap = if (earlyOrDue == true) 0L else null
     if (moving) {
       steadyFrames = 0
-      unknownSince = null
       val since = movingSince ?: now
       movingSince = since
       if (now - since >= 100_000_000L) checked = false
-      return null
+      return fallbackGap
     }
     movingSince = null
     if (!measured) {
       steadyFrames = 0
-      val since = unknownSince ?: now
-      unknownSince = since
-      // Require sustained uncertainty, including when leaving a measured moving scene.
-      return if (now - maxOf(since, lastAttempt ?: since) >= 1_000_000_000L) 0L else null
+      return fallbackGap
     }
     if (steadyFrames < 4) steadyFrames++
-    if (steadyFrames < 4) return null
-    unknownSince = null
-    if (searching) return if (checked) null else 0L
+    if (steadyFrames < 4) return fallbackGap
+    if (searching) return if (checked) fallbackGap else 0L
     return trackingGap.takeUnless { it == Long.MAX_VALUE }
   }
 
   fun didAttempt(now: Long) {
     lastAttempt = now
     if (searching) checked = true
+  }
+
+  private companion object {
+    const val RETRY_NS = 1_000_000_000L
+    const val LOW_BLUR_FRACTION = 0.002
   }
 }

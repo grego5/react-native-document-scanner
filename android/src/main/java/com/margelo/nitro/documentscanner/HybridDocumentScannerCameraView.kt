@@ -17,6 +17,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.util.Size
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.Surface
@@ -24,6 +25,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.camera.camera2.interop.applyCamera2InteropAsync
@@ -171,16 +173,30 @@ open class HybridDocumentScannerCameraView(
   private val liveOverlay = LiveGuideOverlay(themedContext)
   /** Over the frozen frame, so the shooting stage shows on the photo being taken. */
   private val captureFeedbackView = CaptureFeedbackView(themedContext, liveOverlay)
-  private val statsLabel = TextView(themedContext).apply {
-    setTextColor(Color.WHITE)
-    textSize = 12f
-    typeface = Typeface.MONOSPACE
-    setHorizontallyScrolling(true)
-    setPadding(dp(8), dp(6), dp(8), dp(6))
+  private val statsCells = List(21) {
+    TextView(themedContext).apply {
+      setTextColor(Color.WHITE)
+      textSize = 12f
+      typeface = Typeface.MONOSPACE
+      isSingleLine = true
+      ellipsize = TextUtils.TruncateAt.END
+      includeFontPadding = false
+      setPadding(dp(8), 0, dp(8), 0)
+    }
+  }
+  private val statsGrid = LinearLayout(themedContext).apply {
+    orientation = LinearLayout.VERTICAL
+    setPadding(0, dp(6), 0, dp(6))
+    for (cells in statsCells.chunked(2)) {
+      addView(LinearLayout(themedContext).apply {
+        for (cell in cells) addView(cell, LinearLayout.LayoutParams(0, cell.lineHeight, 1f))
+        if (cells.size == 1) addView(View(themedContext), LinearLayout.LayoutParams(0, 0, 1f))
+      }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    }
   }
   private val statsScroll = ScrollView(themedContext).apply {
     setBackgroundColor(0xFF101820.toInt())
-    addView(statsLabel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+    addView(statsGrid, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
     visibility = View.GONE
   }
   /** The last one-second figures below the stats strip's status line; main thread. */
@@ -1454,55 +1470,63 @@ open class HybridDocumentScannerCameraView(
   private fun renderStatus() {
     if (!props.showStats) return
     val stats = statsFigures
+    val missing = "-"
     fun number(value: Double?, pattern: String = "%.1f") =
-      value?.let { String.format(Locale.US, pattern, it) } ?: "—"
-    fun ms(value: Double?) = value?.let { "${number(it)} ms" } ?: "—"
-    val frame = stats?.takeIf { it.width > 0 && it.height > 0 }?.let { "${it.width} × ${it.height}" } ?: "—"
+      value?.let { String.format(Locale.US, pattern, it) } ?: missing
+    fun ms(value: Double?) = value?.let { "${number(it)} ms" } ?: missing
+    val frame = stats?.takeIf { it.width > 0 && it.height > 0 }?.let { "${it.width}x${it.height}" } ?: missing
     fun pacing(value: String?) = when (value) {
-      "acquiring" -> "finding page"
-      "unconfirmed" -> "page not confirmed"
-      "revalidating" -> "rechecking page"
-      null -> "—"
+      "acquiring" -> "searching"
+      "unconfirmed" -> "no page"
+      "revalidating" -> "recheck"
+      "tracking degraded" -> "degraded"
+      null -> missing
       else -> value
     }
     val capture = when (boundCaptureLabel()) {
-      "zsl" -> "zero shutter lag"
-      "latency" -> "low latency"
-      "quality" -> "high quality"
-      else -> "—"
+      "zsl" -> "ZSL"
+      "latency" -> "latency"
+      "quality" -> "quality"
+      else -> missing
     }
     val torch = if (light.torchLit == true) "on" else props.torch.name.lowercase()
-    statsLabel.text = listOf(
+    val entries = listOf(
       "Camera: ${emittedCameraState?.name?.lowercase() ?: "suspended"}",
-      "Autofocus: ${emittedAutofocus?.name?.lowercase() ?: "inactive"}",
-      "Page: ${documentState.name.lowercase()}  |  Score: ${number(latestModelScore, "%.4f")}",
-      "Frame: $frame  |  Runs/s: ${number(stats?.rateHz)}",
-      "Prep: ${ms(stats?.preprocessingMs)}  |  Model: ${ms(stats?.inferenceMs)}",
-      "Analysis: ${ms(stats?.analysisMs)}  |  Frame age: ${ms(stats?.cameraToAnalysisMs)}",
-      "Model pacing: ${pacing(stats?.adaptiveStatus)}",
-      "Last pacing restart: ${pacing(stats?.adaptiveReset)}",
-      "Checks/frame: ${ms(stats?.checksMsPerFrame)}  |  Gated: ${stats?.gatedFrames ?: "—"}",
-      "Capture mode: $capture",
+      "AF: ${emittedAutofocus?.name?.lowercase() ?: "inactive"}",
+      "Page: ${documentState.name.lowercase()}",
+      "Score: ${number(latestModelScore, "%.4f")}",
+      "Frame: $frame",
+      "Runs/s: ${number(stats?.rateHz)}",
+      "Prep: ${ms(stats?.preprocessingMs)}",
+      "Model: ${ms(stats?.inferenceMs)}",
+      "Analysis: ${ms(stats?.analysisMs)}",
+      "Frame age: ${ms(stats?.cameraToAnalysisMs)}",
+      "Pacing: ${pacing(stats?.adaptiveStatus)}",
+      "Wake: ${pacing(stats?.adaptiveReset)}",
+      "Checks: ${ms(stats?.checksMsPerFrame)}",
+      "Gated: ${stats?.gatedFrames ?: missing}",
+      "Mode: $capture",
       "Torch: $torch",
-      "Low-light boost: ${lowLightBoostLabel()}",
-      "Exposure × ISO: ${number(exposureIsoMs, "%.0f")}",
-      "Auto exposure / WB: ${if (stats == null) "—" else aeAwbStates}",
-      "Peak blur: ${stats?.peakBlurPercent?.let { "${number(it, "%.2f")}%" } ?: "—"}",
-      "Missing metadata: ${stats?.unmatchedFrames ?: "—"}",
-    ).joinToString("\n")
+      "Boost: ${lowLightBoostLabel()}",
+      "Exp x ISO: ${number(exposureIsoMs, "%.0f")}",
+      "AE / AWB: ${if (stats == null) missing else aeAwbStates}",
+      "Peak blur: ${stats?.peakBlurPercent?.let { "${number(it, "%.2f")}%" } ?: missing}",
+      "No meta: ${stats?.unmatchedFrames ?: missing}",
+    )
+    for ((cell, entry) in statsCells.zip(entries)) {
+      if (cell.text != entry) cell.text = entry
+    }
     layoutStatsStrip()
   }
 
   private fun statsStripHeight(): Int =
     if (props.showStats) minOf(container.height / 2,
-      statsLabel.lineHeight * STATS_VISIBLE_ROWS + statsLabel.paddingTop + statsLabel.paddingBottom)
+      statsCells.first().lineHeight * statsGrid.childCount + statsGrid.paddingTop + statsGrid.paddingBottom)
     else 0
 
   private fun layoutStatsStrip() {
     if (!props.showStats || container.width <= 0) return
-    val textWidth = statsLabel.text.lineSequence().maxOfOrNull { statsLabel.paint.measureText(it.toString()) } ?: 0f
-    val width = minOf(container.width,
-      kotlin.math.ceil(textWidth).toInt() + statsLabel.paddingLeft + statsLabel.paddingRight)
+    val width = container.width
     val height = statsStripHeight()
     statsScroll.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
       View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
@@ -1928,7 +1952,6 @@ open class HybridDocumentScannerCameraView(
     /** Sides of a tap's focus and exposure areas, as fractions of the preview: CameraX's own tap-to-focus sizes. */
     const val TAP_FOCUS_AREA = 1f / 6f
     const val TAP_METERING_AREA = TAP_FOCUS_AREA * 1.5f
-    const val STATS_VISIBLE_ROWS = 10
 
 
 

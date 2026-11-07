@@ -114,7 +114,7 @@ export function OptionsPanel({
   onClose: () => void
   removeShadows: boolean
   onRemoveShadowsChange: (value: boolean) => void
-  sampleFolder: SampleFolder
+  sampleFolder?: SampleFolder
   onSampleFolderChange: (folder: SampleFolder) => void
 }) {
   const set = (update: Partial<LiveTuning>) => onChange((t) => ({ ...t, ...update }))
@@ -123,20 +123,21 @@ export function OptionsPanel({
     ({ label, on: tuning[key], toggle: () => set({ [key]: !tuning[key] }) })
   const cycle = <T,>(label: string, values: readonly T[], current: T, key: keyof LiveTuning, show: (value: T) => string): Option =>
     ({ label, value: show(current), changed: current !== values[0], next: () => set({ [key]: nextValue(values, current) }) })
+  const supportsZsl = cameraFeatures?.zeroShutterLagSupported === true
   const options: Option[] = [
     { label: 'Shadow removal', on: removeShadows, toggle: () => onRemoveShadowsChange(!removeShadows) },
     flag('Quality check', 'lowQualityControl'),
-    cycle('Capture', cameraFeatures?.zeroShutterLagSupported === false ? CAPTURE_MODES.slice(1) : CAPTURE_MODES,
+    cycle('Capture', supportsZsl ? CAPTURE_MODES : CAPTURE_MODES.slice(1),
       tuning.captureMode, 'captureMode', (mode) =>
-        mode === 'zsl' && cameraFeatures?.zeroShutterLagSupported === false ? 'ZSL unavailable' : mode),
+        mode === 'zsl' && !supportsZsl ? (cameraFeatures ? 'ZSL unavailable' : 'ZSL unverified') : mode),
     flag('Square', 'squareAspectRatio'),
     flag('Throttle detection', 'inferenceThrottling'),
     flag('Feedback', 'captureFeedback'),
     cycle('Exposure', EXPOSURE_EV, tuning.exposureCompensation, 'exposureCompensation', (ev) => `${ev} EV`),
     cycle('Min fps', MIN_FRAME_RATES, tuning.minFrameRate, 'minFrameRate', (fps) => (fps ? String(fps) : 'auto')),
-    cameraFeatures?.lowLightBoostSupported === false
-      ? { label: 'Low light boost', value: 'Unavailable', changed: false, disabled: true, next: () => {} }
-      : flag('Low light boost', 'lowLightBoost'),
+    cameraFeatures?.lowLightBoostSupported
+      ? flag('Low light boost', 'lowLightBoost')
+      : { label: 'Low light boost', value: cameraFeatures ? 'Unavailable' : 'Unknown', changed: false, disabled: true, next: () => {} },
     flag('Hi-res camera', 'highResolutionPhoto'),
     flag('Camera stats', 'showStats'),
   ]
@@ -144,7 +145,7 @@ export function OptionsPanel({
     <View style={styles.optionsPanel}>
       <ScrollView>
         <OptionGrid options={options} disabled={disabled} />
-        <SampleFolderSwitches folder={sampleFolder} onChange={onSampleFolderChange} />
+        {sampleFolder && <SampleFolderSwitches folder={sampleFolder} onChange={onSampleFolderChange} />}
       </ScrollView>
       <PrimaryButton label="Close" onPress={onClose} />
     </View>

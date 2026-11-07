@@ -332,26 +332,32 @@ final class LiveDocumentDetector: @unchecked Sendable {
       resetTracking()
       releaseFlow()
     }
-    var estimate: ScannerFlowEstimate?
-    if state.guidanceEnabled {
-      let startedAt = clock()
+    let startedAt = state.guidanceEnabled ? clock() : nil
+    if startedAt == nil { lastGuide = nil }
+    let estimate: ScannerFlowEstimate?
+    if startedAt != nil || settings.motionEvidence {
       estimate = updateFlow(buffer, framing: framing, sensorNs: sensorNs)
-      guideFrame(buffer, framing: framing, sensorNs: sensorNs, settings: settings, estimate: estimate,
-                 startedAt: startedAt)
     } else {
-      lastGuide = nil
-      if settings.motionEvidence {
-        estimate = updateFlow(buffer, framing: framing, sensorNs: sensorNs)
-      } else {
-        releaseFlow()
-      }
+      releaseFlow()
+      estimate = nil
     }
-    record(framing: framing, sensorNs: sensorNs, metadata: metadata, estimate: estimate, run: run)
+    let blur: Double?
+    if let estimate, estimate.status == FlowStatus.measured.rawValue, let speed = estimate.speed?.doubleValue,
+       estimate.sourceWidth > 0, let exposure = metadata?.exposureNs {
+      blur = speed * Double(exposure) * 1e-9 / Double(estimate.sourceWidth)
+    } else {
+      blur = nil
+    }
+    if let startedAt {
+      guideFrame(buffer, framing: framing, sensorNs: sensorNs, settings: settings, estimate: estimate,
+                 blur: blur, startedAt: startedAt)
+    }
+    record(framing: framing, sensorNs: sensorNs, metadata: metadata, estimate: estimate, blur: blur, run: run)
   }
 
   /// Appends this frame's capture evidence and wakes main if something waits for it.
   private func record(framing: CameraFraming, sensorNs: Int64, metadata: CameraFrameMetadata?,
-                      estimate: ScannerFlowEstimate?, run: Int) {
+                      estimate: ScannerFlowEstimate?, blur: Double?, run: Int) {
     if run != focusRun {
       focusRun = run
       lastAdjusting = nil
@@ -381,10 +387,6 @@ final class LiveDocumentDetector: @unchecked Sendable {
       }
     }
     let exposure = metadata?.exposureNs
-    let blur: Double? = flow.flatMap { flow in
-      guard flow.status == .measured, let speed = flow.speedPxPerSecond, flow.sourceWidth > 0, let exposure else { return nil }
-      return speed * Double(exposure) * 1e-9 / Double(flow.sourceWidth)
-    }
     let reached = focusReachedNs, arrived = pageArrivedNs
     lock.lock()
     guard running, self.run == run else { lock.unlock(); return }
@@ -411,7 +413,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
 
   /// Guide work for one frame with guidance on: pacing, inference and acceptance.
   private func guideFrame(_ buffer: CVPixelBuffer, framing: CameraFraming, sensorNs: Int64, settings: Settings,
-                          estimate: ScannerFlowEstimate?, startedAt: Int64) {
+                          estimate: ScannerFlowEstimate?, blur: Double?, startedAt: Int64) {
     let adaptive = settings.adaptive
     if adaptive != adaptiveWasEnabled {
       policy.reset()
@@ -447,7 +449,8 @@ final class LiveDocumentDetector: @unchecked Sendable {
       $0 / Double(framing.buffer.width) > speedLimit
     } == true)
     let eligibleGap = adaptive
-      ? cadence.gap(now: startedAt, searching: searching, moving: moving, measured: measured && lost == 0, trackingGap: gap)
+      ? cadence.gap(now: startedAt, searching: searching, moving: moving, measured: measured && lost == 0,
+                    trackingGap: gap, blurFraction: blur)
       : moving || scorePaused ? nil : gap
     let token = eligibleGap.flatMap { state.acquire(nowNs: startedAt, minGapNs: $0) }
     guard let token else {

@@ -54,6 +54,7 @@ const config: ExpoConfig = {
   ],
   ios: {
     bundleIdentifier: packageName,
+    supportsTablet: true,
     infoPlist: {
       NSCameraUsageDescription: 'Document Scanner uses the camera to scan documents.',
       ITSAppUsesNonExemptEncryption: false,
