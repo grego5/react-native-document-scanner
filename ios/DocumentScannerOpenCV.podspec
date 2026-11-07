@@ -1,5 +1,5 @@
-# Official Task 04 binary: arm64 device and x86_64 simulator only.
-# Declare this local podspec in the consuming Podfile (see ios/README.md).
+# Official OpenCV binary: arm64 device and x86_64 simulator.
+# Host Podfile setup: .agents/skills/docs/references/ios/setup.md.
 Pod::Spec.new do |s|
   s.name = 'DocumentScannerOpenCV'
   s.version = '4.12.0'

@@ -1,0 +1,18 @@
+# Shared engine
+
+## Boundary and coordinates
+
+- `cpp/include/document_scanner/` defines portable C++20 interfaces. Platform adapters own camera and sensor state, decoding, codecs, inference runtime, file publication and scheduling. OpenCV types stay in the implementation.
+- An immutable `PixelLease` pins storage and any platform lock. Calls borrow it synchronously. Pixel views and callback storage cannot escape. A caller allocator can supply writable output for one call. Thread-affine leases release on their owning worker.
+- Public corners are normalized to the full upright image in TL/TR/BR/BL order. Geometry distinguishes image edges from pixel centers. Encoded crop, EXIF orientation and sampled decode regions are mapped explicitly before preprocessing or warping. A preview viewport is a separate transform.
+
+## Processing and capture
+
+- Shared geometry and filters render from original pixels. Warp precedes shadow removal and the selected filter. The shared PDF writer owns placement and eligible compressed payload reuse. Platform adapters own fallback encoding and file publication.
+- Keep `format: auto` as page policy through filter edits. It resolves to four-bit gray PNG for black-and-white and JPEG otherwise. Explicit PNG requires a grayscale or black-and-white filter.
+- The canonical model lives in `resources/doccornernet/`. Shared preprocessing applies crop and orientation before resize and interprets model geometry separately from score acceptance. Platform model owners serialize interpreter use.
+- Shared flow measures regional tracking and motion. Missing evidence stays unknown. Adapters establish the clock relationship before combining camera and sensor evidence.
+- Guide acceptance is shared. Adaptive pacing is platform-owned. A trusted guide can pause inference while flow carries the corners. Lost or degraded tracking, regional loss or displacement from the confirmed outline requests revalidation.
+- Region loss requests a new model confirmation even if the next flow estimate looks clean. Flow selects features again each frame, so new features alone cannot confirm that the obscured page region returned.
+- Capture gates return wait, scan, shoot or reject from camera evidence. Focus and any required page precede light and steadiness. Reacquiring focus restarts the steady window. Motion control needs four qualified frames. Motion can delay or reject a shot and never requests a focus retry.
+- Standard still-size ranking, adaptive pacing, torch and capture decisions have [shared parity vectors](development.md#parity-fixtures). Final stream negotiation and readiness evidence are platform-owned.

@@ -114,7 +114,7 @@ tasks.register('verifyDocCornerModelAsset') {
   def provenance = file('../resources/doccornernet/provenance.json')
   inputs.files(assetFile, provenance)
   doLast {
-    if (!assetFile.isFile()) throw new GradleException('DocCornerNet asset is missing. See tools/models/README.md for model export instructions.')
+    if (!assetFile.isFile()) throw new GradleException('DocCornerNet asset is missing. See .agents/skills/docs/references/tools.md for model export instructions.')
     def expected = new groovy.json.JsonSlurper().parse(provenance).tfliteSha256
     def hash = java.security.MessageDigest.getInstance('SHA-256').digest(assetFile.bytes).encodeHex().toString()
     if (hash != expected) throw new GradleException('DocCornerNet model SHA-256 mismatch.')
