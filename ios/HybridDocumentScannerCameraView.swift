@@ -67,6 +67,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   var onCameraStateChange: ((_ state: CameraState) -> Void)? = nil { didSet { reportedState = nil } }
   var onCaptureStateChange: ((_ state: CameraCaptureState) -> Void)? = nil { didSet { reportedCapture = nil } }
   var onAutofocusChange: ((_ state: AutofocusState) -> Void)? = nil { didSet { reportedAutofocus = nil } }
+  var onLowLightBoostActiveChange: ((_ active: Bool) -> Void)? = nil { didSet { reportedBoost = nil } }
   var onDocumentStateChange: ((_ state: DocumentState) -> Void)? = nil { didSet { reportedDocument = nil } }
   var onCaptureStage: ((_ stage: CaptureStage, _ waitReason: CaptureWaitReason?) -> Void)? = nil
 
@@ -94,6 +95,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var reportedState: CameraState?
   private var reportedCapture: CameraCaptureState?
   private var reportedAutofocus: AutofocusState?
+  private var boostActive = false
+  private var reportedBoost: Bool?
   private var documentState = DocumentState.off
   private var reportedDocument: DocumentState?
   /// The source the camera waits for; nil before the first update.
@@ -111,6 +114,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var appliedSquare = false
   /// The newest guide with an outline, which an ungated shot freezes as its live candidate.
   private var latestGuide: LiveGuideResult?
+  private var statsScore: Double?
   private var evaluationScheduled = false
 
   init(camera: (any CameraSessionControl)? = nil, permissions: CameraPermissions = .shared,
@@ -140,6 +144,11 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     self.camera.focusEvents = { [weak controls, weak detector] in
       controls?.focusObserved($0)
       detector?.focusObserved($0)
+    }
+    self.camera.lowLightBoostEvents = { [weak self] active in
+      guard let self, !dropped else { return }
+      boostActive = active
+      report()
     }
     detector.onResult = { [weak self] in self?.guideResult($0) }
     controls.onChange = { [weak self] in
@@ -202,6 +211,15 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       MainActor.assumeIsolated { admit(ticket, skipLowQualityControl: skip) }
     }
     return promise
+  }
+
+  func getCameraFeatures() -> CameraFeatureSupport? {
+    CameraPermissions.onMain {
+      configuration.map {
+        CameraFeatureSupport(lowLightBoostSupported: $0.capabilities.lowLightBoost,
+                             zeroShutterLagSupported: $0.zeroShutterLagSupported)
+      }
+    }
   }
 
   /// The framing live analysis will apply to raw video buffers, from the size actually
@@ -291,6 +309,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   }
 
   private func reset() {
+    statsScore = nil
+    boostActive = false
     detector.stop()
     controls.unbind()
     MainActor.assumeIsolated { preview.guide.clear() }
@@ -323,7 +343,11 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       }
     case .frameSize(let size):
       frameSize = size
+    case .analysisSlow:
+      if streaming { onError?(ScannerFailure(code: .cameraAnalysisSlow)) }
     case .interrupted:
+      statsScore = nil
+      boostActive = false
       streaming = false
       frameSize = nil
       latestGuide = nil
@@ -428,6 +452,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     let nextGuide = guideLiveCorners ?? true
     guard nextGuide != guideOn else { return }
     guideOn = nextGuide
+    statsScore = nil
     latestGuide = nil
     guard started != nil, configuration == nil || streaming || controls.isBound else { return }
     detector.setEnabled(nextGuide)
@@ -454,6 +479,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private func guideResult(_ result: LiveGuideResult) {
     guard !dropped, started != nil, guideOn else { return }
     latestGuide = result.corners != nil && result.framing != nil ? result : nil
+    if let score = result.score { statsScore = score }
     switch result.status {
     case .searching: setDocumentState(.searching)
     case .tracking: setDocumentState(.tracking)
@@ -498,7 +524,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       tapToFocus: tapToFocus ?? true,
       exposureBias: exposureCompensation.flatMap { $0.isFinite ? $0 : nil } ?? 0,
       minFrameRate: minFrameRate.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 0,
-      torch: torch ?? .off)
+      torch: torch ?? .off,
+      lowLightBoost: lowLightBoost ?? true)
   }
 
   /// A tap on the shown preview, as a device point.
@@ -1022,6 +1049,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   }
 
   private func report() {
+    MainActor.assumeIsolated { preview.showStats(showStats == true ? statsRows : nil) }
     let state = cameraState
     if state != reportedState, let onCameraStateChange {
       reportedState = state
@@ -1037,9 +1065,41 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       reportedAutofocus = autofocus
       onAutofocusChange(autofocus)
     }
+    if boostActive != reportedBoost, let onLowLightBoostActiveChange {
+      reportedBoost = boostActive
+      onLowLightBoostActiveChange(boostActive)
+    }
     if documentState != reportedDocument, let onDocumentStateChange {
       reportedDocument = documentState
       onDocumentStateChange(documentState)
     }
+  }
+
+  private var statsRows: [String] {
+    let frame = analysisFraming.map { "\($0.framed.width) × \($0.framed.height)" } ?? "—"
+    let score = statsScore.map { String(format: "%.4f", $0) } ?? "—"
+    let capture = configuration.map { config -> String in
+      switch StillSettings.resolve(mode: captureMode, zeroShutterLag: config.zeroShutterLag).priority {
+      case .balanced: return "zero shutter lag"
+      case .quality: return "high quality"
+      case .speed: return "low latency"
+      }
+    } ?? "—"
+    let torchState = controls.torchApplied.map { $0 ? "on" : "off" } ?? "—"
+    let boost = configuration.map {
+      if !$0.capabilities.lowLightBoost { return "unavailable" }
+      if boostActive { return "active" }
+      return lowLightBoost == false ? "off" : "auto (idle)"
+    } ?? "—"
+    return [
+      "Camera: \(cameraState.stringValue)",
+      "Autofocus: \(controls.autofocus.stringValue)",
+      "Page: \(documentState.stringValue)  |  Score: \(score)",
+      "Analysis frame: \(frame)",
+      "Capture mode: \(capture)",
+      "Torch: \(torchState)",
+      "Capture state: \(captureState.stringValue)",
+      "Low-light boost: \(boost)",
+    ]
   }
 }

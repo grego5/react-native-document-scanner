@@ -6,6 +6,39 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AdaptiveDetectionPolicyTest {
+  @Test fun cadenceRearmsAfterMovementAndLimitsUnknownMotion() {
+    val cadence = AdaptiveInferenceCadence()
+    fun gap(ms: Long, moving: Boolean = false, measured: Boolean = true, searching: Boolean = true, trackingGap: Long = 0L) =
+      cadence.gap(ms * 1_000_000L, searching, moving, measured, trackingGap)
+
+    assertEquals(null, gap(0))
+    assertEquals(null, gap(30))
+    assertEquals(null, gap(60))
+    assertEquals(0L, gap(90))
+    cadence.didAttempt(90_000_000L)
+    assertEquals(null, gap(200, measured = false))
+    assertEquals(null, gap(250))
+    assertEquals(null, gap(280))
+    assertEquals(null, gap(310))
+    assertEquals(null, gap(400))
+    assertEquals(null, gap(500, moving = true))
+    assertEquals(null, gap(600, moving = true))
+    assertEquals(null, gap(650))
+    assertEquals(null, gap(680))
+    assertEquals(null, gap(710))
+    assertEquals(0L, gap(740))
+    cadence.didAttempt(740_000_000L)
+    assertEquals(null, gap(900, measured = false))
+    assertEquals(null, gap(1899, measured = false))
+    assertEquals(0L, gap(1900, measured = false))
+    cadence.didAttempt(1_900_000_000L)
+    assertEquals(null, gap(2899, measured = false))
+    assertEquals(null, gap(3000, searching = false, trackingGap = Long.MAX_VALUE))
+    assertEquals(null, gap(3030, searching = false, trackingGap = Long.MAX_VALUE))
+    assertEquals(null, gap(3060, searching = false, trackingGap = Long.MAX_VALUE))
+    assertEquals(null, gap(3090, searching = false, trackingGap = Long.MAX_VALUE))
+    assertEquals(60_000_000L, gap(3120, searching = false, trackingGap = 60_000_000L))
+  }
   @Test fun sharedPlatformSequences() {
     val stream = javaClass.classLoader!!.getResourceAsStream("parity/adaptive.tsv")!!
     val rows = stream.bufferedReader().readLines().filter { it.isNotBlank() && !it.startsWith("#") }.drop(1)

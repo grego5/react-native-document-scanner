@@ -25,6 +25,7 @@ export type ScannerErrorCode =
   | 'model/load-failed'
   | 'model/superseded'
   | 'input/invalid'
+  | 'camera/analysis-slow'
 
 /** Native failure payload. Platform diagnostics remain in native logs. */
 export interface ScannerFailure {

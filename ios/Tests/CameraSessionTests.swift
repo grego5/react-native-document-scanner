@@ -522,6 +522,31 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertEqual(frames.takeCounts().delivered, 0)
   }
 
+  func testAnalysisRateWarnsOnceUntilAHealthyWindowRearmsIt() {
+    var rate = AnalysisRateMonitor()
+    XCTAssertFalse(rate.observe(at: 0))
+    for frame in 1...29 { XCTAssertFalse(rate.observe(at: Int64(frame) * 100_000_000)) }
+    XCTAssertTrue(rate.observe(at: 3_000_000_000))
+    for frame in 31...60 { XCTAssertFalse(rate.observe(at: Int64(frame) * 100_000_000)) }
+    for frame in 1...60 { XCTAssertFalse(rate.observe(at: 6_000_000_000 + Int64(frame) * 50_000_000)) }
+    for frame in 1...29 { XCTAssertFalse(rate.observe(at: 9_000_000_000 + Int64(frame) * 100_000_000)) }
+    XCTAssertTrue(rate.observe(at: 12_000_000_000))
+  }
+
+  @MainActor
+  func testAnalysisSlowWarningKeepsTheCameraReady() {
+    let h = Harness()
+    h.view.afterUpdate()
+    h.attach()
+    let size = PixelSize(640, 480)
+    h.fake.emit(.configured(CameraConfiguration(photo: size, video: size)))
+    h.fake.emit(.streaming(size))
+    h.fake.emit(.analysisSlow)
+    XCTAssertEqual(h.errors, [.cameraAnalysisSlow])
+    XCTAssertEqual(h.view.cameraState, .ready)
+    XCTAssertEqual(h.fake.stops, 0)
+  }
+
   /// A frame arriving while a start waits on the camera queue cannot mark that start ready:
   /// the start arms frame reporting only on the queue, after the earlier run has drained.
   @MainActor

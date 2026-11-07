@@ -228,6 +228,20 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
       onAutofocusChange = value?.let { it }
     }
   
+  abstract var onLowLightBoostActiveChange: ((active: Boolean) -> Unit)?
+  
+  private var onLowLightBoostActiveChange_cxx: Func_void_bool?
+    @Keep
+    @DoNotStrip
+    get() {
+      return onLowLightBoostActiveChange?.let { Func_void_bool_java(it) }
+    }
+    @Keep
+    @DoNotStrip
+    set(value) {
+      onLowLightBoostActiveChange = value?.let { it }
+    }
+  
   abstract var onDocumentStateChange: ((state: DocumentState) -> Unit)?
   
   private var onDocumentStateChange_cxx: Func_void_DocumentState?
@@ -257,6 +271,10 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
     }
 
   // Methods
+  @DoNotStrip
+  @Keep
+  abstract fun getCameraFeatures(): CameraFeatureSupport?
+  
   @DoNotStrip
   @Keep
   abstract fun takePhotoResult(options: TakePhotoOptions?): Promise<Variant_ScannerFailure_CameraCaptureResult>

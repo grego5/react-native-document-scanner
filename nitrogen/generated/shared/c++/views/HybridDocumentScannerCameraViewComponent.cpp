@@ -49,6 +49,7 @@ namespace margelo::nitro::documentscanner::views {
     onCameraStateChange(nitro::ReactProp<std::optional<std::function<void(CameraState /* state */)>>>::fromRawValue("DocumentScannerCameraView", "onCameraStateChange", rawProps, sourceProps.onCameraStateChange)),
     onCaptureStateChange(nitro::ReactProp<std::optional<std::function<void(CameraCaptureState /* state */)>>>::fromRawValue("DocumentScannerCameraView", "onCaptureStateChange", rawProps, sourceProps.onCaptureStateChange)),
     onAutofocusChange(nitro::ReactProp<std::optional<std::function<void(AutofocusState /* state */)>>>::fromRawValue("DocumentScannerCameraView", "onAutofocusChange", rawProps, sourceProps.onAutofocusChange)),
+    onLowLightBoostActiveChange(nitro::ReactProp<std::optional<std::function<void(bool /* active */)>>>::fromRawValue("DocumentScannerCameraView", "onLowLightBoostActiveChange", rawProps, sourceProps.onLowLightBoostActiveChange)),
     onDocumentStateChange(nitro::ReactProp<std::optional<std::function<void(DocumentState /* state */)>>>::fromRawValue("DocumentScannerCameraView", "onDocumentStateChange", rawProps, sourceProps.onDocumentStateChange)),
     onCaptureStage(nitro::ReactProp<std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>>>::fromRawValue("DocumentScannerCameraView", "onCaptureStage", rawProps, sourceProps.onCaptureStage)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridDocumentScannerCameraViewSpec>& /* ref */)>>>::fromRawValue("DocumentScannerCameraView", "hybridRef", rawProps, sourceProps.hybridRef)) {
@@ -87,6 +88,7 @@ namespace margelo::nitro::documentscanner::views {
       case hashString("onCameraStateChange"): return true;
       case hashString("onCaptureStateChange"): return true;
       case hashString("onAutofocusChange"): return true;
+      case hashString("onLowLightBoostActiveChange"): return true;
       case hashString("onDocumentStateChange"): return true;
       case hashString("onCaptureStage"): return true;
       case hashString("hybridRef"): return true;

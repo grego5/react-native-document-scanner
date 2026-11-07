@@ -266,6 +266,12 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.onAutofocusChange.hasSameValue(oldViewProps->onAutofocusChange)) {
       swiftPart.setOnAutofocusChange(newViewProps.onAutofocusChange.get());
     }
+    // onLowLightBoostActiveChange: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.onLowLightBoostActiveChange.isProvided()
+          : !newViewProps.onLowLightBoostActiveChange.hasSameValue(oldViewProps->onLowLightBoostActiveChange)) {
+      swiftPart.setOnLowLightBoostActiveChange(newViewProps.onLowLightBoostActiveChange.get());
+    }
     // onDocumentStateChange: optional
     if (oldViewProps == nullptr
           ? newViewProps.onDocumentStateChange.isProvided()

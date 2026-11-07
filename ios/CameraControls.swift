@@ -27,6 +27,7 @@ final class CameraControls: @unchecked Sendable {
     var exposureBias = 0.0
     var minFrameRate = 0.0
     var torch = TorchMode.off
+    var lowLightBoost = true
   }
 
   /// Continuous autofocus aims at the centre of the frame, where the guide holds a page. Device
@@ -98,6 +99,8 @@ final class CameraControls: @unchecked Sendable {
 
   // MARK: - Binding
 
+  private var requestedBoost: Bool?
+
   /// A configured run: aims continuous autofocus and applies every control the device supports.
   func bind(_ capabilities: CameraCapabilities) {
     binding += 1
@@ -110,6 +113,8 @@ final class CameraControls: @unchecked Sendable {
     aimContinuousFocus()
     applyExposure()
     applyTorch()
+    requestedBoost = nil
+    applyBoost()
   }
 
   /// The run stopped: scans end, observations and completions of this binding are ignored, and the
@@ -143,6 +148,7 @@ final class CameraControls: @unchecked Sendable {
     guard isBound else { return }
     if next.exposureBias != previous.exposureBias || next.minFrameRate != previous.minFrameRate { applyExposure() }
     if next.torch != previous.torch { applyTorch() }
+    if next.lowLightBoost != previous.lowLightBoost { applyBoost() }
   }
 
   // MARK: - Focus
@@ -176,6 +182,14 @@ final class CameraControls: @unchecked Sendable {
     scheduleDeadlines()
     if exposureDeferred { applyExposure() }
     applyTorch()
+    applyBoost()
+  }
+
+  private func applyBoost() {
+    guard capabilities?.lowLightBoost == true, !capturePending(),
+          requestedBoost != settings.lowLightBoost else { return }
+    requestedBoost = settings.lowLightBoost
+    sendExposure(.lowLightBoost(settings.lowLightBoost), name: "low-light boost")
   }
 
   /// A focus sample of the bound device. `adjusting` drives the autofocus state; a pending scan

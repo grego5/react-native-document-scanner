@@ -39,6 +39,8 @@ namespace margelo::nitro::documentscanner { enum class DocumentState; }
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
 // Forward declaration of `CaptureWaitReason` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureWaitReason; }
+// Forward declaration of `CameraFeatureSupport` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraFeatureSupport; }
 // Forward declaration of `CameraCaptureResult` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
 // Forward declaration of `ScanSessionSnapshot` to properly resolve imports.
@@ -95,6 +97,7 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "AutofocusState.hpp"
 #include "JFunc_void_AutofocusState.hpp"
 #include "JAutofocusState.hpp"
+#include "JFunc_void_bool.hpp"
 #include "DocumentState.hpp"
 #include "JFunc_void_DocumentState.hpp"
 #include "JDocumentState.hpp"
@@ -103,6 +106,8 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "JFunc_void_CaptureStage_std__optional_CaptureWaitReason_.hpp"
 #include "JCaptureStage.hpp"
 #include "JCaptureWaitReason.hpp"
+#include "CameraFeatureSupport.hpp"
+#include "JCameraFeatureSupport.hpp"
 #include "CameraCaptureResult.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
@@ -444,6 +449,23 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_AutofocusState::javaobject> /* onAutofocusChange */)>("setOnAutofocusChange_cxx");
     method(_javaPart, onAutofocusChange.has_value() ? JFunc_void_AutofocusState_cxx::fromCpp(onAutofocusChange.value()) : nullptr);
   }
+  std::optional<std::function<void(bool /* active */)>> JHybridDocumentScannerCameraViewSpec::getOnLowLightBoostActiveChange() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_bool::javaobject>()>("getOnLowLightBoostActiveChange_cxx");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(bool /* active */)> {
+      if (__result->isInstanceOf(JFunc_void_bool_cxx::javaClassStatic())) [[likely]] {
+        auto downcast = jni::static_ref_cast<JFunc_void_bool_cxx::javaobject>(__result);
+        return downcast->cthis()->getFunction();
+      } else {
+        auto __resultRef = jni::make_global(__result);
+        return JNICallable<JFunc_void_bool, void(bool)>(std::move(__resultRef));
+      }
+    }()) : std::nullopt;
+  }
+  void JHybridDocumentScannerCameraViewSpec::setOnLowLightBoostActiveChange(const std::optional<std::function<void(bool /* active */)>>& onLowLightBoostActiveChange) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_bool::javaobject> /* onLowLightBoostActiveChange */)>("setOnLowLightBoostActiveChange_cxx");
+    method(_javaPart, onLowLightBoostActiveChange.has_value() ? JFunc_void_bool_cxx::fromCpp(onLowLightBoostActiveChange.value()) : nullptr);
+  }
   std::optional<std::function<void(DocumentState /* state */)>> JHybridDocumentScannerCameraViewSpec::getOnDocumentStateChange() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_DocumentState::javaobject>()>("getOnDocumentStateChange_cxx");
     auto __result = method(_javaPart);
@@ -480,6 +502,11 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Methods
+  std::optional<CameraFeatureSupport> JHybridDocumentScannerCameraViewSpec::getCameraFeatures() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JCameraFeatureSupport>()>("getCameraFeatures");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(__result->toCpp()) : std::nullopt;
+  }
   std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> JHybridDocumentScannerCameraViewSpec::takePhotoResult(const std::optional<TakePhotoOptions>& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JTakePhotoOptions> /* options */)>("takePhotoResult");
     auto __result = method(_javaPart, options.has_value() ? JTakePhotoOptions::fromCpp(options.value()) : nullptr);

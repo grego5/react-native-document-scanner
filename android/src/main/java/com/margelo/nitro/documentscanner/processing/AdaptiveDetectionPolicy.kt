@@ -70,3 +70,44 @@ internal class AdaptiveDetectionPolicy {
     }
   }
 }
+
+/** Times model attempts independently of the policy that carries a confirmed outline. */
+internal class AdaptiveInferenceCadence {
+  private var searching = false
+  private var checked = false
+  private var movingSince: Long? = null
+  private var steadyFrames = 0
+  private var unknownSince: Long? = null
+  private var lastAttempt: Long? = null
+
+  fun gap(now: Long, searching: Boolean, moving: Boolean, measured: Boolean, trackingGap: Long): Long? {
+    if (searching && !this.searching) checked = false
+    this.searching = searching
+    if (moving) {
+      steadyFrames = 0
+      unknownSince = null
+      val since = movingSince ?: now
+      movingSince = since
+      if (now - since >= 100_000_000L) checked = false
+      return null
+    }
+    movingSince = null
+    if (!measured) {
+      steadyFrames = 0
+      val since = unknownSince ?: now
+      unknownSince = since
+      // Require sustained uncertainty, including when leaving a measured moving scene.
+      return if (now - maxOf(since, lastAttempt ?: since) >= 1_000_000_000L) 0L else null
+    }
+    if (steadyFrames < 4) steadyFrames++
+    if (steadyFrames < 4) return null
+    unknownSince = null
+    if (searching) return if (checked) null else 0L
+    return trackingGap.takeUnless { it == Long.MAX_VALUE }
+  }
+
+  fun didAttempt(now: Long) {
+    lastAttempt = now
+    if (searching) checked = true
+  }
+}

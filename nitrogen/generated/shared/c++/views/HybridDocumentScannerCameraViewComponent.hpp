@@ -84,6 +84,7 @@ namespace margelo::nitro::documentscanner::views {
     nitro::ReactProp<std::optional<std::function<void(CameraState /* state */)>>> onCameraStateChange;
     nitro::ReactProp<std::optional<std::function<void(CameraCaptureState /* state */)>>> onCaptureStateChange;
     nitro::ReactProp<std::optional<std::function<void(AutofocusState /* state */)>>> onAutofocusChange;
+    nitro::ReactProp<std::optional<std::function<void(bool /* active */)>>> onLowLightBoostActiveChange;
     nitro::ReactProp<std::optional<std::function<void(DocumentState /* state */)>>> onDocumentStateChange;
     nitro::ReactProp<std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>>> onCaptureStage;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridDocumentScannerCameraViewSpec>& /* ref */)>>> hybridRef;
@@ -118,6 +119,7 @@ namespace margelo::nitro::documentscanner::views {
              onCameraStateChange.hasSameValue(other.onCameraStateChange) &&
              onCaptureStateChange.hasSameValue(other.onCaptureStateChange) &&
              onAutofocusChange.hasSameValue(other.onAutofocusChange) &&
+             onLowLightBoostActiveChange.hasSameValue(other.onLowLightBoostActiveChange) &&
              onDocumentStateChange.hasSameValue(other.onDocumentStateChange) &&
              onCaptureStage.hasSameValue(other.onCaptureStage) &&
              hybridRef.hasSameValue(other.hybridRef);
@@ -153,6 +155,7 @@ namespace margelo::nitro::documentscanner::views {
              onCameraStateChange.isProvided() ||
              onCaptureStateChange.isProvided() ||
              onAutofocusChange.isProvided() ||
+             onLowLightBoostActiveChange.isProvided() ||
              onDocumentStateChange.isProvided() ||
              onCaptureStage.isProvided() ||
              hybridRef.isProvided();

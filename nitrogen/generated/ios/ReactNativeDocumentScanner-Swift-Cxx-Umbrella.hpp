@@ -14,6 +14,8 @@ namespace margelo::nitro::documentscanner { enum class AutofocusState; }
 namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
 // Forward declaration of `CameraCaptureState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraCaptureState; }
+// Forward declaration of `CameraFeatureSupport` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraFeatureSupport; }
 // Forward declaration of `CameraPermissionStatus` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraPermissionStatus; }
 // Forward declaration of `CameraPermissionValue` to properly resolve imports.
@@ -101,6 +103,7 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "AutofocusState.hpp"
 #include "CameraCaptureResult.hpp"
 #include "CameraCaptureState.hpp"
+#include "CameraFeatureSupport.hpp"
 #include "CameraPermissionStatus.hpp"
 #include "CameraPermissionValue.hpp"
 #include "CameraState.hpp"

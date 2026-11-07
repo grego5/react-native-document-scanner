@@ -24,6 +24,7 @@ export { ImagePager } from './ImagePager';
 export type { ImagePagerProps } from './ImagePager';
 export type { ImagePagerDirection } from './ImagePager.nitro';
 export type { CameraMode, CameraProps, CameraRef } from './DocumentScanner';
+export type { CameraFeatureSupport } from './DocumentScannerCamera.nitro';
 export type { ImageCorrectionOptions, ImageOutputOptions } from './DocumentScannerCamera.nitro';
 export type {
   AutofocusState,

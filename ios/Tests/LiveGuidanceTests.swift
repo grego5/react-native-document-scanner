@@ -123,6 +123,43 @@ final class LiveGuidanceTests: XCTestCase {
 
   // MARK: - Detector
 
+  func testAdaptiveCadenceRearmsAfterMovementAndLimitsUnknownMotion() {
+    var cadence = AdaptiveInferenceCadence()
+    func gap(_ ms: Int64, moving: Bool = false, measured: Bool = true, searching: Bool = true,
+             trackingGap: Int64 = 0) -> Int64? {
+      cadence.gap(now: ms * 1_000_000, searching: searching, moving: moving,
+                  measured: measured, trackingGap: trackingGap)
+    }
+    XCTAssertNil(gap(0))
+    XCTAssertNil(gap(30))
+    XCTAssertNil(gap(60))
+    XCTAssertEqual(gap(90), 0)
+    cadence.didAttempt(at: 90_000_000)
+    XCTAssertNil(gap(200, measured: false))
+    XCTAssertNil(gap(250))
+    XCTAssertNil(gap(280))
+    XCTAssertNil(gap(310))
+    XCTAssertNil(gap(400), "brief tracking loss does not rearm a checked scene")
+    XCTAssertNil(gap(500, moving: true))
+    XCTAssertNil(gap(600, moving: true))
+    XCTAssertNil(gap(650))
+    XCTAssertNil(gap(680))
+    XCTAssertNil(gap(710))
+    XCTAssertEqual(gap(740), 0)
+    cadence.didAttempt(at: 740_000_000)
+    XCTAssertNil(gap(900, measured: false))
+    XCTAssertNil(gap(1_899, measured: false))
+    XCTAssertEqual(gap(1_900, measured: false), 0)
+    cadence.didAttempt(at: 1_900_000_000)
+    XCTAssertNil(gap(2_899, measured: false))
+    XCTAssertNil(gap(3_000, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
+    XCTAssertNil(gap(3_030, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
+    XCTAssertNil(gap(3_060, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
+    XCTAssertNil(gap(3_090, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
+    XCTAssertEqual(gap(3_120, searching: false, trackingGap: AdaptiveDetectionPolicy.revalidateGapNs),
+                   AdaptiveDetectionPolicy.revalidateGapNs)
+  }
+
   private final class Rig {
     let script = Script()
     let clock = ManualClock()
@@ -296,7 +333,7 @@ final class LiveGuidanceTests: XCTestCase {
     let page = try frame(), blank = try frame(textured: false)
     rig.detector.update(.init(adaptive: true, minCornerScore: 0.95, rotationAngle: 0, square: false))
     rig.detector.begin(enabled: true)
-    rig.analyze(page)
+    for _ in 0..<5 { rig.analyze(page) }
     XCTAssertEqual(rig.script.count, 1)
     let first = try XCTUnwrap(rig.results.last)
     for _ in 0..<5 { rig.analyze(page) }
@@ -306,11 +343,13 @@ final class LiveGuidanceTests: XCTestCase {
     XCTAssertGreaterThan(carried.acceptanceId, first.acceptanceId, "flow retention refreshes the hold")
     XCTAssertNil(carried.score, "a carried frame has no inference score")
     XCTAssertEqual(carried.corners?.count, 8)
-    // Losing the page's features wakes inference to confirm it again.
+    // Losing tracks briefly keeps the existing outline and defers inference.
     rig.analyze(blank)
     rig.analyze(blank)
+    XCTAssertEqual(rig.script.count, 1)
+    rig.clock.advance(1_000_000_000)
     rig.analyze(blank)
-    XCTAssertGreaterThan(rig.script.count, 1)
+    XCTAssertEqual(rig.script.count, 2)
   }
 
   func testAFrameRequestCopiesOnlyTheNextFramedRegion() throws {

@@ -54,6 +54,7 @@ namespace margelo::nitro::documentscanner {
     MODEL_LOAD_FAILED      SWIFT_NAME(modelLoadFailed) = 22,
     MODEL_SUPERSEDED      SWIFT_NAME(modelSuperseded) = 23,
     INPUT_INVALID      SWIFT_NAME(inputInvalid) = 24,
+    CAMERA_ANALYSIS_SLOW      SWIFT_NAME(cameraAnalysisSlow) = 25,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::documentscanner
@@ -91,6 +92,7 @@ namespace margelo::nitro {
         case hashString("model/load-failed"): return margelo::nitro::documentscanner::ScannerErrorCode::MODEL_LOAD_FAILED;
         case hashString("model/superseded"): return margelo::nitro::documentscanner::ScannerErrorCode::MODEL_SUPERSEDED;
         case hashString("input/invalid"): return margelo::nitro::documentscanner::ScannerErrorCode::INPUT_INVALID;
+        case hashString("camera/analysis-slow"): return margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_ANALYSIS_SLOW;
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert \"" + unionValue + "\" to enum ScannerErrorCode - invalid value!");
       }
@@ -122,6 +124,7 @@ namespace margelo::nitro {
         case margelo::nitro::documentscanner::ScannerErrorCode::MODEL_LOAD_FAILED: return JSIConverter<std::string>::toJSI(runtime, "model/load-failed");
         case margelo::nitro::documentscanner::ScannerErrorCode::MODEL_SUPERSEDED: return JSIConverter<std::string>::toJSI(runtime, "model/superseded");
         case margelo::nitro::documentscanner::ScannerErrorCode::INPUT_INVALID: return JSIConverter<std::string>::toJSI(runtime, "input/invalid");
+        case margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_ANALYSIS_SLOW: return JSIConverter<std::string>::toJSI(runtime, "camera/analysis-slow");
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert ScannerErrorCode to JS - invalid value: "
                                     + std::to_string(static_cast<int>(arg)) + "!");
@@ -158,6 +161,7 @@ namespace margelo::nitro {
         case hashString("model/load-failed"):
         case hashString("model/superseded"):
         case hashString("input/invalid"):
+        case hashString("camera/analysis-slow"):
           return true;
         default:
           return false;

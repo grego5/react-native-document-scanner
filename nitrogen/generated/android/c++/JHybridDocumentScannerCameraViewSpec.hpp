@@ -106,6 +106,8 @@ namespace margelo::nitro::documentscanner {
     void setOnCaptureStateChange(const std::optional<std::function<void(CameraCaptureState /* state */)>>& onCaptureStateChange) override;
     std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() override;
     void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) override;
+    std::optional<std::function<void(bool /* active */)>> getOnLowLightBoostActiveChange() override;
+    void setOnLowLightBoostActiveChange(const std::optional<std::function<void(bool /* active */)>>& onLowLightBoostActiveChange) override;
     std::optional<std::function<void(DocumentState /* state */)>> getOnDocumentStateChange() override;
     void setOnDocumentStateChange(const std::optional<std::function<void(DocumentState /* state */)>>& onDocumentStateChange) override;
     std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>> getOnCaptureStage() override;
@@ -113,6 +115,7 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
+    std::optional<CameraFeatureSupport> getCameraFeatures() override;
     std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override;
 
   private:

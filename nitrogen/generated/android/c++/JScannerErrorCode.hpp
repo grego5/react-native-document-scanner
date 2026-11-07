@@ -117,6 +117,9 @@ namespace margelo::nitro::documentscanner {
         case ScannerErrorCode::INPUT_INVALID:
           static const auto fieldINPUT_INVALID = clazz->getStaticField<JScannerErrorCode>("INPUT_INVALID");
           return clazz->getStaticFieldValue(fieldINPUT_INVALID);
+        case ScannerErrorCode::CAMERA_ANALYSIS_SLOW:
+          static const auto fieldCAMERA_ANALYSIS_SLOW = clazz->getStaticField<JScannerErrorCode>("CAMERA_ANALYSIS_SLOW");
+          return clazz->getStaticFieldValue(fieldCAMERA_ANALYSIS_SLOW);
         default:
           std::string stringValue = std::to_string(static_cast<int>(value));
           throw std::invalid_argument("Invalid enum value (" + stringValue + "!");

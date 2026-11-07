@@ -24,6 +24,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.camera.camera2.interop.applyCamera2InteropAsync
 import androidx.camera.camera2.interop.camera2Interop
@@ -170,18 +171,20 @@ open class HybridDocumentScannerCameraView(
   private val liveOverlay = LiveGuideOverlay(themedContext)
   /** Over the frozen frame, so the shooting stage shows on the photo being taken. */
   private val captureFeedbackView = CaptureFeedbackView(themedContext, liveOverlay)
-  // A fixed line count keeps the strip's height, and so the preview below it, steady as the figures change.
   private val statsLabel = TextView(themedContext).apply {
     setTextColor(Color.WHITE)
     textSize = 12f
     typeface = Typeface.MONOSPACE
-    setLines(STATS_LINES)
+    setHorizontallyScrolling(true)
     setPadding(dp(8), dp(6), dp(8), dp(6))
+  }
+  private val statsScroll = ScrollView(themedContext).apply {
     setBackgroundColor(0xFF101820.toInt())
+    addView(statsLabel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
     visibility = View.GONE
   }
   /** The last one-second figures below the stats strip's status line; main thread. */
-  private var statsFigures = ""
+  private var statsFigures: LiveDetectionStats? = null
   private var latestModelScore: Double? = null
   /** The guide while it tracks a page, normalized upright in the analysis frame; main thread. */
   private var trackedGuide: DocumentCandidate? = null
@@ -202,6 +205,13 @@ open class HybridDocumentScannerCameraView(
     renderStatus()
   }.apply {
     focusCandidateListener = ::onFocusCandidate
+    analysisSlowListener = ::onAnalysisSlow
+  }
+
+  private fun onAnalysisSlow() {
+    if (!disposed && props.active && boundCamera != null) {
+      onError?.invoke(ScannerFailure(ScannerErrorCode.CAMERA_ANALYSIS_SLOW))
+    }
   }
   /** Feeds one binding's frame exposure and autofocus state to blur gating; runs on a camera thread. In-flight
    * results can complete after the session closes, so results and posted events of an older binding are dropped.
@@ -332,6 +342,7 @@ open class HybridDocumentScannerCameraView(
   /** Main thread: binds the use cases to [previewView]; one per binding. */
   private var cameraController: LifecycleCameraController? = null
   private var boundCamera: BoundCamera? = null
+  @Volatile private var cameraFeatures: CameraFeatureSupport? = null
   // Last state passed to each callback; main thread. Null re-sends the current state to a newly set callback.
   private var emittedCameraState: ScannerCameraState? = null
   private var emittedAutofocus: AutofocusState? = null
@@ -385,6 +396,9 @@ open class HybridDocumentScannerCameraView(
       field = value
       mainHandler.post { emittedAutofocus = null; emitAutofocus() }
     }
+  override var onLowLightBoostActiveChange: ((active: Boolean) -> Unit)? = null
+
+  override fun getCameraFeatures(): CameraFeatureSupport? = cameraFeatures
   override var onDocumentStateChange: ((state: DocumentState) -> Unit)? = null
     set(value) {
       field = value
@@ -530,8 +544,8 @@ open class HybridDocumentScannerCameraView(
     val lightChangesMode = bound?.let { captureModeFor(next, it).first != it.captureMode } == true
     liveDetector.statsListener = if (next.showStats) ::renderStats else null
     if (old.showStats != next.showStats) {
-      statsFigures = ""
-      statsLabel.visibility = if (next.showStats) View.VISIBLE else View.GONE
+      statsFigures = null
+      statsScroll.visibility = if (next.showStats) View.VISIBLE else View.GONE
       renderStatus()
       layoutStats()
     }
@@ -680,7 +694,7 @@ open class HybridDocumentScannerCameraView(
       FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
     )
     container.addView(
-      statsLabel,
+      statsScroll,
       FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP),
     )
   }
@@ -1328,6 +1342,7 @@ open class HybridDocumentScannerCameraView(
         }
         cameraController = controller
         boundCamera = camera
+        cameraFeatures = CameraFeatureSupport(lowLightBoostSupported, camera.info.isZslSupported)
         observeFrameState(camera, generation)
         // OFF and EDOF do not scan; minimum focus distance may be missing, so it cannot decide.
         val characteristics = camera.info.cameraCharacteristics
@@ -1395,6 +1410,8 @@ open class HybridDocumentScannerCameraView(
     // The camera keeps its interop options across bindings; drop this binding's capture callback with it.
     boundCamera?.let { stopFrameState(it) }
     boundCamera = null
+    statsFigures = null
+    cameraFeatures = null
     bound = null
     hasAutofocus = false
     focusCandidate = null
@@ -1429,28 +1446,67 @@ open class HybridDocumentScannerCameraView(
   }
 
   private fun renderStats(stats: LiveDetectionStats) {
-    statsFigures = String.format(Locale.US, "%.1f Hz  frame %dx%d\npre %.1f  inf %.1f  total %.1f ms%s",
-      stats.rateHz, stats.width, stats.height,
-      stats.preprocessingMs, stats.inferenceMs, stats.analysisMs,
-      stats.cameraToAnalysisMs?.let { String.format(Locale.US, "\ncamera to analysis %.1f ms", it) } ?: "") +
-      String.format(Locale.US, "\nchecks %.2f ms  %s", stats.checksMsPerFrame, stats.adaptiveStatus) +
-      // Two short lines rather than one that wraps, so the strip keeps its height.
-      String.format(Locale.US, "\ncapture %s  torch %s%s\nboost %s  exposure x ISO %s  ae/awb %s", boundCaptureLabel(),
-        props.torch.name.lowercase(), if (light.torchLit == true) " lit" else "", lowLightBoostLabel(),
-        exposureIsoMs?.let { String.format(Locale.US, "%.0f", it) } ?: "n/a", aeAwbStates) +
-      (stats.peakBlurPercent?.let { String.format(Locale.US, "\nblur peak %.2f%%  gated %d", it, stats.gatedFrames) } ?: "") +
-      (if (stats.unmatchedFrames > 0) String.format(Locale.US, "  no metadata %d", stats.unmatchedFrames) else "")
+    statsFigures = stats
     renderStatus()
   }
 
-  /** Main thread: the stats strip's first line reports the camera, autofocus and document states. */
+  /** Main thread: every row is present even before the first measurement. */
   private fun renderStatus() {
     if (!props.showStats) return
-    val camera = emittedCameraState?.name?.lowercase() ?: "suspended"
-    val focus = emittedAutofocus?.name?.lowercase() ?: "inactive"
-    val score = latestModelScore?.let { String.format(Locale.US, "%.4f", it) } ?: "n/a"
-    statsLabel.text = "camera $camera  focus $focus\ndocument ${documentState.name.lowercase()}  score $score" +
-      if (statsFigures.isEmpty()) "" else "\n$statsFigures"
+    val stats = statsFigures
+    fun number(value: Double?, pattern: String = "%.1f") =
+      value?.let { String.format(Locale.US, pattern, it) } ?: "—"
+    fun ms(value: Double?) = value?.let { "${number(it)} ms" } ?: "—"
+    val frame = stats?.takeIf { it.width > 0 && it.height > 0 }?.let { "${it.width} × ${it.height}" } ?: "—"
+    fun pacing(value: String?) = when (value) {
+      "acquiring" -> "finding page"
+      "unconfirmed" -> "page not confirmed"
+      "revalidating" -> "rechecking page"
+      null -> "—"
+      else -> value
+    }
+    val capture = when (boundCaptureLabel()) {
+      "zsl" -> "zero shutter lag"
+      "latency" -> "low latency"
+      "quality" -> "high quality"
+      else -> "—"
+    }
+    val torch = if (light.torchLit == true) "on" else props.torch.name.lowercase()
+    statsLabel.text = listOf(
+      "Camera: ${emittedCameraState?.name?.lowercase() ?: "suspended"}",
+      "Autofocus: ${emittedAutofocus?.name?.lowercase() ?: "inactive"}",
+      "Page: ${documentState.name.lowercase()}  |  Score: ${number(latestModelScore, "%.4f")}",
+      "Frame: $frame  |  Runs/s: ${number(stats?.rateHz)}",
+      "Prep: ${ms(stats?.preprocessingMs)}  |  Model: ${ms(stats?.inferenceMs)}",
+      "Analysis: ${ms(stats?.analysisMs)}  |  Frame age: ${ms(stats?.cameraToAnalysisMs)}",
+      "Model pacing: ${pacing(stats?.adaptiveStatus)}",
+      "Last pacing restart: ${pacing(stats?.adaptiveReset)}",
+      "Checks/frame: ${ms(stats?.checksMsPerFrame)}  |  Gated: ${stats?.gatedFrames ?: "—"}",
+      "Capture mode: $capture",
+      "Torch: $torch",
+      "Low-light boost: ${lowLightBoostLabel()}",
+      "Exposure × ISO: ${number(exposureIsoMs, "%.0f")}",
+      "Auto exposure / WB: ${if (stats == null) "—" else aeAwbStates}",
+      "Peak blur: ${stats?.peakBlurPercent?.let { "${number(it, "%.2f")}%" } ?: "—"}",
+      "Missing metadata: ${stats?.unmatchedFrames ?: "—"}",
+    ).joinToString("\n")
+    layoutStatsStrip()
+  }
+
+  private fun statsStripHeight(): Int =
+    if (props.showStats) minOf(container.height / 2,
+      statsLabel.lineHeight * STATS_VISIBLE_ROWS + statsLabel.paddingTop + statsLabel.paddingBottom)
+    else 0
+
+  private fun layoutStatsStrip() {
+    if (!props.showStats || container.width <= 0) return
+    val textWidth = statsLabel.text.lineSequence().maxOfOrNull { statsLabel.paint.measureText(it.toString()) } ?: 0f
+    val width = minOf(container.width,
+      kotlin.math.ceil(textWidth).toInt() + statsLabel.paddingLeft + statsLabel.paddingRight)
+    val height = statsStripHeight()
+    statsScroll.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+      View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+    statsScroll.layout(0, 0, width, height)
   }
 
   /** Main thread: places the stats strip above the preview; React Native's layout never measures native children. */
@@ -1460,9 +1516,7 @@ open class HybridDocumentScannerCameraView(
     if (width <= 0 || height <= 0) return
     // Explicitly lay out native children: RN does not guarantee another FrameLayout pass after requestLayout.
     // Reserve the same font-scaled height even before the first statistics arrive.
-    val top = if (props.showStats) {
-      minOf(height, statsLabel.lineHeight * STATS_LINES + statsLabel.paddingTop + statsLabel.paddingBottom)
-    } else 0
+    val top = statsStripHeight()
     fun place(view: View, x: Int, y: Int, childWidth: Int, childHeight: Int) {
       view.measure(
         View.MeasureSpec.makeMeasureSpec(childWidth, View.MeasureSpec.EXACTLY),
@@ -1470,7 +1524,7 @@ open class HybridDocumentScannerCameraView(
       )
       view.layout(x, y, x + childWidth, y + childHeight)
     }
-    place(statsLabel, 0, 0, width, top)
+    layoutStatsStrip()
     // FIT_CENTER scales the viewport crop but does not hide the surrounding camera texture inside a
     // rectangular PreviewView. Make the view itself square so it clips to the same area as analysis.
     if (!hasPendingCapture()) previewSquareFrame = props.squareAspectRatio
@@ -1514,7 +1568,7 @@ open class HybridDocumentScannerCameraView(
     if (!info.isLowLightBoostSupported) return "unsupported"
     return when (info.lowLightBoostState.value) {
       LowLightBoostState.ACTIVE -> "active"
-      LowLightBoostState.INACTIVE -> "inactive"
+      LowLightBoostState.INACTIVE -> "auto (idle)"
       else -> "off"
     }
   }
@@ -1874,8 +1928,7 @@ open class HybridDocumentScannerCameraView(
     /** Sides of a tap's focus and exposure areas, as fractions of the preview: CameraX's own tap-to-focus sizes. */
     const val TAP_FOCUS_AREA = 1f / 6f
     const val TAP_METERING_AREA = TAP_FOCUS_AREA * 1.5f
-    /** Status, rate, timing, camera latency and blur. */
-    const val STATS_LINES = 8
+    const val STATS_VISIBLE_ROWS = 10
 
 
 

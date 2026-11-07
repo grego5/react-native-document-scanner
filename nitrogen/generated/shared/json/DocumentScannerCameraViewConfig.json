@@ -32,6 +32,7 @@
     "onCameraStateChange": true,
     "onCaptureStateChange": true,
     "onAutofocusChange": true,
+    "onLowLightBoostActiveChange": true,
     "onDocumentStateChange": true,
     "onCaptureStage": true,
     "hybridRef": true

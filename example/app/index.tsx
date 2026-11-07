@@ -15,6 +15,8 @@ import {
   useCameraPermission,
   type ScanSession as NativeScanSession,
   type CameraRef,
+  type CameraFeatureSupport,
+  type CameraState,
   type CameraCaptureState,
   type CaptureWaitReason,
   type CaptureStage,
@@ -102,6 +104,7 @@ export function ScanScreen({
   setRemoveShadows: (value: boolean) => void;
 }) {
   const cameraRef = useRef<CameraRef>(null);
+  const [cameraFeatures, setCameraFeatures] = useState<CameraFeatureSupport>();
   const session = useScanReview(native, onReset);
   const [message, setMessage] = useState('');
   const [captureState, setCaptureState] = useState<CameraCaptureState>('unavailable');
@@ -198,8 +201,10 @@ export function ScanScreen({
     ref: cameraRef,
     torch,
     active: showing,
-    showStats: true,
     onCaptureStateChange: setCaptureState,
+    onCameraStateChange: (state: CameraState) => {
+      if (state === 'ready') setCameraFeatures(cameraRef.current?.getCameraFeatures());
+    },
     onCaptureStage: (stage: CaptureStage, reason?: CaptureWaitReason) =>
       setWaitReason(stage === 'waiting' ? reason : undefined),
     onError: (error: Error) => setMessage(errorMessage(error, 'Could not prepare the camera.')),
@@ -308,6 +313,7 @@ export function ScanScreen({
       />
       <SheetModal visible={optionsOpen} onClose={() => setOptionsOpen(false)}>
         <OptionsPanel
+          cameraFeatures={cameraFeatures}
           tuning={tuning}
           disabled={capturing || session.working}
           removeShadows={removeShadows}

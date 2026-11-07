@@ -1,6 +1,7 @@
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
 import {
   DocumentScanner,
+  type CameraFeatureSupport,
   type CaptureMode,
   type SampleFolder,
   type TorchMode,
@@ -17,6 +18,7 @@ export interface LiveTuning {
   /** Photo mode's full size instead of the standard 1440x1080 one. */
   highResolutionPhoto: boolean
   inferenceThrottling: boolean
+  showStats: boolean
   exposureCompensation: number
   minFrameRate: number
   /** The torch for each new scan, `off` or `auto`; the camera screen's torch button sets it with a long press. */
@@ -37,6 +39,7 @@ export const DEFAULT_TUNING: LiveTuning = {
   mode: 'document',
   highResolutionPhoto: false,
   inferenceThrottling: true,
+  showStats: true,
   exposureCompensation: EXPOSURE_EV[0],
   minFrameRate: MIN_FRAME_RATES[0],
   torch: 'off',
@@ -49,7 +52,7 @@ function nextValue<T>(values: readonly T[], current: T) {
   return values[(values.indexOf(current) + 1) % values.length]
 }
 
-type Option = { label: string; wide?: boolean } & (
+type Option = { label: string; wide?: boolean; disabled?: boolean } & (
   | { on: boolean; toggle: () => void }
   | { value: string; next: () => void; changed: boolean }
 )
@@ -67,7 +70,7 @@ function OptionGrid({ options, disabled }: { options: Option[]; disabled?: boole
     <View style={styles.optionGrid}>
       {rows.map((row) => (
         <View key={row[0].label} style={styles.optionRow}>
-          {row.map((option) => <OptionCell key={option.label} option={option} disabled={disabled} />)}
+          {row.map((option) => <OptionCell key={option.label} option={option} disabled={disabled || option.disabled} />)}
           {row.length === 1 && !row[0].wide && <View style={styles.optionSpacer} />}
         </View>
       ))}
@@ -93,6 +96,7 @@ function OptionCell({ option, disabled }: { option: Option; disabled?: boolean }
 }
 
 export function OptionsPanel({
+  cameraFeatures,
   tuning,
   disabled,
   onChange,
@@ -102,6 +106,7 @@ export function OptionsPanel({
   sampleFolder,
   onSampleFolderChange,
 }: {
+  cameraFeatures?: CameraFeatureSupport
   tuning: LiveTuning
   /** Set while a photo is in flight, so a setting that rebinds the camera cannot fail it. */
   disabled: boolean
@@ -114,21 +119,26 @@ export function OptionsPanel({
 }) {
   const set = (update: Partial<LiveTuning>) => onChange((t) => ({ ...t, ...update }))
   const flag = (label: string, key: keyof LiveTuning & ('squareAspectRatio' | 'lowQualityControl' | 'inferenceThrottling' |
-    'lowLightBoost' | 'captureFeedback' | 'highResolutionPhoto')): Option =>
+    'lowLightBoost' | 'captureFeedback' | 'highResolutionPhoto' | 'showStats')): Option =>
     ({ label, on: tuning[key], toggle: () => set({ [key]: !tuning[key] }) })
   const cycle = <T,>(label: string, values: readonly T[], current: T, key: keyof LiveTuning, show: (value: T) => string): Option =>
     ({ label, value: show(current), changed: current !== values[0], next: () => set({ [key]: nextValue(values, current) }) })
   const options: Option[] = [
     { label: 'Shadow removal', on: removeShadows, toggle: () => onRemoveShadowsChange(!removeShadows) },
     flag('Quality check', 'lowQualityControl'),
-    cycle('Capture', CAPTURE_MODES, tuning.captureMode, 'captureMode', String),
+    cycle('Capture', cameraFeatures?.zeroShutterLagSupported === false ? CAPTURE_MODES.slice(1) : CAPTURE_MODES,
+      tuning.captureMode, 'captureMode', (mode) =>
+        mode === 'zsl' && cameraFeatures?.zeroShutterLagSupported === false ? 'ZSL unavailable' : mode),
     flag('Square', 'squareAspectRatio'),
     flag('Throttle detection', 'inferenceThrottling'),
     flag('Feedback', 'captureFeedback'),
     cycle('Exposure', EXPOSURE_EV, tuning.exposureCompensation, 'exposureCompensation', (ev) => `${ev} EV`),
     cycle('Min fps', MIN_FRAME_RATES, tuning.minFrameRate, 'minFrameRate', (fps) => (fps ? String(fps) : 'auto')),
-    flag('Low light boost', 'lowLightBoost'),
+    cameraFeatures?.lowLightBoostSupported === false
+      ? { label: 'Low light boost', value: 'Unavailable', changed: false, disabled: true, next: () => {} }
+      : flag('Low light boost', 'lowLightBoost'),
     flag('Hi-res camera', 'highResolutionPhoto'),
+    flag('Camera stats', 'showStats'),
   ]
   return (
     <View style={styles.optionsPanel}>

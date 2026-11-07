@@ -139,6 +139,45 @@ class LiveDocumentDetectorTest {
   }
 
   @Test
+  fun adaptiveRevalidationDropsConfirmedOutlineOnLowScoreDespiteReliableFlow() {
+    Harness().use { h ->
+      h.detector.flowMotionEnabled = true
+      h.detector.inferenceThrottling = true
+      // Let translated frames reach revalidation without triggering the separate speed gate.
+      h.detector.maxInferenceSpeedFraction = 0.0
+      val samples = mutableListOf<LiveFrameSample>()
+      val observations = mutableListOf<LiveDocumentObservation>()
+      h.detector.traceObserver = object : LiveGuideTraceObserver {
+        override fun onFrame(sample: LiveFrameSample) { samples.add(sample) }
+        override fun onObservation(observation: LiveDocumentObservation) { observations.add(observation) }
+      }
+      fun send(offset: Int) {
+        h.submit(pixelColor = { x, y ->
+          val value = (((x + offset) * 73856093) xor (y * 19349663)) ushr 8 and 255
+          Color.rgb(value, value, value)
+        }).second.get(10, TimeUnit.SECONDS)
+        instrumentation.waitForIdleSync()
+      }
+      repeat(6) { send(0) }
+      assertEquals(1, h.model.calls.get())
+      assertEquals(TRACKING, h.last().status)
+      h.model.score = .9f
+      // The carried outline eventually drifts far enough from the confirmed reference to revalidate.
+      for (offset in 1..16) {
+        send(offset)
+        if (h.model.calls.get() == 2) break
+      }
+      assertEquals(2, h.model.calls.get())
+      assertTrue(samples.last().analyzed)
+      assertTrue(samples.last().flowReliable)
+      assertEquals(0, samples.last().flow?.lostRegions)
+      assertFalse(observations.last().flowRetained)
+      assertEquals(SEARCHING, h.last().status)
+      assertNull(h.last().corners)
+    }
+  }
+
+  @Test
   fun thresholdChangeWakesAdaptiveTrackingAndZeroDisablesRejection() {
     Harness().use { h ->
       h.detector.flowMotionEnabled = true
@@ -152,16 +191,21 @@ class LiveDocumentDetectorTest {
         h.submit(pixelColor = texture).second.get(10, TimeUnit.SECONDS)
         instrumentation.waitForIdleSync()
       }
-      send()
-      send()
-      assertEquals(1, h.model.calls.get())
+      fun settle(previousCalls: Int) {
+        // The first frame seeds optical flow. Four measured steady frames are required after it.
+        repeat(4) { send() }
+        assertEquals(previousCalls, h.model.calls.get())
+        send()
+        assertEquals(previousCalls + 1, h.model.calls.get())
+      }
+      settle(previousCalls = 0)
+      assertEquals(TRACKING, h.last().status)
       h.detector.minCornerScore = .99
-      send()
-      assertEquals(2, h.model.calls.get())
+      settle(previousCalls = 1)
       assertEquals(SEARCHING, h.last().status)
       h.detector.minCornerScore = 0.0
       h.model.score = .1f
-      send()
+      settle(previousCalls = 2)
       assertEquals(TRACKING, h.last().status)
     }
   }
@@ -183,6 +227,9 @@ class LiveDocumentDetectorTest {
         instrumentation.waitForIdleSync()
         assertEquals(1,frame.closed.get())
       }
+      // One reference frame, then four measured steady frames.
+      repeat(4) { send() }
+      assertEquals(0, h.model.calls.get())
       send()
       assertEquals(TRACKING,h.last().status)
       assertEquals(1,h.model.calls.get())

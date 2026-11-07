@@ -165,6 +165,14 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     };
   }
   
+  // pragma MARK: std::function<void(bool /* active */)>
+  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_bool::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](bool active) mutable -> void {
+      swiftClosure.call(active);
+    };
+  }
+  
   // pragma MARK: std::function<void(DocumentState /* state */)>
   Func_void_DocumentState create_Func_void_DocumentState(void* NON_NULL swiftClosureWrapper) noexcept {
     auto swiftClosure = ReactNativeDocumentScanner::Func_void_DocumentState::fromUnsafe(swiftClosureWrapper);
@@ -251,14 +259,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     #endif
     ReactNativeDocumentScanner::HybridImagePagerViewSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
     return swiftPart.toUnsafe();
-  }
-  
-  // pragma MARK: std::function<void(bool /* zoomed */)>
-  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeDocumentScanner::Func_void_bool::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](bool zoomed) mutable -> void {
-      swiftClosure.call(zoomed);
-    };
   }
   
   // pragma MARK: std::shared_ptr<HybridImageViewerViewSpec>

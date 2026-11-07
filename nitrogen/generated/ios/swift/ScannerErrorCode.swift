@@ -67,6 +67,8 @@ public extension ScannerErrorCode {
         self = .modelSuperseded
       case "input/invalid":
         self = .inputInvalid
+      case "camera/analysis-slow":
+        self = .cameraAnalysisSlow
       default:
         return nil
     }
@@ -127,6 +129,8 @@ public extension ScannerErrorCode {
         return "model/superseded"
       case .inputInvalid:
         return "input/invalid"
+      case .cameraAnalysisSlow:
+        return "camera/analysis-slow"
     }
   }
 }

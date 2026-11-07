@@ -4,6 +4,7 @@ import { processColor, type ViewProps } from 'react-native';
 import type {
   AutofocusState,
   CameraState,
+  CameraFeatureSupport,
   CaptureStage,
   CaptureWaitReason,
   DocumentState,
@@ -27,6 +28,8 @@ const NativeCameraHost = getHostComponent<DocumentScannerCameraProps, DocumentSc
 
 /** The camera permission is read and requested through `CameraPermission` or `useCameraPermission`. */
 export interface CameraRef {
+  /** Reads support for the current camera configuration, if known. */
+  getCameraFeatures(): CameraFeatureSupport | undefined;
   /** Capture into the required session. The returned page is in its published snapshot; rendering may continue. */
   takePhoto(options?: TakePhotoOptions): Promise<string>;
 }
@@ -111,6 +114,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
     onCameraStateChange,
     onCaptureStateChange,
     onAutofocusChange,
+    onLowLightBoostActiveChange,
     onDocumentStateChange,
     onCaptureStage,
     onError,
@@ -126,6 +130,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
     onCaptureStateChange,
     onCameraStateChange,
     onAutofocusChange,
+    onLowLightBoostActiveChange,
     onDocumentStateChange: effectiveDocumentState,
     onCaptureStage,
     onError,
@@ -135,6 +140,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       onCaptureStateChange,
       onCameraStateChange,
       onAutofocusChange,
+      onLowLightBoostActiveChange,
       onDocumentStateChange: effectiveDocumentState,
       onCaptureStage,
       onError,
@@ -143,6 +149,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
   const hasCameraState = onCameraStateChange != null;
   const hasCaptureState = onCaptureStateChange != null;
   const hasAutofocus = onAutofocusChange != null;
+  const hasBoostActivity = onLowLightBoostActiveChange != null;
   const hasDocumentState = effectiveDocumentState != null;
   const hasCaptureStage = onCaptureStage != null;
   // Separate memos, so adding or removing one handler does not make native resend the others' states.
@@ -173,6 +180,12 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
         ? callback((state: DocumentState) => handlers.current.onDocumentStateChange?.(state))
         : noop,
     [hasDocumentState],
+  );
+  const nativeBoostActivity = useMemo(
+    () => hasBoostActivity
+      ? callback((active: boolean) => handlers.current.onLowLightBoostActiveChange?.(active))
+      : noop,
+    [hasBoostActivity],
   );
   const nativeCaptureStage = useMemo(
     () =>
@@ -220,6 +233,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
     };
 
     return {
+      getCameraFeatures: () => nativeRef.current?.getCameraFeatures(),
       takePhoto: async (options?: TakePhotoOptions) => {
         const result = await scannerOperation(
           () => requireNativeView().takePhotoResult(options),
@@ -264,6 +278,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       onCameraStateChange={nativeCameraState}
       onCaptureStateChange={nativeCaptureState}
       onAutofocusChange={nativeAutofocus}
+      onLowLightBoostActiveChange={nativeBoostActivity}
       onDocumentStateChange={nativeDocumentState}
       onCaptureStage={nativeCaptureStage}
       hybridRef={setNativeRef}

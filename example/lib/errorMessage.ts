@@ -6,6 +6,7 @@ const SCANNER_MESSAGES: Record<ScannerErrorCode, string> = {
   'camera/unavailable': 'The camera is closed. Open it and try again.',
   'camera/permission-denied': 'Allow camera access to take a photo.',
   'camera/not-ready': 'Wait for the camera preview, then try again.',
+  'camera/analysis-slow': 'Camera analysis is running slowly. Detection may take longer.',
   'capture/focus-timeout': 'The camera could not focus. Adjust the distance and try again.',
   'capture/motion-timeout': 'Hold the camera steady and try again.',
   'capture/busy': 'A photo is already being captured. Wait for it to finish.',

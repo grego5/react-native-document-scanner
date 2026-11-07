@@ -126,7 +126,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
   static let holdNs: Int64 = 400_000_000
   static let minArea = 0.03
   /// Inference pauses above this framing speed, in buffer widths per second.
-  static let maxInferenceSpeedFraction = 0.05
+  static let maxInferenceSpeedFraction = 0.01
 
   private let acquireLease: @Sendable () -> CornerInference.Lease
   private let clock: () -> Int64
@@ -179,6 +179,9 @@ final class LiveDocumentDetector: @unchecked Sendable {
   private var flowGeneration = -1
   private var policy = AdaptiveDetectionPolicy()
   private var adaptiveWasEnabled = false
+  private var cadence = AdaptiveInferenceCadence()
+  private var cadenceGeneration = -1
+  private var cadenceFraming: CameraFraming?
   private var appliedMinCornerScore = 0.95
   private var modelGeneration: UInt64?
   private var scorePausedGeneration: Int?
@@ -412,9 +415,17 @@ final class LiveDocumentDetector: @unchecked Sendable {
     let adaptive = settings.adaptive
     if adaptive != adaptiveWasEnabled {
       policy.reset()
+      cadence = AdaptiveInferenceCadence()
+      scorePausedGeneration = nil
       adaptiveWasEnabled = adaptive
     }
-    let measured = estimate?.status == 0
+    let generation = state.current
+    if adaptive, cadenceGeneration != generation || cadenceFraming != framing {
+      resetTracking()
+      cadenceGeneration = generation
+      cadenceFraming = framing
+    }
+    let measured = estimate?.status == FlowStatus.measured.rawValue
     if let paused = scorePausedGeneration,
        !ScannerLiveGuide.keepScorePause(state.isCurrent(paused), speed: measured ? estimate?.speed : nil,
                                         sourceWidth: estimate?.sourceWidth ?? 0) {
@@ -422,6 +433,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
     }
     let scorePaused = scorePausedGeneration != nil
     let lost = estimate?.lostRegions ?? 0
+    let searching = adaptive && (!tracking || !policy.hasReference)
     let carried = framing == flowRegionFraming ? flowRegion.flatMap { warp($0, to: sensorNs) } : nil
     // Flow carried the page outline to this frame. Lost regions only degrade it; the policy bounds how long.
     let reliable = carried != nil && measured && estimate?.hasTransform == true
@@ -430,10 +442,14 @@ final class LiveDocumentDetector: @unchecked Sendable {
       ? policy.next(tracking: tracking, reliable: reliable, degraded: lost > 0, current: flowRegion,
                     width: upright.width, height: upright.height)
       : tracking ? LiveDetectionState.trackingGapNs : 0
-    let moving = measured && (lost > 0 || (estimate?.speed?.doubleValue).map {
-      $0 / Double(framing.buffer.width) > Self.maxInferenceSpeedFraction
+    let speedLimit = searching ? Self.maxInferenceSpeedFraction / 2 : Self.maxInferenceSpeedFraction
+    let moving = measured && ((!adaptive && lost > 0) || (estimate?.speed?.doubleValue).map {
+      $0 / Double(framing.buffer.width) > speedLimit
     } == true)
-    let token = moving || scorePaused ? nil : state.acquire(nowNs: startedAt, minGapNs: gap)
+    let eligibleGap = adaptive
+      ? cadence.gap(now: startedAt, searching: searching, moving: moving, measured: measured && lost == 0, trackingGap: gap)
+      : moving || scorePaused ? nil : gap
+    let token = eligibleGap.flatMap { state.acquire(nowNs: startedAt, minGapNs: $0) }
     guard let token else {
       // Pacing and movement skip inference; flow's own consensus fit decides whether tracking holds.
       guard reliable, lost == 0, state.isCurrent(lastToken) else { return }
@@ -455,6 +471,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
     guard state.isCurrent(token) else { return }
     // A stop raced this frame; its token is stale.
     guard let lease = currentLease() else { return }
+    if adaptive { cadence.didAttempt(at: startedAt) }
     let analysis: CornerAnalysis
     do {
       analysis = try lease.analyzeLive(buffer, orientation: framing.orientation, crop: framing.crop)
@@ -485,8 +502,8 @@ final class LiveDocumentDetector: @unchecked Sendable {
     let rejected = ScannerLiveGuide.scoreRejected(NSNumber(value: prediction.score), minimum: settings.minCornerScore)
     let candidate = rejected ? nil : prediction.corners
     if rejected {
-      resetTracking()
-      scorePausedGeneration = token
+      clearTrackedOutline()
+      if !adaptive { scorePausedGeneration = token }
     }
     if token != lastToken || framing != lastFraming {
       guide.reset()
@@ -500,13 +517,18 @@ final class LiveDocumentDetector: @unchecked Sendable {
       : nil
     let validated = guide.update(Self.numbers(candidate), width: upright.width,
                                      height: upright.height, sensorNs: sensorNs, arrivalNs: startedAt)
-    // A rejected model prediction cannot expire an independently tracked, shape-valid page.
     let flowRetained = flowHeld != nil && validated.status != 1
     let status = flowRetained ? 1 : validated.status
     let accepted = validated.accepted?.map(\.doubleValue)
     tracking = status != 0
-    if !flowRetained { policy.reference(status == 1 ? accepted : nil) }
-    if adaptive, !flowRetained, policy.hasReference { policy.confirmed() }
+    if !flowRetained {
+      if status == 1 {
+        policy.reference(accepted)
+        if adaptive { policy.confirmed() }
+      } else if !adaptive || status == 0 {
+        policy.reference(nil)
+      }
+    }
     flowRegion = accepted
     trackedRegionSensorNs = sensorNs
     flowRegionFraming = framing
@@ -562,7 +584,12 @@ final class LiveDocumentDetector: @unchecked Sendable {
 
   /// Clears acceptance and pause state when the source, score policy or model changes.
   private func resetTracking() {
+    cadence = AdaptiveInferenceCadence()
     scorePausedGeneration = nil
+    clearTrackedOutline()
+  }
+
+  private func clearTrackedOutline() {
     guide.reset()
     tracking = false
     policy.reset()

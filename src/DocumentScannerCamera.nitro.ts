@@ -103,6 +103,7 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   /** Required local model path/URI. Native prepares it before binding; dimensions come from the tensor. */
   cornerDetectionModel?: string
   /** Native camera failure. A model preparation failure keeps the camera suspended until the source changes. */
+  /** Reports camera failures and the non-blocking `camera/analysis-slow` warning. */
   onError?: (error: ScannerFailure) => void
   /**
    * Whether the camera runs; defaults to true. False releases preview, capture and analysis use cases and sensors while
@@ -125,7 +126,7 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   inferenceThrottling?: boolean
   /** Minimum live corner confidence, from 0 to 1; defaults to 0.95. 0 disables score rejection.
-   * Lower scores clear tracking and pause inference until image movement is measured.
+   * Lower scores clear the tracked outline. See `inferenceThrottling` for adaptive retry timing.
    */
   minCornerScore?: number
   /**
@@ -156,8 +157,8 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   torch?: TorchMode
   /**
-   * Allow CameraX low-light boost on supported Android 15+ cameras; defaults to true. It is off when torch mode is not
-   * `off` and has no effect on unsupported cameras or iOS. Changes wait for a pending capture.
+   * Allow automatic low-light boost on supported cameras. Defaults to true. Android requires
+   * Android 15+ and torch mode `off`. Changes wait for a pending capture.
    */
   lowLightBoost?: boolean
   /**
@@ -191,7 +192,7 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    * full 4:3 frame. Android rebinds after an in-flight photo settles; iOS changes framing without rebinding.
    */
   squareAspectRatio?: boolean
-  /** Reserves a fixed strip above the preview for status, model score, timing and blur figures; defaults to false. */
+  /** Shows native camera diagnostics in fixed rows. Defaults to false. */
   showStats?: boolean
   /** ARGB color of the guide and the searching viewfinder; the Camera wrapper takes a color string. Defaults to teal. */
   guideColor?: number
@@ -206,6 +207,8 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   onCameraStateChange?: (state: CameraState) => void
   onCaptureStateChange?: (state: CameraCaptureState) => void
   onAutofocusChange?: (state: AutofocusState) => void
+  /** iOS diagnostic for actual low-light boost engagement. */
+  onLowLightBoostActiveChange?: (active: boolean) => void
   onDocumentStateChange?: (state: DocumentState) => void
   /** Each capture stage and changes to its waiting reason, independent of captureFeedback. Reason is absent outside waiting (and before the first gate decision). Not re-sent when the handler is set. */
   onCaptureStage?: (stage: CaptureStage, waitReason?: CaptureWaitReason) => void
@@ -231,7 +234,13 @@ export interface DocumentScannerCameraMethods extends HybridViewMethods {
    * preview frame while the shot saves. Originals remain private session resources: Android captures JPEG;
    * the iOS source layer uses provisional JPEG backing and can reopen TIFF/JPEG/PNG.
    */
+  getCameraFeatures(): CameraFeatureSupport | undefined
   takePhotoResult(options?: TakePhotoOptions): Promise<CameraCaptureResult | ScannerFailure>
+}
+
+export interface CameraFeatureSupport {
+  lowLightBoostSupported: boolean
+  zeroShutterLagSupported: boolean
 }
 
 export type DocumentScannerCameraView = HybridView<

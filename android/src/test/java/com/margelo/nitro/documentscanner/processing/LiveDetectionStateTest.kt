@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LiveDetectionStateTest {
+  @Test fun analysisRateWarnsOnceUntilAHealthyWindowRearmsIt() {
+    val rate = AnalysisRateMonitor()
+    assertFalse(rate.observe(0))
+    for (frame in 1..29) assertFalse(rate.observe(frame * 100_000_000L))
+    assertTrue(rate.observe(3_000_000_000L))
+    for (frame in 31..60) assertFalse(rate.observe(frame * 100_000_000L))
+    for (frame in 1..60) assertFalse(rate.observe(6_000_000_000L + frame * 50_000_000L))
+    for (frame in 1..29) assertFalse(rate.observe(9_000_000_000L + frame * 100_000_000L))
+    assertTrue(rate.observe(12_000_000_000L))
+  }
   @Test
   fun throttlesSchedulingAndInvalidatesResultsAcrossPauseLayoutAndStop() {
     val state = LiveDetectionState()

@@ -16,6 +16,7 @@ struct CameraConfiguration: Equatable, Sendable {
   var capabilities = CameraCapabilities()
   /// Whether the photo output keeps a zero-shutter-lag buffer in this configuration.
   var zeroShutterLag = false
+  var zeroShutterLagSupported = false
 }
 
 /// One still's progress, on main: `exposed` once its exposure ends, then exactly one terminal
@@ -34,6 +35,7 @@ enum CameraSessionEvent: Equatable {
   case streaming(PixelSize)
   /// A later frame of the same run arrived at a different size.
   case frameSize(PixelSize)
+  case analysisSlow
   /// The system interrupted the running session; `streaming` follows when it resumes.
   case interrupted
   /// Media services reset and the pipeline must be configured again.
@@ -56,6 +58,7 @@ protocol CameraSessionControl: AnyObject {
   /// on the session owner, so main receives it in order with `perform` completions: after the
   /// completion of every command applied before the sample, before the completion of every later one.
   var focusEvents: ((FocusObservation) -> Void)? { get set }
+  var lowLightBoostEvents: ((Bool) -> Void)? { get set }
   /// The configured device, for rotation tracking; nil until `configured`.
   var device: AVCaptureDevice? { get }
   func attachPreview(_ layer: AVCaptureVideoPreviewLayer)
@@ -78,6 +81,7 @@ protocol CameraSessionControl: AnyObject {
 extension CameraSessionControl {
   var metadataSink: ((CameraFrameMetadata) -> Void)? { get { nil } set {} }
   var focusEvents: ((FocusObservation) -> Void)? { get { nil } set {} }
+  var lowLightBoostEvents: ((Bool) -> Void)? { get { nil } set {} }
   func requestFocusObservation() {}
   func perform(_ command: CameraCommand, completion: @escaping (CommandOutcome) -> Void) {}
   func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) {
@@ -164,14 +168,18 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     set { lock.lock(); metadata = newValue; lock.unlock() }
   }
   var focusEvents: ((FocusObservation) -> Void)?
+  var lowLightBoostEvents: ((Bool) -> Void)?
   var device: AVCaptureDevice? {
     lock.lock(); defer { lock.unlock() }
-    return running ? configuredDevice : nil
+    return activeEpoch != nil ? configuredDevice : nil
   }
 
   private let queue = DispatchQueue(label: "ReactNativeDocumentScanner.camera")
   private let frameQueue = DispatchQueue(label: "ReactNativeDocumentScanner.camera.frames")
   private let discovery: () -> AVCaptureDevice?
+  // Frame queue only.
+  private var analysisEpoch: Int?
+  private var analysisRate = AnalysisRateMonitor()
   // Main only.
   private var generation = 0
   private weak var previewLayer: AVCaptureVideoPreviewLayer?
@@ -534,7 +542,8 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     if photoOutput.isZeroShutterLagSupported { photoOutput.isZeroShutterLagEnabled = true }
     let configuration = CameraConfiguration(photo: choice.photo, video: choice.video,
                                             capabilities: CameraDeviceAdapter.capabilities(device),
-                                            zeroShutterLag: photoOutput.isZeroShutterLagEnabled)
+                                            zeroShutterLag: photoOutput.isZeroShutterLagEnabled,
+                                            zeroShutterLagSupported: photoOutput.isZeroShutterLagSupported)
     configured = (request, configuration)
     CameraLog.logger.info(
       "camera configured photo=\(choice.photo, privacy: .public) video=\(choice.video, privacy: .public) zsl=\(configuration.zeroShutterLag, privacy: .public)")
@@ -552,6 +561,13 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
       device.observe(\.isAdjustingFocus, options: [.initial, .new]) { device, _ in report(device) },
       device.observe(\.focusMode, options: [.new]) { device, _ in report(device) },
     ]
+    if device.isLowLightBoostSupported {
+      deviceObservations.append(device.observe(\.isLowLightBoostEnabled, options: [.initial, .new]) {
+        [weak self] device, _ in
+        let active = device.isLowLightBoostEnabled
+        self?.publish(run) { $0.lowLightBoostEvents?(active) }
+      })
+    }
   }
 
   func requestFocusObservation() {
@@ -638,6 +654,13 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
     lock.unlock()
     guard sink != nil || metadata != nil else { return }
     guard let frameNs = hostNs(CMSampleBufferGetPresentationTimeStamp(sampleBuffer), clock: clock) else { return }
+    if analysisEpoch != run {
+      analysisEpoch = run
+      analysisRate = AnalysisRateMonitor()
+    }
+    if analysisRate.observe(at: hostClockNs()) {
+      publish(run) { $0.onEvent?(.analysisSlow) }
+    }
     metadata?(CameraDeviceAdapter.metadata(sampleBuffer, hostNs: frameNs, device: device))
     sink?(buffer, frameNs)
   }
@@ -654,5 +677,25 @@ final class AVCameraSession: NSObject, CameraSessionControl, AVCaptureVideoDataO
   func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer,
                      from connection: AVCaptureConnection) {
     frames.drop()
+  }
+}
+
+/// Counts delivered analysis frames independently of how often the model runs.
+struct AnalysisRateMonitor {
+  private var windowStart: Int64?
+  private var frames = 0
+  private var slow = false
+
+  mutating func observe(at now: Int64) -> Bool {
+    guard let windowStart else { self.windowStart = now; return false }
+    frames += 1
+    let elapsed = now - windowStart
+    guard elapsed >= 3_000_000_000 else { return false }
+    let belowThreshold = Double(frames) / (Double(elapsed) / 1e9) < 15
+    let shouldWarn = belowThreshold && !slow
+    slow = belowThreshold
+    self.windowStart = now
+    frames = 0
+    return shouldWarn
   }
 }

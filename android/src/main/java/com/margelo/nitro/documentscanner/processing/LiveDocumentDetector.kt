@@ -64,6 +64,7 @@ internal data class LiveDetectionStats(
   /** Combined flow + stabilization/shape/boundary work per delivered analysis frame, including throttled frames. */
   val checksMsPerFrame: Double = 0.0,
   val adaptiveStatus: String = "off",
+  val adaptiveReset: String? = null,
 )
 
 /** One frame's flow result and the timing used by analysis statistics and traces. Executor-confined. */
@@ -99,6 +100,9 @@ internal class LiveDocumentDetector(
   @Volatile internal var traceObserver: LiveGuideTraceObserver? = null
   /** Main-thread receiver of one-second [LiveDetectionStats] for on-device tuning; null skips them. */
   @Volatile internal var statsListener: ((LiveDetectionStats) -> Unit)? = null
+  @Volatile internal var analysisSlowListener: (() -> Unit)? = null
+  private var analysisBinding = -1L
+  private var analysisRate = AnalysisRateMonitor()
   /** Independent main-thread focus owner receives document targets; focus never gates detection. */
   @Volatile internal var focusCandidateListener: ((LiveFocusCandidate) -> Unit)? = null
   /** Checks for the next analyzed frame; a change starts a fresh stabilizer, dropping its history. */
@@ -113,7 +117,7 @@ internal class LiveDocumentDetector(
   /** Experiment switch: disable pacing/adaptive pauses, preserving frame validity gates. */
   @Volatile internal var pacingEnabled = true
   /** Pause inference above this framing speed, independent of exposure or autofocus. */
-  @Volatile internal var maxInferenceSpeedFraction = .05
+  @Volatile internal var maxInferenceSpeedFraction = .01
   private val frameRequest = AtomicReference<((LiveFrame) -> Unit)?>(null)
 
   /**
@@ -155,6 +159,10 @@ internal class LiveDocumentDetector(
   private var appliedMinCornerScore = 0.95
   /** Generation of a low-score scene awaiting measured movement; null permits inference. */
   private var scorePausedGeneration: Long? = null
+  private var cadence = AdaptiveInferenceCadence()
+  private var cadenceGeneration = -1L
+  private val cadenceCrop = Rect()
+  private var cadenceRotation = -1
   private val adaptivePolicy = AdaptiveDetectionPolicy()
   private var adaptiveWasEnabled = false
   private var trackedRegionSensorNs = 0L
@@ -283,6 +291,18 @@ internal class LiveDocumentDetector(
   override fun analyze(image: ImageProxy) = analyzeForBinding(image, binding)
 
   private fun analyzeForBinding(image: ImageProxy, boundGeneration: Long) {
+    val startedAt = System.nanoTime()
+    analysisSlowListener?.let { listener ->
+      if (boundGeneration == binding) {
+        if (analysisBinding != boundGeneration) {
+          analysisBinding = boundGeneration
+          analysisRate = AnalysisRateMonitor()
+        }
+        if (analysisRate.observe(startedAt)) handler.post {
+          if (boundGeneration == binding && analysisSlowListener === listener) listener()
+        }
+      }
+    }
     frameRequest.getAndSet(null)?.let { receiver -> copyCrop(image)?.let(receiver) }
     val minimumScore = minCornerScore
     if (minimumScore != appliedMinCornerScore) {
@@ -302,7 +322,6 @@ internal class LiveDocumentDetector(
       modelSelection = selected
     }
     val frameGeneration = synchronized(bindingLock) { flowGeneration }
-    val startedAt = System.nanoTime()
     val startedRealtimeNs = SystemClock.elapsedRealtimeNanos()
     if (debugLogging && windowStartedNs == 0L) windowStartedNs = startedAt
     // Motion gates inference; exposure smear and focus affect capture readiness only.
@@ -323,10 +342,19 @@ internal class LiveDocumentDetector(
     val adaptive = inferenceThrottling && pacingEnabled
     if (adaptive != adaptiveWasEnabled) {
       adaptivePolicy.reset()
+      cadence = AdaptiveInferenceCadence()
+      scorePausedGeneration = null
       adaptiveWasEnabled = adaptive
     }
     val currentCrop = image.cropRect
-    val matchingGeometry = currentCrop == flowRegionCrop && image.imageInfo.rotationDegrees == flowRegionRotation
+    val rotationDegrees = image.imageInfo.rotationDegrees
+    if (adaptive && (cadenceGeneration != frameGeneration || cadenceCrop != currentCrop || cadenceRotation != rotationDegrees)) {
+      resetTracking()
+      cadenceGeneration = frameGeneration
+      cadenceCrop.set(currentCrop)
+      cadenceRotation = rotationDegrees
+    }
+    val matchingGeometry = currentCrop == flowRegionCrop && rotationDegrees == flowRegionRotation
     val estimate = flow?.estimate
     scorePausedGeneration?.let { generation ->
       if (!NativeLiveGuide.keepScorePauseNative(state.isCurrent(generation), estimate?.speedPxPerSecond ?: 0.0,
@@ -338,24 +366,28 @@ internal class LiveDocumentDetector(
     // Flow carried the page outline to this frame. Lost regions only degrade it; the policy bounds how long.
     val reliable = matchingGeometry && flowRegion != null && estimate?.status == FlowMotionStatus.MEASURED &&
       estimate.transform != null && flowRegion!!.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) } != null
-    val turned = image.imageInfo.rotationDegrees % 180 != 0
-    val gap = if (adaptive) adaptivePolicy.next(tracking, reliable, (estimate?.lostRegions ?: 0) > 0, flowRegion,
+    val turned = rotationDegrees % 180 != 0
+    val searching = adaptive && (!tracking || !adaptivePolicy.hasReference)
+    val trackingGap = if (adaptive) adaptivePolicy.next(tracking, reliable, (estimate?.lostRegions ?: 0) > 0, flowRegion,
       if (turned) currentCrop.height() else currentCrop.width(), if (turned) currentCrop.width() else currentCrop.height())
       else if (pacingEnabled && tracking) LiveDetectionState.TRACKING_GAP_NS else 0L
     val doubt = if (adaptive) adaptivePolicy.doubt else null
+    val speedLimit = if (searching) maxInferenceSpeedFraction / 2 else maxInferenceSpeedFraction
     val moving = pacingEnabled && maxInferenceSpeedFraction > 0 && estimate?.status == FlowMotionStatus.MEASURED &&
-      (estimate.lostRegions > 0 || estimate.speedPxPerSecond?.let { it / image.width > maxInferenceSpeedFraction } == true)
-    val unstable = moving
+      ((!adaptive && estimate.lostRegions > 0) || estimate.speedPxPerSecond?.let { it / image.width > speedLimit } == true)
+    val gap = if (adaptive) cadence.gap(startedAt, searching, moving,
+      estimate?.status == FlowMotionStatus.MEASURED && estimate.lostRegions == 0, trackingGap)
+      else if (moving || scorePaused) null else trackingGap
     // Provisional focus inference cannot override a tracking pause; tracked outlines drive focus instead.
     val token = synchronized(bindingLock) {
       when {
-        boundGeneration != binding || unstable || scorePaused -> null
+        boundGeneration != binding || gap == null -> null
         else -> state.acquire(startedAt, gap)
       }
     }
     try {
       received++
-      if (unstable) gated++
+      if (moving) gated++
       traceObserver?.takeIf { it.frameSamplesEnabled }?.onFrame(frameSample(sensorTimestampNs, startedAt, frame, token != null, flow).copy(
         inferenceReason = when {
           boundGeneration != binding -> "binding changed"
@@ -364,7 +396,7 @@ internal class LiveDocumentDetector(
           token == null -> "cadence or paused"
           else -> "inference"
         },
-        inferenceGapNs = gap, flowReliable = reliable,
+        inferenceGapNs = gap ?: Long.MAX_VALUE, flowReliable = reliable,
         predictedCorners = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) },
         adaptiveDoubt = doubt, focusing = frame?.outOfFocus == true, blur = blur,
       ))
@@ -392,7 +424,7 @@ internal class LiveDocumentDetector(
               currentCrop.left, currentCrop.top, currentCrop.right, currentCrop.bottom, rotation, held.accepted, null,
               held.status, held.decision, held.chainLength, false, held.accepted, held.acceptanceId, held.holdDeadlineNs,
               0.0, 0.0, 0, guideEligible = false, trackingOnly = true,
-              inferencePaused = adaptive && adaptivePolicy.paused && !unstable))
+              inferencePaused = adaptive && adaptivePolicy.paused && !moving))
             publish(LiveDetectionResult(LiveGuideStatus.TRACKING, held.accepted, source, width, height,
               held.acceptanceId, held.holdDeadlineNs, lastToken, startedAt))
             // The tracked outline keeps the page, and so continuous autofocus, while inference is paused.
@@ -407,13 +439,14 @@ internal class LiveDocumentDetector(
       val sourceTransform = transformFactory.getOutputTransform(image)
       if (!state.isCurrent(token)) return
       val runtime = session ?: (modelFactory?.invoke(context) ?: CornerInference.acquire(context)).also { session = it }
+      if (adaptive) cadence.didAttempt(startedAt)
       val prediction = runtime.analyze(image)
       val score = runtime.lastScore
       val scoreRejected = NativeLiveGuide.scoreRejectedNative(score ?: 0.0, score != null, minimumScore)
       val candidate = prediction.takeUnless { scoreRejected }
       if (scoreRejected) {
-        resetTracking()
-        scorePausedGeneration = token
+        clearTrackedOutline()
+        if (!adaptive) scorePausedGeneration = token
       }
       val preprocessingMs = runtime.lastPreprocessingMs
       val inferenceMs = runtime.lastInferenceMs
@@ -446,7 +479,6 @@ internal class LiveDocumentDetector(
       val validated = stabilizer.update(
         GuideInput(candidate?.corners, width, height, sensorTimestampNs, startedAt),
       )
-      // A rejected model prediction cannot expire an independently tracked, shape-valid page.
       // Keep the validation decision in the trace; flow retention is not a model confirmation.
       val flowRetained = flowHeld != null && validated.status != GuideTrackingStatus.TRACKING
       val output = if (flowRetained) validated.copy(status = GuideTrackingStatus.TRACKING) else validated
@@ -465,8 +497,14 @@ internal class LiveDocumentDetector(
         LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.corners, sourceTransform, width, height,
           output.status == GuideTrackingStatus.TRACKING, sensorTimestampNs))
       tracking = output.status != GuideTrackingStatus.SEARCHING
-      if (!flowRetained) adaptivePolicy.reference(output.accepted.takeIf { output.status == GuideTrackingStatus.TRACKING })
-      if (adaptive && !flowRetained && adaptivePolicy.hasReference) adaptivePolicy.confirmed()
+      if (!flowRetained) {
+        if (output.status == GuideTrackingStatus.TRACKING) {
+          adaptivePolicy.reference(output.accepted)
+          if (adaptive) adaptivePolicy.confirmed()
+        } else if (!adaptive || output.status == GuideTrackingStatus.SEARCHING) {
+          adaptivePolicy.reference(null)
+        }
+      }
       flowRegion = output.accepted
       trackedRegionSensorNs = sensorTimestampNs
       flowRegionCrop.set(crop)
@@ -595,7 +633,12 @@ internal class LiveDocumentDetector(
 
   /** Clears acceptance and pause state when the source, score policy or inference session changes. */
   private fun resetTracking() {
+    cadence = AdaptiveInferenceCadence()
     scorePausedGeneration = null
+    clearTrackedOutline()
+  }
+
+  private fun clearTrackedOutline() {
     stabilizer.reset()
     tracking = false
     adaptivePolicy.reset()
@@ -704,7 +747,8 @@ internal class LiveDocumentDetector(
         if (cameraOptics != null && inferred > 0) totalCameraMs / frames else null, lastWidth, lastHeight,
         peakBlur?.let { it * 100 }, gated, unmatched,
         totalChecksNs / 1_000_000.0 / received.coerceAtLeast(1),
-        if (inferenceThrottling && pacingEnabled) "${adaptivePolicy.status}; reset: ${adaptivePolicy.lastReset}" else "off",
+        if (inferenceThrottling && pacingEnabled) adaptivePolicy.status else "off",
+        adaptivePolicy.lastReset.takeIf { inferenceThrottling && pacingEnabled },
       )
       handler.post { if (statsListener === listener) listener(stats) }
     }
@@ -721,6 +765,7 @@ internal class LiveDocumentDetector(
     state.dispose()
     onResult = null // Release the owning view immediately, including already-posted callbacks.
     statsListener = null
+    analysisSlowListener = null
     synchronized(bindingLock) {
       flowActive = false
       clearFlowLocked()

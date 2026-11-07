@@ -9,6 +9,9 @@ final class CameraPreviewView: UIView {
   let guide = LiveGuideOverlay()
   lazy var feedback = CaptureFeedbackOverlay(guide: guide)
   private let frozen = UIImageView()
+  private let statsPanel = UIScrollView()
+  private let statsLabel = UILabel()
+  private var statsContentSize = CGSize.zero
   private var frozenID: String?
   var onWindowChange: (() -> Void)?
   var onResize: (() -> Void)?
@@ -35,11 +38,44 @@ final class CameraPreviewView: UIView {
     addSubview(frozen)
     addSubview(guide)
     addSubview(feedback)
+    statsPanel.backgroundColor = UIColor(white: 0.07, alpha: 0.9)
+    statsPanel.isHidden = true
+    statsLabel.textColor = .white
+    statsLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+    statsLabel.numberOfLines = 0
+    statsLabel.lineBreakMode = .byClipping
+    statsPanel.addSubview(statsLabel)
+    addSubview(statsPanel)
     addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
   }
 
+  func showStats(_ rows: [String]?) {
+    statsPanel.isHidden = rows == nil
+    guard let rows else { return }
+    let text = rows.joined(separator: "\n")
+    guard text != statsLabel.text else { return }
+    statsLabel.text = text
+    let width = rows.map { ($0 as NSString).size(withAttributes: [.font: statsLabel.font as UIFont]).width }.max() ?? 0
+    let height = ceil(statsLabel.font.lineHeight) * CGFloat(rows.count)
+    statsContentSize = CGSize(width: ceil(width) + 1, height: height)
+    layoutStatsPanel()
+  }
+
+  private func layoutStatsPanel() {
+    let width = min(bounds.width, statsContentSize.width + 16)
+    let contentHeight = statsContentSize.height + 12
+    let tenRowsHeight = ceil(statsLabel.font.lineHeight) * 10 + 12
+    let height = min(contentHeight, tenRowsHeight, bounds.height / 2)
+    statsPanel.frame = CGRect(x: 0, y: 0, width: width, height: height)
+    statsPanel.contentSize = CGSize(width: width, height: contentHeight)
+    statsLabel.frame = CGRect(x: 8, y: 6, width: max(0, width - 16), height: statsContentSize.height)
+  }
+
   @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
-    guard recognizer.state == .ended, let point = devicePoint(recognizer.location(in: self)) else { return }
+    let location = recognizer.location(in: self)
+    guard recognizer.state == .ended,
+          statsPanel.isHidden || !statsPanel.frame.contains(location),
+          let point = devicePoint(location) else { return }
     onTap?(point)
   }
 
@@ -70,6 +106,7 @@ final class CameraPreviewView: UIView {
     frozen.frame = bounds
     guide.frame = bounds
     feedback.frame = bounds
+    layoutStatsPanel()
     place()
     if bounds.size != placedSize {
       placedSize = bounds.size

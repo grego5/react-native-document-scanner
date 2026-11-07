@@ -27,6 +27,7 @@
 #include "JFunc_void_CameraState.hpp"
 #include "JFunc_void_CameraCaptureState.hpp"
 #include "JFunc_void_AutofocusState.hpp"
+#include "JFunc_void_bool.hpp"
 #include "JFunc_void_DocumentState.hpp"
 #include "JFunc_void_CaptureStage_std__optional_CaptureWaitReason_.hpp"
 #include "views/JHybridDocumentScannerCameraViewStateUpdater.hpp"
@@ -35,7 +36,6 @@
 #include "JFunc_void_std__string.hpp"
 #include "views/JHybridImagePagerViewStateUpdater.hpp"
 #include "JHybridImageViewerViewSpec.hpp"
-#include "JFunc_void_bool.hpp"
 #include "views/JHybridImageViewerViewStateUpdater.hpp"
 #include "JHybridPageThumbnailViewSpec.hpp"
 #include "views/JHybridPageThumbnailViewStateUpdater.hpp"
@@ -133,6 +133,7 @@ void registerAllNatives() {
   margelo::nitro::documentscanner::JFunc_void_CameraState_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_CameraCaptureState_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_AutofocusState_cxx::registerNatives();
+  margelo::nitro::documentscanner::JFunc_void_bool_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_DocumentState_cxx::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_CaptureStage_std__optional_CaptureWaitReason__cxx::registerNatives();
   margelo::nitro::documentscanner::views::JHybridDocumentScannerCameraViewStateUpdater::registerNatives();
@@ -141,7 +142,6 @@ void registerAllNatives() {
   margelo::nitro::documentscanner::JFunc_void_std__string_cxx::registerNatives();
   margelo::nitro::documentscanner::views::JHybridImagePagerViewStateUpdater::registerNatives();
   margelo::nitro::documentscanner::JHybridImageViewerViewSpec::CxxPart::registerNatives();
-  margelo::nitro::documentscanner::JFunc_void_bool_cxx::registerNatives();
   margelo::nitro::documentscanner::views::JHybridImageViewerViewStateUpdater::registerNatives();
   margelo::nitro::documentscanner::JHybridPageThumbnailViewSpec::CxxPart::registerNatives();
   margelo::nitro::documentscanner::views::JHybridPageThumbnailViewStateUpdater::registerNatives();

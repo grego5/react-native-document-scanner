@@ -766,6 +766,38 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
     }
   }
   
+  public final var onLowLightBoostActiveChange: bridge.std__optional_std__function_void_bool____active______ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__function_void_bool____active______ in
+        if let __unwrappedValue = self.__implementation.onLowLightBoostActiveChange {
+          return bridge.create_std__optional_std__function_void_bool____active______({ () -> bridge.Func_void_bool in
+            let __closureWrapper = Func_void_bool(__unwrappedValue)
+            return bridge.create_Func_void_bool(__closureWrapper.toUnsafe())
+          }())
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.onLowLightBoostActiveChange = { () -> ((_ active: Bool) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_bool____active______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_bool____active______(newValue)
+          return { () -> (Bool) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_bool(__unwrapped)
+            return { (__active: Bool) -> Void in
+              __wrappedFunction.call(__active)
+            }
+          }()
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
   public final var onDocumentStateChange: bridge.std__optional_std__function_void_DocumentState____state______ {
     @inline(__always)
     get {
@@ -837,6 +869,24 @@ open class HybridDocumentScannerCameraViewSpec_cxx {
   }
 
   // Methods
+  @inline(__always)
+  public final func getCameraFeatures() -> bridge.Result_std__optional_CameraFeatureSupport__ {
+    do {
+      let __result = try self.__implementation.getCameraFeatures()
+      let __resultCpp = { () -> bridge.std__optional_CameraFeatureSupport_ in
+        if let __unwrappedValue = __result {
+          return bridge.create_std__optional_CameraFeatureSupport_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+      return bridge.create_Result_std__optional_CameraFeatureSupport__(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__optional_CameraFeatureSupport__(__exceptionPtr)
+    }
+  }
+  
   @inline(__always)
   public final func takePhotoResult(options: bridge.std__optional_TakePhotoOptions_) -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____ {
     do {

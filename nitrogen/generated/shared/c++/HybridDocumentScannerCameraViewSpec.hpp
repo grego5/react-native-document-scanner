@@ -39,6 +39,8 @@ namespace margelo::nitro::documentscanner { enum class DocumentState; }
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
 // Forward declaration of `CaptureWaitReason` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureWaitReason; }
+// Forward declaration of `CameraFeatureSupport` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraFeatureSupport; }
 // Forward declaration of `CameraCaptureResult` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
 // Forward declaration of `TakePhotoOptions` to properly resolve imports.
@@ -61,6 +63,7 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "DocumentState.hpp"
 #include "CaptureStage.hpp"
 #include "CaptureWaitReason.hpp"
+#include "CameraFeatureSupport.hpp"
 #include "CameraCaptureResult.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
@@ -149,6 +152,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setOnCaptureStateChange(const std::optional<std::function<void(CameraCaptureState /* state */)>>& onCaptureStateChange) = 0;
       virtual std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() = 0;
       virtual void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) = 0;
+      virtual std::optional<std::function<void(bool /* active */)>> getOnLowLightBoostActiveChange() = 0;
+      virtual void setOnLowLightBoostActiveChange(const std::optional<std::function<void(bool /* active */)>>& onLowLightBoostActiveChange) = 0;
       virtual std::optional<std::function<void(DocumentState /* state */)>> getOnDocumentStateChange() = 0;
       virtual void setOnDocumentStateChange(const std::optional<std::function<void(DocumentState /* state */)>>& onDocumentStateChange) = 0;
       virtual std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>> getOnCaptureStage() = 0;
@@ -156,6 +161,7 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Methods
+      virtual std::optional<CameraFeatureSupport> getCameraFeatures() = 0;
       virtual std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) = 0;
 
     protected:

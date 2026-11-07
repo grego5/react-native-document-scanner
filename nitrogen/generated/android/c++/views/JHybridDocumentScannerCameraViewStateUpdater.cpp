@@ -194,6 +194,11 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setOnAutofocusChange(newProps->onAutofocusChange.get());
   }
   if (oldProps == nullptr
+        ? newProps->onLowLightBoostActiveChange.isProvided()
+        : !newProps->onLowLightBoostActiveChange.hasSameValue(oldProps->onLowLightBoostActiveChange)) {
+    hybridView->setOnLowLightBoostActiveChange(newProps->onLowLightBoostActiveChange.get());
+  }
+  if (oldProps == nullptr
         ? newProps->onDocumentStateChange.isProvided()
         : !newProps->onDocumentStateChange.hasSameValue(oldProps->onDocumentStateChange)) {
     hybridView->setOnDocumentStateChange(newProps->onDocumentStateChange.get());

@@ -231,6 +231,23 @@ final class CameraControlsTests: XCTestCase {
 
   // MARK: - Torch, exposure and frame rate
 
+  func testLowLightBoostChecksSupportAndDefersChangesUntilCaptureSettles() {
+    let (camera, _, controls) = rig()
+    XCTAssertFalse(camera.commands.contains(.lowLightBoost(true)))
+    var supported = full
+    supported.lowLightBoost = true
+    controls.unbind()
+    controls.bind(supported)
+    XCTAssertEqual(camera.commands.last, .lowLightBoost(true))
+    controls.capturePending = { true }
+    controls.update(.init(lowLightBoost: false))
+    XCTAssertFalse(camera.commands.contains(.lowLightBoost(false)))
+    controls.capturePending = { false }
+    controls.afterCapture()
+    controls.afterCapture()
+    XCTAssertEqual(camera.commands.filter { $0 == .lowLightBoost(false) }.count, 1)
+  }
+
   func testTorchModesDeferDuringACaptureAndCamerasWithoutATorchIgnoreThem() {
     let noTorch = rig(CameraCapabilities(focusPoint: true, scanFocus: true, continuousFocus: true), settings: .init(torch: .on))
     XCTAssertFalse(noTorch.0.commands.contains { if case .torch = $0 { return true } else { return false } })

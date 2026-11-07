@@ -71,3 +71,23 @@ internal class LiveDetectionState {
     const val TRACKING_GAP_NS = 60_000_000L
   }
 }
+
+/** Counts delivered analysis frames independently of how often the model runs. */
+internal class AnalysisRateMonitor {
+  private var windowStart: Long? = null
+  private var frames = 0
+  private var slow = false
+
+  fun observe(now: Long): Boolean {
+    val start = windowStart ?: run { windowStart = now; return false }
+    frames++
+    val elapsed = now - start
+    if (elapsed < 3_000_000_000L) return false
+    val belowThreshold = frames / (elapsed / 1e9) < 15
+    val shouldWarn = belowThreshold && !slow
+    slow = belowThreshold
+    windowStart = now
+    frames = 0
+    return shouldWarn
+  }
+}

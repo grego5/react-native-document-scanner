@@ -40,7 +40,8 @@ enum class ScannerErrorCode(@DoNotStrip @Keep val value: Int) {
   PERMISSION_UNAVAILABLE(21),
   MODEL_LOAD_FAILED(22),
   MODEL_SUPERSEDED(23),
-  INPUT_INVALID(24);
+  INPUT_INVALID(24),
+  CAMERA_ANALYSIS_SLOW(25);
 
   companion object
 }

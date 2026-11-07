@@ -38,10 +38,12 @@ public protocol HybridDocumentScannerCameraViewSpec_protocol: HybridObject, Hybr
   var onCameraStateChange: ((_ state: CameraState) -> Void)? { get set }
   var onCaptureStateChange: ((_ state: CameraCaptureState) -> Void)? { get set }
   var onAutofocusChange: ((_ state: AutofocusState) -> Void)? { get set }
+  var onLowLightBoostActiveChange: ((_ active: Bool) -> Void)? { get set }
   var onDocumentStateChange: ((_ state: DocumentState) -> Void)? { get set }
   var onCaptureStage: ((_ stage: CaptureStage, _ waitReason: CaptureWaitReason?) -> Void)? { get set }
 
   // Methods
+  func getCameraFeatures() throws -> CameraFeatureSupport?
   func takePhotoResult(options: TakePhotoOptions?) throws -> Promise<Variant_ScannerFailure_CameraCaptureResult>
 }
 

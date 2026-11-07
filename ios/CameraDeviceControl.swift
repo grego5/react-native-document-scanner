@@ -12,6 +12,7 @@ struct CameraCapabilities: Equatable, Sendable {
   var continuousFocus = false
   var exposurePoint = false
   var torch = false
+  var lowLightBoost = false
   /// Exposure target bias in EV; nil without an adjustable bias.
   var exposureBias: ClosedRange<Double>?
   /// The active format's frame-rate intervals.
@@ -29,6 +30,7 @@ enum CameraCommand: Equatable, Sendable {
   /// One focus scan at `focus` that then holds the lens; `meter` also moves the exposure point.
   case scanFocus(CGPoint, meter: CGPoint?)
   case torch(Bool)
+  case lowLightBoost(Bool)
   /// EV, already clamped to the device's range.
   case exposureBias(Double)
   /// Nil restores the active format's own frame durations.
@@ -91,6 +93,7 @@ enum CameraDeviceAdapter {
       continuousFocus: device.isFocusModeSupported(.continuousAutoFocus),
       exposurePoint: device.isExposurePointOfInterestSupported,
       torch: device.hasTorch && device.isTorchModeSupported(.on),
+      lowLightBoost: device.isLowLightBoostSupported,
       exposureBias: lower < upper ? lower...upper : nil,
       frameRates: device.activeFormat.videoSupportedFrameRateRanges.map {
         FrameRateRange(min: $0.minFrameRate, max: $0.maxFrameRate)
@@ -125,6 +128,10 @@ enum CameraDeviceAdapter {
         guard device.isTorchModeSupported(.off) else { return false }
         device.torchMode = .off
       }
+      return true
+    case .lowLightBoost(let enabled):
+      guard device.isLowLightBoostSupported else { return false }
+      device.automaticallyEnablesLowLightBoostWhenAvailable = enabled
       return true
     case .exposureBias(let ev):
       guard Float(ev) >= device.minExposureTargetBias, Float(ev) <= device.maxExposureTargetBias else { return false }

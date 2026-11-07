@@ -70,10 +70,13 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridSetter("onCaptureStateChange", &HybridDocumentScannerCameraViewSpec::setOnCaptureStateChange);
       prototype.registerHybridGetter("onAutofocusChange", &HybridDocumentScannerCameraViewSpec::getOnAutofocusChange);
       prototype.registerHybridSetter("onAutofocusChange", &HybridDocumentScannerCameraViewSpec::setOnAutofocusChange);
+      prototype.registerHybridGetter("onLowLightBoostActiveChange", &HybridDocumentScannerCameraViewSpec::getOnLowLightBoostActiveChange);
+      prototype.registerHybridSetter("onLowLightBoostActiveChange", &HybridDocumentScannerCameraViewSpec::setOnLowLightBoostActiveChange);
       prototype.registerHybridGetter("onDocumentStateChange", &HybridDocumentScannerCameraViewSpec::getOnDocumentStateChange);
       prototype.registerHybridSetter("onDocumentStateChange", &HybridDocumentScannerCameraViewSpec::setOnDocumentStateChange);
       prototype.registerHybridGetter("onCaptureStage", &HybridDocumentScannerCameraViewSpec::getOnCaptureStage);
       prototype.registerHybridSetter("onCaptureStage", &HybridDocumentScannerCameraViewSpec::setOnCaptureStage);
+      prototype.registerHybridMethod("getCameraFeatures", &HybridDocumentScannerCameraViewSpec::getCameraFeatures);
       prototype.registerHybridMethod("takePhotoResult", &HybridDocumentScannerCameraViewSpec::takePhotoResult);
     });
   }

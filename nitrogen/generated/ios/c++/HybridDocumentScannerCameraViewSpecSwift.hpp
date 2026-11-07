@@ -44,6 +44,8 @@ namespace margelo::nitro::documentscanner { enum class DocumentState; }
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
 // Forward declaration of `CaptureWaitReason` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureWaitReason; }
+// Forward declaration of `CameraFeatureSupport` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraFeatureSupport; }
 // Forward declaration of `CameraCaptureResult` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
 // Forward declaration of `ScanSessionSnapshot` to properly resolve imports.
@@ -85,6 +87,7 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "DocumentState.hpp"
 #include "CaptureStage.hpp"
 #include "CaptureWaitReason.hpp"
+#include "CameraFeatureSupport.hpp"
 #include "CameraCaptureResult.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
@@ -339,6 +342,13 @@ namespace margelo::nitro::documentscanner {
     inline void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) noexcept override {
       _swiftPart.setOnAutofocusChange(onAutofocusChange);
     }
+    inline std::optional<std::function<void(bool /* active */)>> getOnLowLightBoostActiveChange() noexcept override {
+      auto __result = _swiftPart.getOnLowLightBoostActiveChange();
+      return __result;
+    }
+    inline void setOnLowLightBoostActiveChange(const std::optional<std::function<void(bool /* active */)>>& onLowLightBoostActiveChange) noexcept override {
+      _swiftPart.setOnLowLightBoostActiveChange(onLowLightBoostActiveChange);
+    }
     inline std::optional<std::function<void(DocumentState /* state */)>> getOnDocumentStateChange() noexcept override {
       auto __result = _swiftPart.getOnDocumentStateChange();
       return __result;
@@ -356,6 +366,14 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
+    inline std::optional<CameraFeatureSupport> getCameraFeatures() override {
+      auto __result = _swiftPart.getCameraFeatures();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>> takePhotoResult(const std::optional<TakePhotoOptions>& options) override {
       auto __result = _swiftPart.takePhotoResult(options);
       if (__result.hasError()) [[unlikely]] {

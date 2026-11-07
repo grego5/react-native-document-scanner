@@ -14,6 +14,8 @@ namespace margelo::nitro::documentscanner { enum class AutofocusState; }
 namespace margelo::nitro::documentscanner { struct CameraCaptureResult; }
 // Forward declaration of `CameraCaptureState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraCaptureState; }
+// Forward declaration of `CameraFeatureSupport` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CameraFeatureSupport; }
 // Forward declaration of `CameraPermissionStatus` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraPermissionStatus; }
 // Forward declaration of `CameraPermissionValue` to properly resolve imports.
@@ -109,6 +111,7 @@ namespace ReactNativeDocumentScanner { class HybridScanSessionSpec_cxx; }
 #include "AutofocusState.hpp"
 #include "CameraCaptureResult.hpp"
 #include "CameraCaptureState.hpp"
+#include "CameraFeatureSupport.hpp"
 #include "CameraPermissionStatus.hpp"
 #include "CameraPermissionValue.hpp"
 #include "CameraState.hpp"
@@ -841,6 +844,43 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::function<void(bool /* active */)>
+  /**
+   * Specialized version of `std::function<void(bool)>`.
+   */
+  using Func_void_bool = std::function<void(bool /* active */)>;
+  /**
+   * Wrapper class for a `std::function<void(bool / * active * /)>`, this can be used from Swift.
+   */
+  class Func_void_bool_Wrapper final {
+  public:
+    explicit Func_void_bool_Wrapper(std::function<void(bool /* active */)>&& func): _function(std::make_unique<std::function<void(bool /* active */)>>(std::move(func))) {}
+    inline void call(bool active) const noexcept {
+      _function->operator()(active);
+    }
+  private:
+    std::unique_ptr<std::function<void(bool /* active */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_bool_Wrapper wrap_Func_void_bool(Func_void_bool value) noexcept {
+    return Func_void_bool_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::optional<std::function<void(bool /* active */)>>
+  /**
+   * Specialized version of `std::optional<std::function<void(bool / * active * /)>>`.
+   */
+  using std__optional_std__function_void_bool____active______ = std::optional<std::function<void(bool /* active */)>>;
+  inline std::optional<std::function<void(bool /* active */)>> create_std__optional_std__function_void_bool____active______(const std::function<void(bool /* active */)>& value) noexcept {
+    return std::optional<std::function<void(bool /* active */)>>(value);
+  }
+  inline bool has_value_std__optional_std__function_void_bool____active______(const std::optional<std::function<void(bool /* active */)>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::function<void(bool /* active */)> get_std__optional_std__function_void_bool____active______(const std::optional<std::function<void(bool /* active */)>>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::function<void(DocumentState /* state */)>
   /**
    * Specialized version of `std::function<void(DocumentState)>`.
@@ -927,6 +967,21 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return optional.has_value();
   }
   inline std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)> get_std__optional_std__function_void_CaptureStage____stage_____std__optional_CaptureWaitReason_____waitReason______(const std::optional<std::function<void(CaptureStage /* stage */, std::optional<CaptureWaitReason> /* waitReason */)>>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<CameraFeatureSupport>
+  /**
+   * Specialized version of `std::optional<CameraFeatureSupport>`.
+   */
+  using std__optional_CameraFeatureSupport_ = std::optional<CameraFeatureSupport>;
+  inline std::optional<CameraFeatureSupport> create_std__optional_CameraFeatureSupport_(const CameraFeatureSupport& value) noexcept {
+    return std::optional<CameraFeatureSupport>(value);
+  }
+  inline bool has_value_std__optional_CameraFeatureSupport_(const std::optional<CameraFeatureSupport>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline CameraFeatureSupport get_std__optional_CameraFeatureSupport_(const std::optional<CameraFeatureSupport>& optional) noexcept {
     return optional.value();
   }
   
@@ -1115,6 +1170,15 @@ namespace margelo::nitro::documentscanner::bridge::swift {
   // pragma MARK: std::weak_ptr<HybridDocumentScannerCameraViewSpec>
   using std__weak_ptr_HybridDocumentScannerCameraViewSpec_ = std::weak_ptr<HybridDocumentScannerCameraViewSpec>;
   inline std__weak_ptr_HybridDocumentScannerCameraViewSpec_ weakify_std__shared_ptr_HybridDocumentScannerCameraViewSpec_(const std::shared_ptr<HybridDocumentScannerCameraViewSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<std::optional<CameraFeatureSupport>>
+  using Result_std__optional_CameraFeatureSupport__ = Result<std::optional<CameraFeatureSupport>>;
+  inline Result_std__optional_CameraFeatureSupport__ create_Result_std__optional_CameraFeatureSupport__(const std::optional<CameraFeatureSupport>& value) noexcept {
+    return Result<std::optional<CameraFeatureSupport>>::withValue(value);
+  }
+  inline Result_std__optional_CameraFeatureSupport__ create_Result_std__optional_CameraFeatureSupport__(const std::exception_ptr& error) noexcept {
+    return Result<std::optional<CameraFeatureSupport>>::withError(error);
+  }
   
   // pragma MARK: Result<std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>>
   using Result_std__shared_ptr_Promise_std__variant_ScannerFailure__CameraCaptureResult____ = Result<std::shared_ptr<Promise<std::variant<ScannerFailure, CameraCaptureResult>>>>;
@@ -1343,28 +1407,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
   // pragma MARK: std::weak_ptr<HybridImagePagerViewSpec>
   using std__weak_ptr_HybridImagePagerViewSpec_ = std::weak_ptr<HybridImagePagerViewSpec>;
   inline std__weak_ptr_HybridImagePagerViewSpec_ weakify_std__shared_ptr_HybridImagePagerViewSpec_(const std::shared_ptr<HybridImagePagerViewSpec>& strong) noexcept { return strong; }
-  
-  // pragma MARK: std::function<void(bool /* zoomed */)>
-  /**
-   * Specialized version of `std::function<void(bool)>`.
-   */
-  using Func_void_bool = std::function<void(bool /* zoomed */)>;
-  /**
-   * Wrapper class for a `std::function<void(bool / * zoomed * /)>`, this can be used from Swift.
-   */
-  class Func_void_bool_Wrapper final {
-  public:
-    explicit Func_void_bool_Wrapper(std::function<void(bool /* zoomed */)>&& func): _function(std::make_unique<std::function<void(bool /* zoomed */)>>(std::move(func))) {}
-    inline void call(bool zoomed) const noexcept {
-      _function->operator()(zoomed);
-    }
-  private:
-    std::unique_ptr<std::function<void(bool /* zoomed */)>> _function;
-  } SWIFT_NONCOPYABLE;
-  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_bool_Wrapper wrap_Func_void_bool(Func_void_bool value) noexcept {
-    return Func_void_bool_Wrapper(std::move(value));
-  }
   
   // pragma MARK: std::optional<std::function<void(bool /* zoomed */)>>
   /**
