@@ -29,11 +29,13 @@ function fraction(text: string): number | undefined {
 /** The overview's export choices: a shared PDF with its page size, resolution and quality, or the page images. */
 export function ExportSheet({
   pageCount,
+  disabled,
   onCancel,
   onSharePdf,
   onSaveImages,
 }: {
   pageCount: number
+  disabled: boolean
   onCancel: () => void
   onSharePdf: (settings: PdfSettings) => void
   onSaveImages: () => void
@@ -101,12 +103,12 @@ export function ExportSheet({
         </Text>
       )}
       <View style={styles.actionRow}>
-        <PrimaryButton label="Cancel" variant="secondary" style={styles.actionButton} onPress={onCancel} />
+        <PrimaryButton label="Cancel" variant="secondary" style={styles.actionButton} disabled={disabled} onPress={onCancel} />
         {format === 'pdf' ? (
           <PrimaryButton
             label="Share PDF"
             style={styles.actionButton}
-            disabled={!valid}
+            disabled={disabled || !valid}
             onPress={() => onSharePdf({
               pageWidth: width,
               pageHeight: height,
@@ -116,7 +118,7 @@ export function ExportSheet({
             })}
           />
         ) : (
-          <PrimaryButton label="Save to gallery" style={styles.actionButton} onPress={onSaveImages} />
+          <PrimaryButton label="Save to gallery" style={styles.actionButton} disabled={disabled} onPress={onSaveImages} />
         )}
       </View>
     </View>

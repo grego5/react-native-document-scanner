@@ -139,7 +139,7 @@ final class LiveGuidanceTests: XCTestCase {
     XCTAssertNil(gap(250))
     XCTAssertNil(gap(280))
     XCTAssertNil(gap(310))
-    XCTAssertNil(gap(400), "brief tracking loss does not rearm a checked scene")
+    XCTAssertNil(gap(400), "brief tracking loss does not trigger an immediate retry")
     XCTAssertNil(gap(500, moving: true))
     XCTAssertNil(gap(600, moving: true))
     XCTAssertNil(gap(650))
@@ -148,16 +148,85 @@ final class LiveGuidanceTests: XCTestCase {
     XCTAssertEqual(gap(740), 0)
     cadence.didAttempt(at: 740_000_000)
     XCTAssertNil(gap(900, measured: false))
-    XCTAssertNil(gap(1_899, measured: false))
-    XCTAssertEqual(gap(1_900, measured: false), 0)
-    cadence.didAttempt(at: 1_900_000_000)
-    XCTAssertNil(gap(2_899, measured: false))
+    XCTAssertNil(gap(1_739, measured: false))
+    XCTAssertEqual(gap(1_740, measured: false), 0)
+    cadence.didAttempt(at: 1_740_000_000)
+    XCTAssertNil(gap(2_739, measured: false))
     XCTAssertNil(gap(3_000, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
     XCTAssertNil(gap(3_030, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
     XCTAssertNil(gap(3_060, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
     XCTAssertNil(gap(3_090, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
     XCTAssertEqual(gap(3_120, searching: false, trackingGap: AdaptiveDetectionPolicy.revalidateGapNs),
                    AdaptiveDetectionPolicy.revalidateGapNs)
+  }
+
+  func testAdaptiveCadenceRetriesAnUnconfirmedSteadyScene() {
+    var cadence = AdaptiveInferenceCadence()
+    func gap(_ ms: Int64, searching: Bool = true) -> Int64? {
+      cadence.gap(now: ms * 1_000_000, searching: searching, moving: false, measured: true,
+                  trackingGap: AdaptiveDetectionPolicy.paused)
+    }
+
+    for ms: Int64 in [0, 30, 60] { XCTAssertNil(gap(ms)) }
+    XCTAssertEqual(gap(90), 0)
+    cadence.didAttempt(at: 90_000_000)
+    XCTAssertNil(gap(1_089))
+    XCTAssertEqual(gap(1_090), 0)
+    cadence.didAttempt(at: 1_090_000_000)
+    XCTAssertNil(gap(2_089))
+    XCTAssertEqual(gap(2_090), 0)
+    XCTAssertNil(gap(2_100, searching: false))
+    XCTAssertNil(gap(5_000, searching: false))
+  }
+
+  func testAdaptiveCadenceMakesProgressWhenMotionNeverSettles() {
+    var cadence = AdaptiveInferenceCadence()
+    func gap(_ ms: Int64, moving: Bool = false, measured: Bool = true, searching: Bool = true,
+             trackingGap: Int64 = 0) -> Int64? {
+      cadence.gap(now: ms * 1_000_000, searching: searching, moving: moving,
+                  measured: measured, trackingGap: trackingGap)
+    }
+
+    for ms in stride(from: Int64(0), to: 1_000, by: 30) {
+      XCTAssertNil(gap(ms, moving: ms % 90 == 0, measured: ms % 90 != 60))
+    }
+    XCTAssertEqual(gap(1_000, moving: true), 0)
+    cadence.didAttempt(at: 1_000_000_000)
+    XCTAssertNil(gap(1_999, moving: true))
+    XCTAssertEqual(gap(2_000, moving: true), 0)
+    cadence.didAttempt(at: 2_000_000_000)
+    XCTAssertNil(gap(2_010, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
+    XCTAssertNil(gap(3_500, searching: false, trackingGap: AdaptiveDetectionPolicy.paused))
+    let revalidation = AdaptiveDetectionPolicy.revalidateGapNs
+    XCTAssertNil(gap(3_600, moving: true, searching: false, trackingGap: revalidation))
+    XCTAssertNil(gap(4_599, moving: true, searching: false, trackingGap: revalidation))
+    XCTAssertEqual(gap(4_600, moving: true, searching: false, trackingGap: revalidation), 0)
+  }
+
+  func testAdaptiveCadenceUsesLowBlurOnlyToStartEarly() {
+    var cadence = AdaptiveInferenceCadence()
+    func gap(_ ms: Int64, blur: Double?, measured: Bool = true, moving: Bool = true) -> Int64? {
+      cadence.gap(now: ms * 1_000_000, searching: true, moving: moving,
+                  measured: measured, trackingGap: 0, blurFraction: blur)
+    }
+
+    XCTAssertNil(gap(0, blur: nil))
+    XCTAssertNil(gap(30, blur: 0.0019, measured: false))
+    XCTAssertNil(gap(60, blur: 0.0021))
+    XCTAssertEqual(gap(90, blur: 0.0019), 0)
+    cadence.didAttempt(at: 90_000_000)
+    for ms in stride(from: Int64(120), through: 840, by: 30) {
+      XCTAssertNil(gap(ms, blur: 0.0019, moving: false))
+    }
+    XCTAssertNil(gap(1_089, blur: 0.0019, moving: false))
+    XCTAssertEqual(gap(1_090, blur: 0.0019, moving: false), 0)
+    cadence.didAttempt(at: 1_090_000_000)
+
+    XCTAssertNil(cadence.gap(now: 1_120_000_000, searching: false, moving: false, measured: true,
+                             trackingGap: AdaptiveDetectionPolicy.paused, blurFraction: 0.0019))
+    XCTAssertEqual(gap(1_150, blur: 0.0019), 0)
+    cadence.didAttempt(at: 1_150_000_000)
+    XCTAssertNil(gap(1_180, blur: 0.0019))
   }
 
   private final class Rig {

@@ -294,21 +294,99 @@ test('saved camera modes migrate while other settings survive', () => {
     { squareAspectRatio: false, inferenceThrottling: true, lowQualityControl: false })
 })
 
-function reviewComponent() {
+test('camera options require confirmed support for ZSL and low light boost', () => {
+  const { OptionsPanel, DEFAULT_TUNING } = load('example/components/OptionsPanel.tsx', {
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    'react-native': { Alert: {}, Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View' },
+    'react-native-document-scanner': {},
+    '../lib/errorMessage': { errorMessage: String },
+    '../styles': { styles: {} },
+    './PrimaryButton': { PrimaryButton: 'PrimaryButton' },
+  })
+  for (const support of [undefined, false, true]) {
+    const cameraFeatures = support === undefined ? undefined :
+      { zeroShutterLagSupported: support, lowLightBoostSupported: support }
+    let tuning = { ...DEFAULT_TUNING, captureMode: 'quality' }
+    const grid = nodes(OptionsPanel({
+      cameraFeatures, tuning, onChange: update => { tuning = update(tuning) },
+    })).find(node => node.type?.name === 'OptionGrid')
+    const options = grid.props.options
+    options.find(option => option.label === 'Capture').next()
+    assert.equal(tuning.captureMode, support ? 'zsl' : 'latency')
+    assert.equal(Boolean(options.find(option => option.label === 'Low light boost').disabled), !support)
+  }
+})
+
+function reviewComponent({ platform = 'android', useState = initial => [initial, () => {}], usePhotoActions = () => ({}) } = {}) {
   return load('example/components/ReviewPanel.tsx', {
     '../lib/errorMessage': { errorMessage: () => 'error' },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'react': { useState: (initial) => [initial, () => {}], useRef: () => ({ current: { setPreset: async () => {} } }), useCallback: (callback) => callback },
-    'react-native': { Alert: { alert() {} }, Pressable: 'Pressable', StyleSheet: { absoluteFill: {} }, Text: 'Text', View: 'View' },
+    'react': { useState, useRef: () => ({ current: { setPreset: async () => {} } }), useCallback: (callback) => callback },
+    'react-native': { Alert: { alert() {} }, Platform: { OS: platform }, Pressable: 'Pressable', StyleSheet: { absoluteFill: {} }, Text: 'Text', View: 'View' },
     'react-native-document-scanner': { CropEditor: 'CropEditor', ImagePager: 'ImagePager' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../lib/scanSession': appModel,
-    '../styles': { styles: {} }, '../hooks/usePhotoActions': { usePhotoActions: () => ({}) },
+    '../styles': { styles: {} }, '../hooks/usePhotoActions': { usePhotoActions },
     './SheetModal': { SheetModal: 'SheetModal' }, './ExportSheet': { ExportSheet: 'ExportSheet' },
     './PageStrip': { PageStrip: 'PageStrip' }, './ActionButton': { ActionButton: 'ActionButton' },
     './PrimaryButton': { PrimaryButton: 'PrimaryButton' },
   }).ReviewPanel
 }
+test('iOS keeps the export presenter mounted until the admitted native action settles', async () => {
+  for (const platform of ['ios', 'android']) {
+    const ui = uiFixture()
+    ui.owner.publish({ p: appPage('p') })
+    ui.render().navigate('summary')
+    const state = []
+    let cursor = 0
+    let finish
+    const nativeShare = new Promise(resolve => { finish = resolve })
+    let pending
+    let shares = 0
+    const ReviewPanel = reviewComponent({
+      platform,
+      useState(initial) {
+        const index = cursor++
+        state[index] ??= initial
+        return [state[index], value => { state[index] = value }]
+      },
+      usePhotoActions: (_, run) => ({
+        sharePdf: () => {
+          pending = run(() => {
+            shares++
+            return nativeShare
+          })
+        },
+      }),
+    })
+    const render = () => {
+      cursor = 0
+      const preview = ReviewPanel({ visible: true, session: ui.render() }).props.children[0]
+      return nodes(preview.type(preview.props))
+    }
+    const exportModal = () => render().find(node => node.type === 'SheetModal' && node.props.children?.type === 'ExportSheet')
+    const openExport = render().find(node => node.type === 'ActionButton' && node.props.label === 'Export')
+    assert.equal(openExport.props.disabled, false)
+    openExport.props.onPress()
+    const openModal = exportModal()
+    assert.equal(openModal.props.visible, true)
+    const share = openModal.props.children.props.onSharePdf
+    share({})
+    const admitted = pending
+    share({})
+    assert.equal(shares, 1)
+    await pending
+    const busyModal = exportModal()
+    assert.equal(busyModal.props.visible, platform === 'ios')
+    assert.equal(busyModal.props.children.props.disabled, true)
+    busyModal.props.onClose()
+    assert.equal(exportModal().props.visible, platform === 'ios')
+    finish()
+    await admitted
+    assert.equal(exportModal().props.visible, false)
+    assert.equal(ui.render().working, false)
+  }
+})
 test('photo sessions select rectangle crop and document sessions do not', () => {
   const ReviewPanel = reviewComponent()
   const session = { native: {}, screen: { type: 'review', pageId: 'p', cropping: true } }

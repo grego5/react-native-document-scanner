@@ -4,6 +4,7 @@ import {
   Alert,
   BackHandler,
   Linking,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -114,8 +115,10 @@ export function ScanScreen({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [torchOverride, setTorchOverride] = useState<Extract<TorchMode, 'on'>>();
   const torch = torchOverride ?? tuning.torch;
-  const [sampleFolder, setSampleFolder] = useState(() => DocumentScanner.getSampleFolder());
-  const sampling = sampleFolder.collecting;
+  const [sampleFolder, setSampleFolder] = useState(() =>
+    Platform.OS === 'android' ? DocumentScanner.getSampleFolder() : undefined,
+  );
+  const sampling = sampleFolder?.collecting ?? false;
   const permission = useCameraPermission();
   const granted = permission.status === 'granted';
   const { screen, pageIds } = session;
@@ -161,7 +164,7 @@ export function ScanScreen({
     if (permission.status === 'blocked') {
       Linking.openSettings().catch(() => {
         setMessage(
-          'Could not open app settings. Open Android settings and allow camera access for this app.',
+          'Could not open app settings. Open Settings and allow camera access for this app.',
         );
       });
       return;

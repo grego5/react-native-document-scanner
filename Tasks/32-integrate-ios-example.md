@@ -2,7 +2,7 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Planned
+Status: Implemented, pending native and physical-device validation
 Complexity: High
 Dependencies: [21](21-implement-ios-processor.md), [23](23-implement-ios-image-pager.md), [24](24-implement-ios-crop-editor.md), [30](30-implement-ios-capture-feedback.md), [31](31-verify-ios-lifecycle-and-resources.md)
 
@@ -63,4 +63,15 @@ Required checks must pass before Status changes to Completed. A prerequisite may
 ## Proposed commit title
 
 feat(example): enable the iOS scanner workflow
+
+## Implementation and validation
+
+- `example/app.config.ts` enables iPad support and retains the existing bundle ID, iOS 18 deployment target, camera prompt and add-only Photos permission. `example/package.json` exposes iOS prebuild and development build commands.
+- `example/app/index.tsx` and `example/components/OptionsPanel.tsx` keep sample controls on Android and use platform-neutral camera permission copy. Selecting zero shutter lag or toggling low-light boost requires confirmed native support. Session ownership, capture readiness, torch defaults and the scan-local override use the existing shared flow.
+- `example/components/ReviewPanel.tsx` and `ExportSheet.tsx` keep the iOS presenting sheet alive under the existing operation lock while Expo presents native dialogs. Android retains its immediate sheet dismissal. The existing host-owned export paths and retention are shared.
+- `src/scanner-contracts.test.cjs` covers capability gating, iOS export sheet visibility through the busy render, overlapping export attempts and Android dismissal. The README and iOS setup reference document the shared flow and physical validation.
+- Windows Expo config introspection resolved the existing bundle ID, iOS 18, iPad support, the camera usage description and the Photos add usage description.
+- Windows `npm run check` passed the library and example typechecks and 47 JavaScript contracts. `git diff --check` passed.
+- Expo's iOS export produced a Hermes bundle on Windows after retrying outside the sandbox, where the first Hermes invocation failed.
+- iOS native build, simulator and human-triggered iPhone/iPad checks remain pending. vMac testing was deferred at the user's request. Android device checks remain pending.
 

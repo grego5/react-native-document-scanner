@@ -71,36 +71,43 @@ struct AdaptiveDetectionPolicy {
 
 /// Times model attempts independently of the policy that carries a confirmed outline.
 struct AdaptiveInferenceCadence {
+  private static let retryNs: Int64 = 1_000_000_000
+  private static let lowBlurFraction = 0.002
   private var searching = false
   private var checked = false
   private var movingSince: Int64?
   private var steadyFrames = 0
-  private var unknownSince: Int64?
+  private var waitingSince: Int64?
   private var lastAttempt: Int64?
 
-  mutating func gap(now: Int64, searching: Bool, moving: Bool, measured: Bool, trackingGap: Int64) -> Int64? {
+  mutating func gap(now: Int64, searching: Bool, moving: Bool, measured: Bool, trackingGap: Int64,
+                    blurFraction: Double? = nil) -> Int64? {
     if searching && !self.searching { checked = false }
     self.searching = searching
+    // A search or revalidation must make progress even if motion never settles.
+    waitingSince = searching || trackingGap != AdaptiveDetectionPolicy.paused ? waitingSince ?? now : nil
+    let earlyOrDue = waitingSince.map { since in
+      let previous = lastAttempt
+      let lowBlur = measured && (blurFraction.map { $0 <= Self.lowBlurFraction } ?? false)
+      return now - max(since, previous ?? since) >= Self.retryNs ||
+        lowBlur && (previous.map { $0 < since } ?? true)
+    }
+    let fallbackGap: Int64? = earlyOrDue == true ? 0 : nil
     if moving {
       steadyFrames = 0
-      unknownSince = nil
       let since = movingSince ?? now
       movingSince = since
       if now - since >= 100_000_000 { checked = false }
-      return nil
+      return fallbackGap
     }
     movingSince = nil
     if !measured {
       steadyFrames = 0
-      let since = unknownSince ?? now
-      unknownSince = since
-      // Require sustained uncertainty, including when leaving a measured moving scene.
-      return now - max(since, lastAttempt ?? since) >= 1_000_000_000 ? 0 : nil
+      return fallbackGap
     }
     if steadyFrames < 4 { steadyFrames += 1 }
-    guard steadyFrames == 4 else { return nil }
-    unknownSince = nil
-    if searching { return checked ? nil : 0 }
+    guard steadyFrames == 4 else { return fallbackGap }
+    if searching { return checked ? fallbackGap : 0 }
     return trackingGap == AdaptiveDetectionPolicy.paused ? nil : trackingGap
   }
 

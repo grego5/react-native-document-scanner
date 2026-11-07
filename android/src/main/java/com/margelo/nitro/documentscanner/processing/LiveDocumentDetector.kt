@@ -376,7 +376,7 @@ internal class LiveDocumentDetector(
     val moving = pacingEnabled && maxInferenceSpeedFraction > 0 && estimate?.status == FlowMotionStatus.MEASURED &&
       ((!adaptive && estimate.lostRegions > 0) || estimate.speedPxPerSecond?.let { it / image.width > speedLimit } == true)
     val gap = if (adaptive) cadence.gap(startedAt, searching, moving,
-      estimate?.status == FlowMotionStatus.MEASURED && estimate.lostRegions == 0, trackingGap)
+      estimate?.status == FlowMotionStatus.MEASURED && estimate.lostRegions == 0, trackingGap, blurFraction = flowMotion)
       else if (moving || scorePaused) null else trackingGap
     // Provisional focus inference cannot override a tracking pause; tracked outlines drive focus instead.
     val token = synchronized(bindingLock) {
