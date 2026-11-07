@@ -25,9 +25,13 @@ private final class FakeCamera: CameraSessionControl {
   func emit(_ event: CameraSessionEvent) { onEvent?(event) }
   var stills: [(settings: StillSettings, events: @Sendable (StillEvent) -> Void)] = []
   func capture(_ settings: StillSettings, events: @escaping @Sendable (StillEvent) -> Void) { stills.append((settings, events)) }
-  /// Control commands, never completed: each stays pending.
+  /// Control commands and their completions, which run only when a test calls them.
   var commands: [CameraCommand] = []
-  func perform(_ command: CameraCommand, completion: @escaping (_ applied: Bool) -> Void) { commands.append(command) }
+  var completions: [(CommandOutcome) -> Void] = []
+  func perform(_ command: CameraCommand, completion: @escaping (CommandOutcome) -> Void) {
+    commands.append(command)
+    completions.append(completion)
+  }
 }
 
 /// Session actions that record each admitted page's live corners and fail its analysis at once.
@@ -227,6 +231,8 @@ final class CameraSessionTests: XCTestCase {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
     var states: [CameraState] = []
     var errors: [ScannerErrorCode] = []
+    /// Added to the host clock the view judges captures by.
+    var clockOffsetNs: Int64 = 0
 
     init() {
       let permissions = CameraPermissions(authorization: authorization, notifications: notifications)
@@ -235,7 +241,8 @@ final class CameraSessionTests: XCTestCase {
       view = HybridDocumentScannerCameraView(camera: fake, permissions: permissions, notifications: notifications,
                                              inBackground: { harness?.background ?? false },
                                              models: { _, done in done(nil) },
-                                             detector: detector, controls: controls)
+                                             detector: detector, controls: controls,
+                                             clock: { hostClockNs() + (harness?.clockOffsetNs ?? 0) })
       harness = self
       view.cornerDetectionModel = "model.tflite"
       view.view.frame = window.bounds
@@ -387,7 +394,6 @@ final class CameraSessionTests: XCTestCase {
     let state = try XCTUnwrap(session.state)
     h.view.session = session
     h.view.afterUpdate()
-    let bound = h.view.sessionGeneration
     XCTAssertEqual(rejection(h.view), .cameraUnavailable, "detached")
     h.authorization.current = .denied
     h.attach()
@@ -416,13 +422,11 @@ final class CameraSessionTests: XCTestCase {
     state.close().whenComplete { _ in done.fulfill() }
     wait(for: [done], timeout: 10)
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-    XCTAssertGreaterThan(h.view.sessionGeneration, bound)
     XCTAssertEqual(rejection(h.view), .processorDisposed)
 
-    let replaced = h.view.sessionGeneration
     h.view.session = HybridScanSession.placeholder()
     h.view.afterUpdate()
-    XCTAssertGreaterThan(h.view.sessionGeneration, replaced)
+    XCTAssertEqual(rejection(h.view), .captureNotReady, "no native session")
     h.view.onDropView()
     XCTAssertEqual(rejection(h.view), .cameraUnavailable)
   }
@@ -480,8 +484,8 @@ final class CameraSessionTests: XCTestCase {
       notified.leave()
     }
     notified.wait()
-    camera.perform(.torch(true)) { applied in
-      XCTAssertFalse(applied, "a stopped camera applies nothing")
+    camera.perform(.torch(true)) { outcome in
+      XCTAssertFalse(outcome.applied, "a stopped camera applies nothing")
       order.append("completion")
     }
     camera.reportFocus(run: 0) {
@@ -739,14 +743,394 @@ final class CameraSessionTests: XCTestCase {
     XCTAssertNil(actions.liveCornerSets.last ?? nil, "disabling guidance drops its outline")
   }
 
+  // MARK: - Capture gate
+
+  /// Analyzed-frame evidence as the analysis owner appends it, then the wake-up it sends to main.
+  @MainActor
+  private final class Frames {
+    let h: Harness
+    let framing: CameraFraming
+    private var last: Int64 = 0
+    init(_ h: Harness) { self.h = h; framing = h.view.analysisFraming! }
+
+    init(_ h: Harness, framing: CameraFraming) { self.h = h; self.framing = framing }
+
+    /// `blur` is the frame's smear as a fraction of its width.
+    func feed(_ count: Int = 1, guide: LiveCorners? = [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8],
+              adjusting: Bool? = false, focusReachedBeforeNs: Int64 = 0, blur: Double = 10 * 0.01 / 480) {
+      for _ in 0..<count {
+        let from = last
+        let ns = max(hostClockNs(), from + 33_000_000)
+        last = ns
+        let framing = framing
+        h.detector.frames.append { sequence in
+          FrameRecord(sequence: sequence, sensorNs: ns, framing: framing,
+                      flow: FlowEvidence(status: .measured, speedPxPerSecond: 10, sourceWidth: 480, lostRegions: 0,
+                                         fromNs: from),
+                      exposureNs: 10_000_000, iso: 100, exposureEstimated: false, blur: blur,
+                      focusAdjusting: adjusting, focusReachedNs: ns - focusReachedBeforeNs,
+                      pageArrivedNs: guide == nil ? nil : ns, guide: guide)
+        }
+      }
+      h.detector.onFrames?()
+    }
+  }
+
+  /// A streaming camera bound to a fresh session, with `configure` applied before the first update.
+  @MainActor
+  private func gated(_ capabilities: CameraCapabilities = CameraCapabilities(),
+                     configure: (HybridDocumentScannerCameraView) -> Void = { _ in }) throws -> (Harness, ScanSessionState) {
+    let h = Harness()
+    let session = HybridScanSession()
+    let state = try XCTUnwrap(session.state)
+    h.view.session = session
+    configure(h.view)
+    h.view.afterUpdate()
+    h.attach()
+    h.fake.emit(.configured(CameraConfiguration(photo: PixelSize(640, 480), video: PixelSize(640, 480),
+                                                capabilities: capabilities)))
+    h.view.setRotation(preview: 90, capture: 90)
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    return (h, state)
+  }
+
+  @MainActor
+  private func scanPoints(_ h: Harness) -> [CGPoint] {
+    h.fake.commands.compactMap { if case .scanFocus(let point, _) = $0 { point } else { nil } }
+  }
+
+  @MainActor
+  private func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+
+  @MainActor
+  func testAGatedCaptureWaitsForAPageAndSteadyFramesThenShootsOnce() throws {
+    let (h, state) = try gated()
+    defer { _ = state.close() }
+    var stages: [CaptureWaitReason?] = []
+    var capture: [CameraCaptureState] = []
+    h.view.onCaptureStage = { stage, reason in
+      XCTAssertEqual(stage, .waiting)
+      stages.append(reason)
+    }
+    h.view.onCaptureStateChange = { capture.append($0) }
+    let frames = Frames(h)
+    let shot = photo(h.view, gated: true)
+    XCTAssertTrue(h.fake.stills.isEmpty, "no page yet")
+    XCTAssertEqual(stages, [.document])
+    XCTAssertEqual(capture.last, .waiting)
+    XCTAssertEqual(outcome(photo(h.view)), .second(.captureBusy), "a waiting capture owns the slot")
+    h.view.squareAspectRatio = true
+    h.view.afterUpdate()
+    XCTAssertEqual(h.view.analysisFraming?.square, false, "framing waits for the capture")
+    frames.feed(3)
+    XCTAssertTrue(h.fake.stills.isEmpty, "three steady frames are not enough")
+    XCTAssertEqual(stages, [.document, .steady])
+    frames.feed()
+    XCTAssertEqual(h.fake.stills.count, 1, "the fourth steady frame shoots")
+    frames.feed(2)
+    XCTAssertEqual(h.fake.stills.count, 1, "the gate shoots once")
+    h.fake.stills[0].events(.delivered(try encodedStill(width: 640, height: 480, orientation: 6)))
+    guard case .first(let id) = outcome(shot) else { return XCTFail("the gated shot is admitted") }
+    XCTAssertNotNil(state.snapshot().pages[id])
+  }
+
+  @MainActor
+  func testAGatedCaptureRejectsAtItsDeadlineAndFreesTheSlotAtOnce() throws {
+    let (h, state) = try gated()
+    defer { _ = state.close() }
+    let shot = photo(h.view, gated: true)
+    h.clockOffsetNs = 4_100_000_000
+    h.detector.onFrames?()
+    XCTAssertEqual(outcome(shot), .second(.captureFocusTimeout), "no page within the focus timeout")
+    XCTAssertTrue(h.fake.stills.isEmpty)
+    _ = photo(h.view)
+    XCTAssertEqual(h.fake.stills.count, 1, "a capture that never shot frees its slot at once")
+  }
+
+  @MainActor
+  func testInvalidationWhileWaitingRejectsOnceAndLateFramesPublishNothing() throws {
+    let (h, state) = try gated()
+    defer { _ = state.close() }
+    let frames = Frames(h)
+    let detached = photo(h.view, gated: true)
+    h.detach()
+    XCTAssertEqual(outcome(detached), .second(.cameraUnavailable))
+    h.attach()
+    XCTAssertEqual(h.fake.starts.count, 2, "without a physical shot the camera restarts at once")
+    frames.feed(5)
+    XCTAssertTrue(h.fake.stills.isEmpty, "frames after the rejection shoot nothing")
+
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    let replaced = photo(h.view, gated: true)
+    let replacement = HybridScanSession()
+    defer { _ = replacement.state?.close() }
+    h.view.session = replacement
+    h.view.afterUpdate()
+    XCTAssertEqual(outcome(replaced), .second(.processorSuperseded))
+    frames.feed(5)
+    XCTAssertTrue(h.fake.stills.isEmpty)
+    _ = photo(h.view)
+    XCTAssertEqual(h.fake.stills.count, 1, "the slot is free again")
+  }
+
+  @MainActor
+  func testAPendingTorchCommandHoldsLightAndTorchChangesWaitForTheCapture() throws {
+    var capabilities = CameraCapabilities()
+    capabilities.torch = true
+    let (h, state) = try gated(capabilities) {
+      $0.torch = .on
+      $0.guideLiveCorners = false
+      $0.lowQualityControl = LowQualityControl(enabled: true, captureBlurPercent: 0, requireFocus: nil)
+    }
+    defer { _ = state.close() }
+    let frames = Frames(h)
+    var stages: [CaptureWaitReason?] = []
+    h.view.onCaptureStage = { stages.append($1) }
+    let lit = try XCTUnwrap(h.fake.commands.lastIndex(of: .torch(true)), "the torch was sent at bind")
+    let shot = photo(h.view, gated: true)
+    XCTAssertEqual(stages, [.light], "an unanswered torch command holds the shot")
+    XCTAssertTrue(h.fake.stills.isEmpty)
+    h.view.torch = .off
+    h.view.afterUpdate()
+    XCTAssertFalse(h.fake.commands.contains(.torch(false)), "torch changes wait for the capture")
+    h.fake.completions[lit](.accepted)
+    settle()
+    XCTAssertTrue(h.fake.stills.isEmpty, "frames from before the torch applied show the earlier light")
+    frames.feed()
+    XCTAssertEqual(h.fake.stills.count, 1, "a frame exposed under the confirmed torch releases the shot")
+    h.fake.stills[0].events(.failed(.captureFailed))
+    XCTAssertEqual(outcome(shot), .second(.captureFailed))
+    XCTAssertTrue(h.fake.commands.contains(.torch(false)), "the deferred change applies once the shot settles")
+  }
+
+  @MainActor
+  func testQualityCapturesScanOnceForAnUnknownResultAndRetryAKnownFailureOnce() throws {
+    var capabilities = CameraCapabilities()
+    capabilities.focusPoint = true
+    capabilities.scanFocus = true
+    let (h, state) = try gated(capabilities) {
+      $0.captureMode = .quality
+      $0.guideLiveCorners = false
+      $0.lowQualityControl = LowQualityControl(enabled: true, captureBlurPercent: 0, requireFocus: nil)
+    }
+    defer { _ = state.close() }
+    let frames = Frames(h)
+    func lastScan() -> Int { h.fake.commands.lastIndex { if case .scanFocus = $0 { true } else { false } }! }
+
+    let first = photo(h.view, gated: true)
+    XCTAssertEqual(scanPoints(h), [CameraControls.centre], "a quality capture scans at the centre without a page")
+    h.fake.completions[lastScan()](.accepted)
+    // AVFoundation's end of a scan: the lens locked and still, with no verdict.
+    h.controls.focusObserved(FocusObservation(adjusting: false, locked: true))
+    settle()
+    XCTAssertEqual(scanPoints(h).count, 1, "an unknown result is not retried")
+    XCTAssertTrue(h.fake.stills.isEmpty, "the frames after the scan decide")
+    frames.feed(adjusting: true)
+    XCTAssertTrue(h.fake.stills.isEmpty, "a moving lens is not focused")
+    frames.feed()
+    XCTAssertEqual(h.fake.stills.count, 1, "a still lens after the scan shoots")
+    h.fake.stills[0].events(.failed(.captureFailed))
+    XCTAssertEqual(outcome(first), .second(.captureFailed))
+
+    let second = photo(h.view, gated: true)
+    XCTAssertEqual(scanPoints(h).count, 2)
+    h.fake.completions[lastScan()](.refused)
+    settle()
+    XCTAssertEqual(scanPoints(h).count, 3, "a refused scan is retried once")
+    h.fake.completions[lastScan()](.refused)
+    settle()
+    XCTAssertEqual(scanPoints(h).count, 3, "a second failure without movement is the last")
+    frames.feed()
+    XCTAssertEqual(h.fake.stills.count, 1, "a known failure is not focus")
+    h.clockOffsetNs = 4_100_000_000
+    h.detector.onFrames?()
+    XCTAssertEqual(outcome(second), .second(.captureFocusTimeout))
+  }
+
+  @MainActor
+  func testStalePageFocusScansAtThePageButATapHoldsTheLens() throws {
+    var capabilities = CameraCapabilities()
+    capabilities.focusPoint = true
+    capabilities.scanFocus = true
+    capabilities.continuousFocus = true
+    let (h, state) = try gated(capabilities) {
+      $0.captureMode = .latency
+      $0.lowQualityControl = LowQualityControl(enabled: true, captureBlurPercent: 0, requireFocus: nil)
+    }
+    defer { _ = state.close() }
+    let frames = Frames(h)
+    let page: LiveCorners = [0.125, 0.25, 0.625, 0.25, 0.625, 0.75, 0.125, 0.75]
+    let shot = photo(h.view, gated: true)
+    XCTAssertTrue(scanPoints(h).isEmpty, "latency keeps continuous autofocus")
+    frames.feed(guide: page, focusReachedBeforeNs: 1_000_000_000)
+    // The page centre (0.375, 0.5) upright, a quarter turn back into sensor axes.
+    XCTAssertEqual(scanPoints(h), [CGPoint(x: 0.5, y: 0.625)], "focus from before the page scans at the page")
+    XCTAssertTrue(h.fake.stills.isEmpty)
+    h.view.onDropView()
+    XCTAssertEqual(outcome(shot), .second(.cameraUnavailable))
+
+    let (tapped, tappedState) = try gated(capabilities) {
+      $0.captureMode = .latency
+      $0.lowQualityControl = LowQualityControl(enabled: true, captureBlurPercent: 0, requireFocus: nil)
+    }
+    defer { _ = tappedState.close() }
+    tapped.controls.tap(at: CGPoint(x: 0.9, y: 0.9))
+    let held = photo(tapped.view, gated: true)
+    Frames(tapped).feed(guide: page, focusReachedBeforeNs: 1_000_000_000)
+    XCTAssertEqual(scanPoints(tapped), [CGPoint(x: 0.9, y: 0.9)], "the user's tap stays authoritative")
+    tapped.view.onDropView()
+    XCTAssertEqual(outcome(held), .second(.cameraUnavailable))
+  }
+
+  @MainActor
+  func testExposureChangesWaitForTheCaptureAndTheirAcknowledgementHoldsLight() throws {
+    var capabilities = CameraCapabilities()
+    capabilities.exposureBias = -2...2
+    let (h, state) = try gated(capabilities)
+    defer { _ = state.close() }
+    let bias = try XCTUnwrap(h.fake.commands.lastIndex(of: .exposureBias(0)), "the bias was sent at bind")
+    var stages: [CaptureWaitReason?] = []
+    h.view.onCaptureStage = { stages.append($1) }
+    let frames = Frames(h)
+    let shot = photo(h.view, gated: true)
+    frames.feed(4)
+    XCTAssertTrue(h.fake.stills.isEmpty, "an unanswered exposure command holds light")
+    XCTAssertEqual(stages.last, .light)
+    h.view.exposureCompensation = 1
+    h.view.afterUpdate()
+    XCTAssertFalse(h.fake.commands.contains(.exposureBias(1)), "exposure changes wait for the capture")
+    h.fake.completions[bias](.accepted)
+    settle()
+    XCTAssertTrue(h.fake.stills.isEmpty, "steady frames from before the exposure applied do not count")
+    frames.feed(3)
+    XCTAssertTrue(h.fake.stills.isEmpty)
+    frames.feed()
+    XCTAssertEqual(h.fake.stills.count, 1, "four steady frames after the change shoot")
+    h.fake.stills[0].events(.failed(.captureFailed))
+    XCTAssertEqual(outcome(shot), .second(.captureFailed))
+    XCTAssertEqual(h.fake.commands.last, .exposureBias(1), "the deferred change applies once the shot settles")
+  }
+
+  /// A bias acknowledges with the first frame exposed with it; frames before that frame were exposed
+  /// with the old bias, even when they are read after the acknowledgement.
+  @MainActor
+  func testAnExposureBiasCountsOnlyFramesFromItsFirstExposedBuffer() throws {
+    var capabilities = CameraCapabilities()
+    capabilities.exposureBias = -2...2
+    let (h, state) = try gated(capabilities)
+    defer { _ = state.close() }
+    let bias = try XCTUnwrap(h.fake.commands.lastIndex(of: .exposureBias(0)), "the bias was sent at bind")
+    let frames = Frames(h)
+    let shot = photo(h.view, gated: true)
+    h.fake.completions[bias](CommandOutcome(applied: true, fromNs: hostClockNs() + 500_000_000))
+    settle()
+    frames.feed(4)
+    XCTAssertTrue(h.fake.stills.isEmpty, "steady frames before the first biased buffer do not count")
+    frames.feed(20)
+    XCTAssertEqual(h.fake.stills.count, 1, "four steady frames from the first biased buffer shoot")
+    h.fake.stills[0].events(.failed(.captureFailed))
+    XCTAssertEqual(outcome(shot), .second(.captureFailed))
+  }
+
+  @MainActor
+  func testAnInterruptionOrACameraFailureCancelsAWaitingCapture() throws {
+    let (h, state) = try gated()
+    defer { _ = state.close() }
+    let frames = Frames(h)
+    let interrupted = photo(h.view, gated: true)
+    frames.feed(3)
+    h.fake.emit(.interrupted)
+    XCTAssertEqual(outcome(interrupted), .second(.cameraUnavailable), "evidence from before it no longer holds")
+    h.fake.emit(.streaming(PixelSize(640, 480)))
+    frames.feed(5)
+    XCTAssertTrue(h.fake.stills.isEmpty, "the cancelled capture shoots nothing")
+
+    let failed = photo(h.view, gated: true)
+    h.fake.emit(.failed(.cameraUnavailable))
+    XCTAssertEqual(outcome(failed), .second(.cameraUnavailable), "rejected at once, not at a quality deadline")
+    frames.feed(5)
+    XCTAssertTrue(h.fake.stills.isEmpty)
+  }
+
+  @MainActor
+  func testMotionNeverStartsAScanAndSteadinessStartsOnceFocusIsAccepted() throws {
+    var capabilities = CameraCapabilities()
+    capabilities.focusPoint = true
+    capabilities.scanFocus = true
+    func quality() throws -> (Harness, ScanSessionState) {
+      try gated(capabilities) {
+        $0.captureMode = .quality
+        $0.guideLiveCorners = false
+      }
+    }
+    let (h, state) = try quality()
+    defer { _ = state.close() }
+    let frames = Frames(h)
+    func lastScan(_ h: Harness) -> Int { h.fake.commands.lastIndex { if case .scanFocus = $0 { true } else { false } }! }
+    let failing = photo(h.view, gated: true)
+    XCTAssertEqual(scanPoints(h).count, 1)
+    frames.feed(blur: 0.01)
+    h.fake.completions[lastScan(h)](.refused)
+    settle()
+    XCTAssertEqual(scanPoints(h).count, 2, "a known failure is retried once")
+    frames.feed(blur: 0.01)
+    h.fake.completions[lastScan(h)](.refused)
+    settle()
+    frames.feed(blur: 0.01)
+    XCTAssertEqual(scanPoints(h).count, 2, "motion during a failed scan starts no other")
+    h.view.onDropView()
+    XCTAssertEqual(outcome(failing), .second(.cameraUnavailable))
+
+    let (settled, settledState) = try quality()
+    defer { _ = settledState.close() }
+    let settledFrames = Frames(settled)
+    let shot = photo(settled.view, gated: true)
+    settledFrames.feed(4)
+    XCTAssertTrue(settled.fake.stills.isEmpty, "steady frames while the scan runs do not count")
+    settled.fake.completions[lastScan(settled)](.accepted)
+    settled.controls.focusObserved(FocusObservation(adjusting: false, locked: true))
+    settle()
+    settledFrames.feed(3)
+    XCTAssertTrue(settled.fake.stills.isEmpty, "the sequence starts from scratch once focus is accepted")
+    settledFrames.feed()
+    XCTAssertEqual(settled.fake.stills.count, 1)
+    XCTAssertEqual(scanPoints(settled).count, 1)
+    settled.fake.stills[0].events(.failed(.captureFailed))
+    XCTAssertEqual(outcome(shot), .second(.captureFailed))
+  }
+
+  @MainActor
+  func testATurnWhileWaitingRestartsReadinessAndTheStillTakesTheShutterRotation() throws {
+    let (h, state) = try gated()
+    defer { _ = state.close() }
+    let before = Frames(h)
+    let shot = photo(h.view, gated: true)
+    before.feed(3)
+    h.view.setRotation(preview: 270, capture: 270)
+    before.feed()
+    XCTAssertTrue(h.fake.stills.isEmpty, "a page seen through the old framing does not shoot")
+    let after = Frames(h, framing: try XCTUnwrap(h.view.analysisFraming))
+    XCTAssertEqual(after.framing.rotation, 270)
+    after.feed(3)
+    XCTAssertTrue(h.fake.stills.isEmpty, "the new framing starts a new steady sequence")
+    after.feed()
+    XCTAssertEqual(h.fake.stills.count, 1)
+    XCTAssertEqual(h.fake.stills[0].settings.rotationAngle, 270, "the still is shot in the framing it was judged in")
+    h.fake.stills[0].events(.delivered(try encodedStill(width: 640, height: 480, orientation: 8)))
+    guard case .first(let id) = outcome(shot) else { return XCTFail("the shot is admitted") }
+    XCTAssertNotNil(state.snapshot().pages[id])
+  }
+
   enum Outcome: Equatable {
     case first(String)
     case second(ScannerErrorCode)
   }
 
+  /// A capture; ungated unless `gated`, so lifecycle tests fire at once.
   @MainActor
-  private func photo(_ view: HybridDocumentScannerCameraView) -> Promise<Variant_ScannerFailure_CameraCaptureResult> {
-    let promise = try! view.takePhotoResult(options: nil)
+  private func photo(_ view: HybridDocumentScannerCameraView,
+                     gated: Bool = false) -> Promise<Variant_ScannerFailure_CameraCaptureResult> {
+    let promise = try! view.takePhotoResult(options: gated ? nil : TakePhotoOptions(skipLowQualityControl: true))
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     return promise
   }

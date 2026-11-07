@@ -155,9 +155,9 @@ internal enum class OwnScan { NONE, SCANNING, LOCKED, FAILED }
 internal sealed interface CaptureDecision {
   /** Re-evaluate on the next event, and at [untilMs] at the latest, when the current deadline expires. */
   data class Wait(val reason: WaitReason, val untilMs: Long) : CaptureDecision
-  /** Start the capture's own focus scan, its [attempt]th; [trigger] is why its first one started, and [moved] whether
-   * the camera moved during the failed one before. The focus change re-evaluates. */
-  data class StartFocusScan(val trigger: ScanTrigger, val attempt: Int, val moved: Boolean) : CaptureDecision
+  /** Start the capture's own focus scan, its [attempt]th; [trigger] is why its first one started. The focus change
+   * re-evaluates. */
+  data class StartFocusScan(val trigger: ScanTrigger, val attempt: Int) : CaptureDecision
   data object Shoot : CaptureDecision
   data class Reject(val code: ScannerErrorCode, val reason: WaitReason?) : CaptureDecision
 }
@@ -174,8 +174,7 @@ internal sealed interface CaptureDecision {
  *
  * The capture's own scan: [scanAvailable] means one could start now (autofocus, a bound camera, focus required and no
  * tap holding the lens); [scanTrigger] is why a first one would help now, or null. [ownScan] is its published state,
- * [movedDuringScan] whether a frame judged in this evaluation smeared while it scanned, and [frameSinceFocusChange]
- * whether a frame exposed after the latest focus change has been judged.
+ * and [frameSinceFocusChange] whether a frame exposed after the latest focus change has been judged.
  */
 internal data class CaptureState(
   val nowMs: Long,
@@ -194,24 +193,22 @@ internal data class CaptureState(
   val scanAvailable: Boolean = false,
   val scanTrigger: ScanTrigger? = null,
   val ownScan: OwnScan = OwnScan.NONE,
-  val movedDuringScan: Boolean = false,
   val frameSinceFocusChange: Boolean = true,
 )
 
 /**
  * The single owner of a capture's readiness, its own focus scans and its deadlines. Focus, with its page in `scanner`
  * mode, comes first and waits up to the focus timeout from its first evaluation; once it holds, everything must align
- * within [steadyTimeoutMs]. Losing focus or the page after that waits within the same deadline. Autofocus still moving
+ * within [steadyTimeoutMs]. Losing focus or the page after that waits within the same deadline, and accepting them again
+ * restarts it. Autofocus still moving
  * extends a focus wait past either deadline, so a shot never fails or fires halfway through focusing. A capture that does
  * not require focus shoots without its page at either deadline, still needing light and steadiness. A skipped gate waits
  * only for a focus scan in progress, which settles on its own, and never scans. The first evaluation where everything
  * holds shoots; there is no settling delay. Main thread.
  *
  * Scans: a first scan starts when its trigger holds before the focus deadline. One that settles without focus is retried
- * from where it left the lens, whatever its trigger shows by then: once in any case, and again for as long as the camera
- * moved during the failed scan. In dim light on the SM-G998U a scan from a background distance, with the hand moving
- * slightly, gave up just short of the page, which then came into focus. A scan that fails while the camera holds still
- * is the last: the scene is too dark or flat to focus. A scan in progress holds the page and focus waits past their
+ * once from where it left the lens, whatever its trigger shows by then; the second failure is the last. Motion never
+ * starts a scan: it only delays the shot, or rejects it at the steady deadline. A scan in progress holds the page and focus waits past their
  * deadline, and once it settles they wait up to [settledFrameWaitMs] for a frame exposed since, so the page it brought
  * into focus can be seen. The focus controller's own timeout bounds a scan.
  */
@@ -219,6 +216,8 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
   private val maxScans: Int = 2, private val settledFrameWaitMs: Long = 500) {
   private var focusDeadlineMs = 0L
   private var steadyDeadlineMs = 0L
+  /** Focus, with its page when required, held at the previous evaluation since the steady deadline was set. */
+  private var focusHeld = false
   /** Focus stopped being required: its timeout passed on a capture that does not require it. */
   var focusSkipped = false
     private set
@@ -226,8 +225,6 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
   var scans = 0
     private set
   private var trigger: ScanTrigger? = null
-  /** A frame smeared while the current scan scanned; its failure is then retried. */
-  private var scanMoved = false
   private var lastOwnScan = OwnScan.NONE
   /** When this gate first saw its latest scan settled; null while it scans or before one. */
   private var scanSettledMs: Long? = null
@@ -236,7 +233,6 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
     val now = captureState.nowMs
     val ownScan = captureState.ownScan
     if (ownScan == OwnScan.SCANNING) {
-      if (captureState.movedDuringScan) scanMoved = true
       scanSettledMs = null
     } else if (lastOwnScan == OwnScan.SCANNING) {
       scanSettledMs = now
@@ -280,8 +276,15 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
         focusSkipped = true
       }
       steadyDeadlineMs = now + steadyTimeoutMs
+      focusHeld = true
     }
-    var reason = blocker() ?: return CaptureDecision.Shoot
+    val blocked = blocker()
+    // Focus and its page accepted again after a loss restart the steadiness window, as the view restarts its frame
+    // count: a refocus that ends late must still leave time for the steady frames.
+    val holds = blocked != WaitReason.DOCUMENT && blocked != WaitReason.FOCUS
+    if (holds && !focusHeld) steadyDeadlineMs = now + steadyTimeoutMs
+    focusHeld = holds
+    var reason = blocked ?: return CaptureDecision.Shoot
     if (now < steadyDeadlineMs) return CaptureDecision.Wait(reason, steadyDeadlineMs)
     focusingUntil(reason)?.let { return CaptureDecision.Wait(reason, it) }
     if ((reason == WaitReason.DOCUMENT || reason == WaitReason.FOCUS) && !captureState.requireFocus) {
@@ -300,16 +303,14 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
   /** The capture's next own scan, if one should start now. */
   private fun scanToStart(captureState: CaptureState): CaptureDecision.StartFocusScan? {
     if (!captureState.scanAvailable || focusSkipped) return null
-    val retry = captureState.ownScan == OwnScan.FAILED && (scans < maxScans || scanMoved)
+    val retry = captureState.ownScan == OwnScan.FAILED && scans < maxScans
     val first = scans == 0 && captureState.scanTrigger != null &&
       (focusDeadlineMs == 0L || captureState.nowMs < focusDeadlineMs)
     if (first) trigger = captureState.scanTrigger
     val why = trigger
     if (!(first || retry) || why == null) return null
     scans++
-    val moved = scanMoved
-    scanMoved = false
-    return CaptureDecision.StartFocusScan(why, scans, moved)
+    return CaptureDecision.StartFocusScan(why, scans)
   }
 }
 

@@ -15,14 +15,14 @@ private final class ControlCamera: CameraSessionControl {
   var device: AVCaptureDevice? { nil }
   var commands: [CameraCommand] = []
   /// Completions the test answers; nil accepts every command at once.
-  var held: [(Bool) -> Void]?
+  var held: [(CommandOutcome) -> Void]?
   var starts = 0
   func attachPreview(_ layer: AVCaptureVideoPreviewLayer) {}
   func start(_ request: CameraRequest) { starts += 1 }
   func stop() {}
-  func perform(_ command: CameraCommand, completion: @escaping (Bool) -> Void) {
+  func perform(_ command: CameraCommand, completion: @escaping (CommandOutcome) -> Void) {
     commands.append(command)
-    if held != nil { held?.append(completion) } else { completion(true) }
+    if held != nil { held?.append(completion) } else { completion(.accepted) }
   }
 }
 
@@ -106,7 +106,7 @@ final class CameraControlsTests: XCTestCase {
     observe(controls, adjusting: false, locked: true)
     XCTAssertTrue(controls.snapshot.pending)
     timers.advance(by: 10)
-    camera.held!.last!(true)
+    camera.held!.last!(.accepted)
     observe(controls, adjusting: true, locked: false)
     XCTAssertEqual(controls.autofocus, .scan)
     XCTAssertTrue(controls.snapshot.pending)
@@ -188,7 +188,7 @@ final class CameraControlsTests: XCTestCase {
     observe(controls, adjusting: false, locked: true)
     XCTAssertTrue(controls.snapshot.pending, "the earlier scan's lock is not the new scan's end")
     timers.advance(by: 5)
-    camera.held!.last!(true)
+    camera.held!.last!(.accepted)
     XCTAssertTrue(controls.snapshot.pending)
     // A scan that ends while its command applies is sampled after the completion.
     observe(controls, adjusting: false, locked: true)
@@ -215,7 +215,7 @@ final class CameraControlsTests: XCTestCase {
     controls.unbind()
     XCTAssertNil(controls.snapshot.owner)
     let unbound = controls.snapshot
-    refuse(false)
+    refuse(.refused)
     observe(controls, adjusting: true, locked: false)
     XCTAssertEqual(controls.snapshot, unbound, "late evidence of a stopped run changes nothing")
     XCTAssertEqual(controls.autofocus, .inactive)
@@ -224,7 +224,7 @@ final class CameraControlsTests: XCTestCase {
     // A new binding: a refused scan command settles as a failure.
     controls.bind(full)
     controls.tap(at: CGPoint(x: 0.4, y: 0.4))
-    camera.held!.last!(false)
+    camera.held!.last!(.refused)
     XCTAssertFalse(controls.snapshot.pending)
     XCTAssertEqual(controls.snapshot.locked, false)
   }
