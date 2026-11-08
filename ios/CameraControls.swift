@@ -112,9 +112,8 @@ final class CameraControls: @unchecked Sendable {
     torchLock.lock(); torchBinding = binding; torchLock.unlock()
     aimContinuousFocus()
     applyExposure()
-    applyTorch()
     requestedBoost = nil
-    applyBoost()
+    applyLighting()
   }
 
   /// The run stopped: scans end, observations and completions of this binding are ignored, and the
@@ -147,8 +146,7 @@ final class CameraControls: @unchecked Sendable {
     }
     guard isBound else { return }
     if next.exposureBias != previous.exposureBias || next.minFrameRate != previous.minFrameRate { applyExposure() }
-    if next.torch != previous.torch { applyTorch() }
-    if next.lowLightBoost != previous.lowLightBoost { applyBoost() }
+    if next.torch != previous.torch || next.lowLightBoost != previous.lowLightBoost { applyLighting() }
   }
 
   // MARK: - Focus
@@ -181,15 +179,24 @@ final class CameraControls: @unchecked Sendable {
     if policy.afterCapture(nowNs: clock()) { released() }
     scheduleDeadlines()
     if exposureDeferred { applyExposure() }
-    applyTorch()
-    applyBoost()
+    applyLighting()
   }
 
-  private func applyBoost() {
+  var automaticBoostAllowed: Bool { settings.lowLightBoost && settings.torch == .off }
+
+  private func applyLighting() {
+    // Disable boost before lighting the torch, and turn off the torch before enabling boost.
+    let allowBoost = automaticBoostAllowed
+    if !allowBoost { applyBoost(false) }
+    applyTorch()
+    if allowBoost { applyBoost(true) }
+  }
+
+  private func applyBoost(_ enabled: Bool) {
     guard capabilities?.lowLightBoost == true, !capturePending(),
-          requestedBoost != settings.lowLightBoost else { return }
-    requestedBoost = settings.lowLightBoost
-    sendExposure(.lowLightBoost(settings.lowLightBoost), name: "low-light boost")
+          requestedBoost != enabled else { return }
+    requestedBoost = enabled
+    sendExposure(.lowLightBoost(enabled), name: "low-light boost")
   }
 
   /// A focus sample of the bound device. `adjusting` drives the autofocus state; a pending scan

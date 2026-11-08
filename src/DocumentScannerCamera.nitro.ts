@@ -157,8 +157,8 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   torch?: TorchMode
   /**
-   * Allow automatic low-light boost on supported cameras. Defaults to true. Android requires
-   * Android 15+ and torch mode `off`. Changes wait for a pending capture.
+   * Allow automatic low-light boost on supported cameras in torch mode `off`. Defaults to true.
+   * Android requires Android 15+. Changes wait for a pending capture.
    */
   lowLightBoost?: boolean
   /**
