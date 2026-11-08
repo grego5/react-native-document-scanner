@@ -135,6 +135,8 @@ internal class LiveDocumentDetector(
   internal val frameHistory = FrameHistory()
   /** Coalesced main-thread callback after results are appended to [frameHistory]; set only while a reader waits. */
   @Volatile internal var frameAnalysisListener: (() -> Unit)? = null
+  /** One waiting shutter may bypass inference pacing for frames after its focus scan. */
+  @Volatile internal var captureInferenceFrame: ((sensorNs: Long, arrivalNs: Long, realtime: Boolean) -> Boolean)? = null
   private val frameResultsToken = Any()
   // Executor-confined: the confirmed in-frame outline as of the last published result, and when its hold expires on
   // the System.nanoTime() clock of frame arrival, as main expires the guide; 0 holds it.
@@ -267,7 +269,7 @@ internal class LiveDocumentDetector(
   /** Stores this frame's analysis result for its binding, then notifies main that new results are available. */
   private fun recordFrameAnalysis(
     boundGeneration: Long, frameGeneration: Long, sensorTimestampNs: Long, arrivalNs: Long, realtime: Boolean, frame: CameraFrameState?,
-    flow: FlowMotionEstimate?, motion: GateMotion?, gyroSpeed: Double?,
+    flow: FlowMotionEstimate?, motion: GateMotion?, gyroSpeed: Double?, inferenceFinished: Boolean,
   ) {
     synchronized(bindingLock) {
       if (boundGeneration != binding || frameGeneration != flowGeneration || !flowActive) return
@@ -280,7 +282,7 @@ internal class LiveDocumentDetector(
           motion, gyroSpeed,
           captureGuide?.takeIf {
             state.guidanceEnabled() && (captureGuideDeadlineNs == 0L || arrivalNs < captureGuideDeadlineNs)
-          })
+          }, inferenceFinished)
       }
     }
     if (frameAnalysisListener == null) return
@@ -375,7 +377,8 @@ internal class LiveDocumentDetector(
     val speedLimit = if (searching) maxInferenceSpeedFraction / 2 else maxInferenceSpeedFraction
     val moving = pacingEnabled && maxInferenceSpeedFraction > 0 && estimate?.status == FlowMotionStatus.MEASURED &&
       ((!adaptive && estimate.lostRegions > 0) || estimate.speedPxPerSecond?.let { it / image.width > speedLimit } == true)
-    val gap = if (adaptive) cadence.gap(startedAt, searching, moving,
+    val forCapture = captureInferenceFrame?.invoke(sensorTimestampNs, startedAt, optics != null) == true
+    val gap = if (forCapture) 0L else if (adaptive) cadence.gap(startedAt, searching, moving,
       estimate?.status == FlowMotionStatus.MEASURED && estimate.lostRegions == 0, trackingGap, blurFraction = flowMotion)
       else if (moving || scorePaused) null else trackingGap
     // Provisional focus inference cannot override a tracking pause; tracked outlines drive focus instead.
@@ -385,6 +388,7 @@ internal class LiveDocumentDetector(
         else -> state.acquire(startedAt, gap)
       }
     }
+    var inferenceFinished = false
     try {
       received++
       if (moving) gated++
@@ -540,6 +544,7 @@ internal class LiveDocumentDetector(
           score,
         )
       })
+      inferenceFinished = state.isCurrent(token)
     } catch (error: Throwable) {
       if (token != null && state.fail(token)) {
         releaseSession()
@@ -561,7 +566,7 @@ internal class LiveDocumentDetector(
         else gateMotion(flow?.estimate, recorded.exposureNs,
           if (flow?.estimate?.let { flowBlur(it, recorded.exposureNs) } != null) null else gyroBlur(optics, sensorTimestampNs, recorded))
       recordFrameAnalysis(boundGeneration, frameGeneration, sensorTimestampNs, startedAt, optics != null, recorded,
-        flow?.estimate, recordedMotion, gyroSpeed)
+        flow?.estimate, recordedMotion, gyroSpeed, inferenceFinished)
       logWindow(System.nanoTime())
     }
   }

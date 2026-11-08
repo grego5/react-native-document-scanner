@@ -194,6 +194,7 @@ internal data class CaptureState(
   val scanTrigger: ScanTrigger? = null,
   val ownScan: OwnScan = OwnScan.NONE,
   val frameSinceFocusChange: Boolean = true,
+  val postFocusInferenceFinished: Boolean? = null,
 )
 
 /**
@@ -209,8 +210,8 @@ internal data class CaptureState(
  * Scans: a first scan starts when its trigger holds before the focus deadline. One that settles without focus is retried
  * once from where it left the lens, whatever its trigger shows by then; the second failure is the last. Motion never
  * starts a scan: it only delays the shot, or rejects it at the steady deadline. A scan in progress holds the page and focus waits past their
- * deadline, and once it settles they wait up to [settledFrameWaitMs] for a frame exposed since, so the page it brought
- * into focus can be seen. The focus controller's own timeout bounds a scan.
+ * deadline. After a successful scan a missing page is judged by fresh inference. The focus check allows up to
+ * [settledFrameWaitMs] for fresh frame evidence. The focus controller's own timeout bounds a scan.
  */
 internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLowQualityControl: Boolean = false,
   private val maxScans: Int = 2, private val settledFrameWaitMs: Long = 500) {
@@ -264,6 +265,13 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
         !captureState.lightReady || captureState.zslCheckEnabled && !captureState.zslReady -> WaitReason.LIGHT
         captureState.motionCheckEnabled && !captureState.steady -> WaitReason.STEADY
         else -> null
+      }
+    }
+    if (blocker() == WaitReason.DOCUMENT && captureState.requireFocus) {
+      when (captureState.postFocusInferenceFinished) {
+        false -> return CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE)
+        true -> return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.DOCUMENT)
+        null -> Unit
       }
     }
     if (steadyDeadlineMs == 0L) {

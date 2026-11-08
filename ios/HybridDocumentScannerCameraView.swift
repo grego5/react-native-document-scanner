@@ -89,6 +89,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// AVFoundation's clockwise capture rotation angle, which turns analysis buffers upright.
   private(set) var captureAngle: Double = 0
   private var rotation: AVCaptureDevice.RotationCoordinator?
+  private var rotationGeneration = 0
   private var rotationObservations: [NSKeyValueObservation] = []
   private var removePermissionListener: (() -> Void)?
   private var lifecycleObservers: [NSObjectProtocol] = []
@@ -389,22 +390,24 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     MainActor.assumeIsolated {
       let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: preview.previewLayer)
       rotation = coordinator
+      rotationGeneration += 1
+      let generation = rotationGeneration
       rotationObservations = [
         coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.initial, .new]) {
           [weak self] coordinator, _ in
           let angle = Double(coordinator.videoRotationAngleForHorizonLevelPreview)
-          DispatchQueue.main.async { [weak coordinator] in
-            guard let self, let coordinator, rotation === coordinator else { return }
-            MainActor.assumeIsolated { preview.rotationAngle = angle }
+          DispatchQueue.main.async { [weak self] in
+            guard let self, self.rotation != nil, self.rotationGeneration == generation else { return }
+            MainActor.assumeIsolated { self.preview.rotationAngle = angle }
           }
         },
         coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.initial, .new]) {
           [weak self] coordinator, _ in
           let angle = Double(coordinator.videoRotationAngleForHorizonLevelCapture)
-          DispatchQueue.main.async { [weak coordinator] in
-            guard let self, let coordinator, rotation === coordinator else { return }
-            captureAngle = angle
-            updateDetectorSettings()
+          DispatchQueue.main.async { [weak self] in
+            guard let self, self.rotation != nil, self.rotationGeneration == generation else { return }
+            self.captureAngle = angle
+            self.updateDetectorSettings()
           }
         },
       ]
@@ -634,6 +637,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     /// The next frame record to judge, and the newest judged one exposed after the latest focus change.
     var cursor: Int
     var latest: FrameRecord?
+    var inferenceFinished = false
     var focusGeneration: Int64
     var focusChangedNs: Int64
     /// The latest light change the device applied, and the first judged frame exposed after it
@@ -748,6 +752,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       capture.focusChangedNs = snapshot.changedNs
       capture.stability.reset()
       capture.latest = nil
+      capture.inferenceFinished = false
     }
     if controls.lightChangedNs != capture.lightChangedNs {
       capture.lightChangedNs = controls.lightChangedNs
@@ -765,8 +770,12 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       capture.cursor = frame.sequence + 1
       guard frame.sensorNs >= capture.focusChangedNs else { continue }
       // A turn or a square change moves the page on the still; readiness starts over.
-      if let previous = capture.latest, previous.framing != frame.framing { capture.stability.interrupt() }
+      if let previous = capture.latest, previous.framing != frame.framing {
+        capture.stability.interrupt()
+        capture.inferenceFinished = false
+      }
       capture.latest = frame
+      if frame.framing == analysisFraming && frame.inferenceFinished { capture.inferenceFinished = true }
       guard frame.sensorNs >= capture.lightChangedNs else { continue }
       if capture.lightFrameNs == nil { capture.lightFrameNs = frame.sensorNs }
       guard motionCheck else { continue }
@@ -827,6 +836,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       : snapshot.scanning(nowNs: nowNs) ? .max : frameScanningUntil.flatMap { $0 > nowMs ? $0 : nil }
     // A light change the device applied counts once a frame exposed after it was judged.
     let lightReady = !controls.lightPending && (!capture.lightChanged || capture.lightFrameNs != nil)
+    let postFocusInferenceFinished: Bool? = documentRequired && (ownScan == .locked || ownScan == .settled)
+      ? capture.inferenceFinished || detector.state.hasFailed || !guideOn : nil
     let evidence = CaptureEvidence(
       nowMs: nowMs, focusCheckEnabled: skip ? hasAutofocus && config.requireFocus : focusCheck,
       documentRequired: documentRequired, requireFocus: config.requireFocus, focusTimeoutMs: CaptureGate.focusTimeoutMs,
@@ -838,8 +849,13 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
       scanAvailable: !skip && waitsForFocus && capabilities.focusScans && controls.isBound
         && !(snapshot.owner == .tap && snapshot.scanHolds(nowNs: nowNs)),
       scanTrigger: trigger, ownScan: ownScan,
-      frameSinceFocusChange: latest != nil)
+      frameSinceFocusChange: latest != nil, postFocusInferenceFinished: postFocusInferenceFinished)
     let decision = capture.gate.next(evidence)
+    if case .wait(.document, _) = decision, postFocusInferenceFinished == false {
+      detector.prioritizeCaptureInference(after: capture.focusChangedNs)
+    } else {
+      detector.prioritizeCaptureInference(after: nil)
+    }
     switch decision {
     case .startFocusScan(let trigger, let attempt):
       let point = latest.flatMap { frame in
@@ -887,6 +903,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     capture.deadline?.cancel()
     capture.deadline = nil
     detector.onFrames = nil
+    detector.prioritizeCaptureInference(after: nil)
   }
 
   /// A waiting capture that never shot leaves the slot: it releases its focus scan and applies the

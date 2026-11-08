@@ -136,6 +136,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
   // Shared under `lock`.
   private let lock = NSLock()
   private var settings = Settings()
+  private var captureInferenceAfterNs: Int64?
   private var lease: CornerInference.Lease?
   /// Between `begin` and `stop`: only then may an acquired lease be kept.
   private var running = false
@@ -311,6 +312,10 @@ final class LiveDocumentDetector: @unchecked Sendable {
   /// The next frame's exposure and focus evidence, delivered just before it on the analysis owner.
   func frameMetadata(_ metadata: CameraFrameMetadata) { self.metadata = metadata }
 
+  func prioritizeCaptureInference(after sensorNs: Int64?) {
+    lock.lock(); captureInferenceAfterNs = sensorNs; lock.unlock()
+  }
+
   /// Analyzes one camera buffer in sensor axes; `sensorNs` is its presentation time.
   func analyze(_ buffer: CVPixelBuffer, sensorNs: Int64) {
     lock.lock()
@@ -318,6 +323,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
     self.metadata = nil
     guard running else { lock.unlock(); return }
     let settings = settings
+    let forCapture = captureInferenceAfterNs.map { sensorNs >= $0 } ?? false
     let request = frameRequest
     frameRequest = nil
     let run = run
@@ -348,16 +354,17 @@ final class LiveDocumentDetector: @unchecked Sendable {
     } else {
       blur = nil
     }
-    if let startedAt {
+    let inferenceFinished = startedAt.map {
       guideFrame(buffer, framing: framing, sensorNs: sensorNs, settings: settings, estimate: estimate,
-                 blur: blur, startedAt: startedAt)
-    }
-    record(framing: framing, sensorNs: sensorNs, metadata: metadata, estimate: estimate, blur: blur, run: run)
+                 blur: blur, startedAt: $0, forCapture: forCapture)
+    } ?? false
+    record(framing: framing, sensorNs: sensorNs, metadata: metadata, estimate: estimate, blur: blur, run: run,
+           inferenceFinished: inferenceFinished)
   }
 
   /// Appends this frame's capture evidence and wakes main if something waits for it.
   private func record(framing: CameraFraming, sensorNs: Int64, metadata: CameraFrameMetadata?,
-                      estimate: ScannerFlowEstimate?, blur: Double?, run: Int) {
+                      estimate: ScannerFlowEstimate?, blur: Double?, run: Int, inferenceFinished: Bool) {
     if run != focusRun {
       focusRun = run
       lastAdjusting = nil
@@ -393,7 +400,8 @@ final class LiveDocumentDetector: @unchecked Sendable {
     frames.append { sequence in
       FrameRecord(sequence: sequence, sensorNs: sensorNs, framing: framing, flow: flow, exposureNs: exposure,
                   iso: metadata?.iso, exposureEstimated: metadata?.estimated ?? false, blur: blur,
-                  focusAdjusting: adjusting, focusReachedNs: reached, pageArrivedNs: arrived, guide: guide)
+                  focusAdjusting: adjusting, focusReachedNs: reached, pageArrivedNs: arrived, guide: guide,
+                  inferenceFinished: inferenceFinished)
     }
     let wake = framesListener != nil && !framesScheduled
     let revision = framesListenerRevision
@@ -413,7 +421,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
 
   /// Guide work for one frame with guidance on: pacing, inference and acceptance.
   private func guideFrame(_ buffer: CVPixelBuffer, framing: CameraFraming, sensorNs: Int64, settings: Settings,
-                          estimate: ScannerFlowEstimate?, blur: Double?, startedAt: Int64) {
+                          estimate: ScannerFlowEstimate?, blur: Double?, startedAt: Int64, forCapture: Bool) -> Bool {
     let adaptive = settings.adaptive
     if adaptive != adaptiveWasEnabled {
       policy.reset()
@@ -452,10 +460,10 @@ final class LiveDocumentDetector: @unchecked Sendable {
       ? cadence.gap(now: startedAt, searching: searching, moving: moving, measured: measured && lost == 0,
                     trackingGap: gap, blurFraction: blur)
       : moving || scorePaused ? nil : gap
-    let token = eligibleGap.flatMap { state.acquire(nowNs: startedAt, minGapNs: $0) }
+    let token = (forCapture ? 0 : eligibleGap).flatMap { state.acquire(nowNs: startedAt, minGapNs: $0) }
     guard let token else {
       // Pacing and movement skip inference; flow's own consensus fit decides whether tracking holds.
-      guard reliable, lost == 0, state.isCurrent(lastToken) else { return }
+      guard reliable, lost == 0, state.isCurrent(lastToken) else { return false }
       if let held = guide.retainTracked(Self.numbers(carried), width: upright.width, height: upright.height, sensorNs: sensorNs,
                                      arrivalNs: startedAt), let accepted = held.accepted?.map(\.doubleValue) {
         acceptedId = held.acceptanceId
@@ -469,11 +477,11 @@ final class LiveDocumentDetector: @unchecked Sendable {
         // An expired or invalid tracked guide must wake inference instead of staying paused.
         policy.reset()
       }
-      return
+      return false
     }
-    guard state.isCurrent(token) else { return }
+    guard state.isCurrent(token) else { return false }
     // A stop raced this frame; its token is stale.
-    guard let lease = currentLease() else { return }
+    guard let lease = currentLease() else { return false }
     if adaptive { cadence.didAttempt(at: startedAt) }
     let analysis: CornerAnalysis
     do {
@@ -489,7 +497,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
         resetTracking()
         publish(LiveGuideResult(status: .unavailable, generation: token))
       }
-      return
+      return false
     }
     if let previous = modelGeneration, previous != analysis.generation {
       // A replaced model starts over; this frame's token is stale from here on.
@@ -498,7 +506,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
       releaseFlow()
       publish(LiveGuideResult(status: .searching, generation: state.modelChanged(),
                               modelGeneration: analysis.generation))
-      return
+      return false
     }
     modelGeneration = analysis.generation
     let prediction = analysis.prediction
@@ -550,6 +558,7 @@ final class LiveDocumentDetector: @unchecked Sendable {
       result.deadlineNs = validated.deadlineNs
     }
     publish(result)
+    return state.isCurrent(token)
   }
 
   private func warp(_ corners: LiveCorners, to sensorNs: Int64) -> LiveCorners? {

@@ -41,6 +41,7 @@ struct FrameRecord: Equatable, Sendable {
   let focusReachedNs: Int64?
   let pageArrivedNs: Int64?
   let guide: LiveCorners?
+  var inferenceFinished = false
 
   /// Exposure time in ms times ISO, the auto torch's darkness measure; nil when either is unknown.
   var exposureIsoMs: Double? {
@@ -243,6 +244,7 @@ struct CaptureEvidence: Equatable, Sendable {
   var scanTrigger: ScanTrigger? = nil
   var ownScan = OwnScan.none
   var frameSinceFocusChange = true
+  var postFocusInferenceFinished: Bool? = nil
 }
 
 /// The single owner of a capture's readiness, its own focus scans and its deadlines; Kotlin's
@@ -257,8 +259,8 @@ struct CaptureEvidence: Equatable, Sendable {
 /// Scans: a first scan starts when its trigger holds before the focus deadline. A known failure is
 /// retried once whatever its trigger shows by then. Motion never starts a scan: it only delays the
 /// shot, or rejects it at the steady deadline. A scan that settles with an unknown result is never retried. A scan in progress
-/// holds the page and focus waits past their deadline; once it settles they wait up to
-/// `settledFrameWaitMs` for a frame exposed since. The controls' own timeout bounds a scan. Main only.
+/// holds the page and focus waits past their deadline. After it settles, a missing page is judged by fresh
+/// inference. The focus check allows up to `settledFrameWaitMs` for fresh frame evidence. Main only.
 struct CaptureGate {
   static let focusTimeoutMs: Int64 = 4_000
   static let steadyTimeoutMs: Int64 = 1_000
@@ -317,6 +319,9 @@ struct CaptureGate {
       if !e.lightReady || e.bufferCheckEnabled && !e.bufferReady { return .light }
       if e.motionCheckEnabled && !e.steady { return .steady }
       return nil
+    }
+    if blocker() == .document, e.requireFocus, let finished = e.postFocusInferenceFinished {
+      return finished ? .reject(.captureFocusTimeout, .document) : .wait(.document, untilMs: .max)
     }
     if steadyDeadlineMs == 0 {
       let reason = blocker()

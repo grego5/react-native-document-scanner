@@ -22,6 +22,7 @@ internal data class FrameRecord(
   val motion: GateMotion?,
   val gyroSpeed: Double?,
   val guide: DocumentCorners?,
+  val inferenceFinished: Boolean = false,
 ) {
   /** Age of the image itself: from exposure on REALTIME cameras, otherwise from arrival at analysis. */
   fun ageNanos(nowNs: Long, nowRealtimeNs: Long): Long = realtimeSensorNs?.let { nowRealtimeNs - it } ?: (nowNs - arrivalNs)

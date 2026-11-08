@@ -905,6 +905,7 @@ open class HybridDocumentScannerCameraView(
       capture.focus = snapshot
       capture.stability.reset()
       capture.latest = null
+      capture.inferenceFinished = false
     }
     val blurLimit = config.maxCaptureBlur
     val motionCheckEnabled = config.lowQualityControl && blurLimit > 0
@@ -932,6 +933,7 @@ open class HybridDocumentScannerCameraView(
       capture.frameCursor = frame.sequence + 1
       if (!frame.after(snapshot.changedRealtimeNs, snapshot.changedNs)) continue
       capture.latest = frame
+      if (frame.inferenceFinished) capture.inferenceFinished = true
       newFrame = true
       if (!motionCheckEnabled) continue
       // A frame exposed while focus was lost does not continue the sequence; one without its result cannot tell.
@@ -1004,6 +1006,9 @@ open class HybridDocumentScannerCameraView(
     // focus, so its buffer stays empty and CameraX takes a new frame.
     val waitForZsl = config.lowQualityControl && binding?.zsl == true && hasAutofocus
     val lightPending = light.pending
+    val postFocusInferenceFinished = if (documentRequired && ownScan == OwnScan.LOCKED) {
+      capture.inferenceFinished || liveDetector.hasFailed() || !props.guide
+    } else null
     val captureState = CaptureState(
       nowMs, if (skip) hasAutofocus && config.requireFocus else focusCheckEnabled, documentRequired, config.requireFocus,
       FOCUS_TIMEOUT_MS,
@@ -1021,12 +1026,20 @@ open class HybridDocumentScannerCameraView(
       scanTrigger = scanTrigger,
       ownScan = ownScan,
       frameSinceFocusChange = latest != null,
+      postFocusInferenceFinished = postFocusInferenceFinished,
     )
     fun traceGate(fired: Boolean) = liveDetector.traceObserver?.onCaptureGate(LiveCaptureGateSample(
       SystemClock.elapsedRealtimeNanos(), fired, latest?.realtimeSensorNs, latest?.frame?.exposureNs, latest?.motion?.blur, latest?.motion?.source,
       latest?.flow, null, latest?.ageNanos(System.nanoTime(), SystemClock.elapsedRealtimeNanos()),
     ))
-    when (val decision = capture.gate.next(captureState)) {
+    val decision = capture.gate.next(captureState)
+    liveDetector.captureInferenceFrame =
+      if (decision is CaptureDecision.Wait && decision.reason == WaitReason.DOCUMENT && postFocusInferenceFinished == false) {
+        { sensorNs, arrivalNs, realtime ->
+          if (realtime) sensorNs >= snapshot.changedRealtimeNs else arrivalNs >= snapshot.changedNs
+        }
+      } else null
+    when (decision) {
       is CaptureDecision.StartFocusScan -> {
         val camera = boundCamera ?: return
         val point = focusCandidate?.let(::meteringPoint)
@@ -1043,7 +1056,9 @@ open class HybridDocumentScannerCameraView(
           onCaptureStage?.invoke(CaptureStage.WAITING, decision.reason.toCaptureWaitReason())
         }
         mainHandler.removeCallbacksAndMessages(capture.deadlineToken)
-        mainHandler.postAtTime({ evaluateCaptures() }, capture.deadlineToken, decision.untilMs)
+        if (decision.untilMs != Long.MAX_VALUE) {
+          mainHandler.postAtTime({ evaluateCaptures() }, capture.deadlineToken, decision.untilMs)
+        }
       }
       is CaptureDecision.Reject -> {
         logLifecycle("capture rejected: ${decision.code} waiting for ${decision.reason} focusGeneration=${snapshot.generation} " +
@@ -1818,6 +1833,7 @@ open class HybridDocumentScannerCameraView(
   private fun endCapture(promise: Promise<*>) {
     val ended = captureAdmission.current?.takeIf { it.promise === promise } ?: return
     if (ended.physicalInFlight || !captureAdmission.finish(ended)) return
+    liveDetector.captureInferenceFrame = null
     ended.source.close()
     // A rejected capture leaves no scheduled deadline callback.
     mainHandler.removeCallbacksAndMessages(ended.deadlineToken)
@@ -1910,6 +1926,7 @@ open class HybridDocumentScannerCameraView(
     /** The next frame results to consume, and the newest consumed frame exposed since the last focus change. */
     var frameCursor = 0L
     var latest: FrameRecord? = null
+    var inferenceFinished = false
     /** The focus snapshot the consumed frames were evaluated against; a newer generation restarts the sequence. */
     var focus = FocusSnapshot(0, null, null, 0, 0, 0)
     /** Framing stability over consecutive frames since the press and the latest focus change. */
