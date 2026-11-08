@@ -15,7 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--photos', type=Path, default=root / '.local/scanner-samples')
     parser.add_argument('--output', type=Path, default=root / '.local/doccornernet-runtime/assets')
-    parser.add_argument('--checkpoint',type=Path,default=root/'.local/models/mobilenetv3_custom_224_v1/best_model_inference.keras')
+    parser.add_argument('--checkpoint',type=Path,default=root/'.local/mobilenetv3_custom_224_081126/best_model_inference.keras')
     parser.add_argument('--layers',type=Path,default=root/'.local/models/mobilenetv3_custom_224_v1/model.py')
     args = parser.parse_args()
     from export_adapted_doccornernet import load_float32_model
