@@ -43,6 +43,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.core.SessionConfig
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
+import androidx.camera.core.TorchState
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -960,7 +961,7 @@ open class HybridDocumentScannerCameraView(
     // or the preview's centre: there continuous autofocus held blurred pages while reporting focus on the SM-G998U, and
     // the blur hid the page from detection. The shot then waits for frames exposed after the lock, four steady ones
     // with motion checking, and zero shutter lag saves only a buffered frame that reports the lock.
-    val dark = (exposureIsoMs ?: 0.0) >= TorchPolicy.DARK_ISO_MS && light.torchLit != true &&
+    val dark = (exposureIsoMs ?: 0.0) >= TorchPolicy.DARK_ISO_MS && !torchIsLit &&
       boundCamera?.info?.lowLightBoostState?.value != LowLightBoostState.ACTIVE
     val darkScan = dark && !scanningFrame && (!documentRequired || latest != null)
     // In `latency` bound for the light, a press with no page found scans at the preview's centre: under the torch on the
@@ -1504,7 +1505,7 @@ open class HybridDocumentScannerCameraView(
       "quality" -> "quality"
       else -> missing
     }
-    val torch = if (light.torchLit == true) "on" else props.torch.name.lowercase()
+    val torch = if (torchIsLit) "on" else if (props.torch == TorchMode.AUTO) "auto (idle)" else "off"
     val entries = listOf(
       "Camera: ${emittedCameraState?.name?.lowercase() ?: "suspended"}",
       "AF: ${emittedAutofocus?.name?.lowercase() ?: "inactive"}",
@@ -1588,12 +1589,14 @@ open class HybridDocumentScannerCameraView(
 
   /** Main thread: sets the bound camera's torch and low-light boost from the props and the auto decision. Changes wait
    * while a capture is pending, so the light does not change under its judgment or shot; the capture's end applies
-   * them. A failed change is retried by the next call. */
+   * them. A failed torch change can be retried by the next call. */
   private fun applyLight() {
     light.apply(boundCamera, props.torch, props.lowLightBoost, hasPendingCapture()) {
       synchronized(metadataLock) { torchPolicy.lit }
     }
   }
+
+  private val torchIsLit: Boolean get() = boundCamera?.info?.torchState?.value == TorchState.ON
 
   /** The bound still-capture mode for the stats strip; `zsl` without camera support shoots as `latency`. */
   private fun boundCaptureLabel(): String {
