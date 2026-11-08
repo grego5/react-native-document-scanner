@@ -55,7 +55,7 @@ final class CaptureGateTests: XCTestCase {
       XCTAssertEqual(current.next(evidence), expected, line)
       gates[v[0]] = current
     }
-    XCTAssertEqual(rows.count, 9)
+    XCTAssertEqual(rows.count, 13)
   }
 
   // MARK: - Decisions
@@ -169,7 +169,7 @@ final class CaptureGateTests: XCTestCase {
     XCTAssertEqual(accepted.next(with { $0.nowMs = 300; $0.ownScan = .settled; $0.scanAvailable = true }), .shoot)
   }
 
-  func testAnAdmittedScanOutlastsThePageDeadlineAndGetsOneFrameAfterItSettles() {
+  func testASettledScanWaitsForInferenceWithoutADeadline() {
     let missing = with { $0.documentFound = false; $0.focused = false; $0.scanAvailable = true }
     var g = gate()
     XCTAssertEqual(g.next(with { $0 = missing; $0.scanTrigger = .dark }), .startFocusScan(.dark, attempt: 1))
@@ -177,17 +177,23 @@ final class CaptureGateTests: XCTestCase {
                    .wait(.document, untilMs: 2_100))
     XCTAssertEqual(g.next(with { $0 = missing; $0.nowMs = 2_500; $0.ownScan = .scanning; $0.frameSinceFocusChange = false }),
                    .wait(.document, untilMs: .max))
-    XCTAssertEqual(g.next(with { $0 = missing; $0.nowMs = 3_000; $0.ownScan = .settled; $0.frameSinceFocusChange = false }),
-                   .wait(.document, untilMs: 3_500))
-    XCTAssertEqual(g.next(with { $0.nowMs = 3_100; $0.ownScan = .settled }), .shoot)
+    var settled = missing
+    settled.nowMs = 3_000
+    settled.ownScan = .settled
+    settled.postFocusInferenceFinished = false
+    XCTAssertEqual(g.next(settled), .wait(.document, untilMs: .max))
+    XCTAssertEqual(g.next(with { $0 = settled; $0.nowMs = 8_100; $0.focused = true }),
+                   .wait(.document, untilMs: .max))
+    XCTAssertEqual(g.next(with { $0.nowMs = 8_800; $0.ownScan = .settled; $0.steady = false; $0.postFocusInferenceFinished = true }),
+                   .wait(.steady, untilMs: 10_300))
+    XCTAssertEqual(g.next(with { $0.nowMs = 8_900; $0.ownScan = .settled }), .shoot)
 
-    // A coalesced settle: the gate never saw the scan scanning past the deadline, yet still allows a frame.
+    // A coalesced settle still waits for an inference. Its negative result resolves the wait.
     var coalesced = gate()
     _ = coalesced.next(with { $0 = missing; $0.scanTrigger = .dark })
     _ = coalesced.next(with { $0 = missing; $0.nowMs = 100; $0.ownScan = .scanning })
-    XCTAssertEqual(coalesced.next(with { $0 = missing; $0.nowMs = 2_400; $0.ownScan = .settled; $0.frameSinceFocusChange = false }),
-                   .wait(.document, untilMs: 2_900))
-    XCTAssertEqual(coalesced.next(with { $0 = missing; $0.nowMs = 2_900; $0.ownScan = .settled }),
+    XCTAssertEqual(coalesced.next(settled), .wait(.document, untilMs: .max))
+    XCTAssertEqual(coalesced.next(with { $0 = settled; $0.focused = true; $0.postFocusInferenceFinished = true }),
                    .reject(.captureFocusTimeout, .document))
   }
 

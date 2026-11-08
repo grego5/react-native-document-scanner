@@ -154,7 +154,7 @@ class CaptureGateTest {
   }
 
   @Test
-  fun anAdmittedRescueScanOutlastsThePageDeadlineAndGetsOneFrameAfterItSettles() {
+  fun aSettledRescueScanWaitsForInferenceWithoutADeadline() {
     val missing = ready.copy(documentFound = false, focused = false, scanAvailable = true)
     val gate = CaptureGate(1_500)
     assertEquals(CaptureDecision.StartFocusScan(ScanTrigger.UNSEEN_PAGE, 1),
@@ -163,17 +163,23 @@ class CaptureGateTest {
       gate.next(missing.copy(nowMs = 100, ownScan = OwnScan.SCANNING, frameSinceFocusChange = false)))
     assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE),
       gate.next(missing.copy(nowMs = 2_500, ownScan = OwnScan.SCANNING, frameSinceFocusChange = false)))
-    // Locked past the deadline: the first frame exposed after the lock decides.
-    val locked = missing.copy(nowMs = 3_000, ownScan = OwnScan.LOCKED, frameSinceFocusChange = false)
-    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 3_500), gate.next(locked))
-    assertEquals(CaptureDecision.Shoot, gate.next(ready.copy(nowMs = 3_100, ownScan = OwnScan.LOCKED)))
+    val locked = missing.copy(nowMs = 3_000, ownScan = OwnScan.LOCKED, frameSinceFocusChange = false,
+      postFocusInferenceFinished = false)
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE), gate.next(locked))
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE),
+      gate.next(locked.copy(nowMs = 8_100, focused = true, frameSinceFocusChange = true)))
+    assertEquals(CaptureDecision.Wait(WaitReason.STEADY, 10_300),
+      gate.next(ready.copy(nowMs = 8_800, ownScan = OwnScan.LOCKED, steady = false, postFocusInferenceFinished = true)))
+    assertEquals(CaptureDecision.Shoot, gate.next(ready.copy(nowMs = 8_900, ownScan = OwnScan.LOCKED)))
 
     val unseen = CaptureGate(1_500)
     unseen.next(missing.copy(scanTrigger = ScanTrigger.UNSEEN_PAGE))
     unseen.next(missing.copy(nowMs = 100, ownScan = OwnScan.SCANNING))
     unseen.next(missing.copy(nowMs = 2_500, ownScan = OwnScan.SCANNING))
+    val noPage = missing.copy(nowMs = 2_600, ownScan = OwnScan.LOCKED, focused = true, postFocusInferenceFinished = false)
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE), unseen.next(noPage))
     assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.DOCUMENT),
-      unseen.next(missing.copy(nowMs = 2_600, ownScan = OwnScan.LOCKED)))
+      unseen.next(noPage.copy(postFocusInferenceFinished = true)))
   }
 
   @Test
