@@ -101,21 +101,23 @@ class CameraLightControllerTest {
       assertEquals(true,h.controller.torchLit); assertEquals(1,h.settled)
     }
   }
-  @Test fun boostFollowsTheTorchModeAndDefersWithItDuringCapture() = main {
+  @Test fun torchChangesDoNotResendBoostAndBothSettingsDeferDuringCapture() = main {
     Harness().use { h ->
       h.boostSupported = true
-      // Torch on: boost goes off first, then the torch lights.
-      h.apply(TorchMode.ON, boost = true)
-      assertEquals(listOf("boost=false","torch=true"),h.order)
+      h.apply(TorchMode.AUTO, boost = true)
+      assertEquals(listOf("boost=true", "torch=false"), h.order)
       h.completeAll()
-      // Torch off during a capture: neither the torch nor the boost changes until it settles.
+      h.policy.observe(0, 66_000_000, 1600)
+      h.policy.observe(1_000_000_000, 66_000_000, 1600)
+      h.apply(TorchMode.AUTO, boost = true)
+      h.completeAll()
       h.capture = true; h.apply(TorchMode.OFF, boost = true)
-      assertEquals(2,h.order.size)
+      assertEquals(3, h.order.size)
       h.capture = false; h.apply(TorchMode.OFF, boost = true)
-      assertEquals(listOf("boost=false","torch=true","torch=false","boost=true"),h.order)
+      assertEquals(listOf("boost=true", "torch=false", "torch=true", "torch=false"), h.order)
       assertTrue(h.controller.pending)
       h.completeAll()
-      assertEquals(true,h.controller.boostOn); assertFalse(h.controller.pending)
+      assertFalse(h.controller.pending)
     }
   }
   @Test fun refusedBoostReportsAndLeavesADarkSceneUnlitForTheModeChoice() = main {
@@ -125,13 +127,15 @@ class CameraLightControllerTest {
         dark = true, whiteBalanceUnsettled = false, atBind = atBind)
       assertNull(fallback(atBind = true))
       h.apply(TorchMode.OFF, boost = true); h.boostFutures.last().fail()
-      assertEquals(1,h.refused); assertNull(h.controller.boostOn)
+      assertEquals(1,h.refused)
+      h.apply(TorchMode.OFF, boost = true)
+      assertEquals(listOf(true), h.boosts)
       assertEquals(LightFallback.DARK,fallback())
       // The refusal outlives the binding, so the next bind still binds `latency`; a later success clears it.
       h.controller.unbind()
       assertEquals(LightFallback.DARK,fallback(atBind = true))
       h.apply(TorchMode.OFF, boost = true); h.boostFutures.last().set(null)
-      assertEquals(true,h.controller.boostOn)
+      assertEquals(listOf(true, true), h.boosts)
       assertNull(fallback(atBind = true))
     }
   }
@@ -141,7 +145,7 @@ class CameraLightControllerTest {
       h.apply(TorchMode.OFF, boost = true); val old = h.boostFutures.last()
       h.controller.unbind()
       old.fail()
-      assertEquals(0,h.refused); assertEquals(0,h.settled); assertNull(h.controller.boostOn)
+      assertEquals(0,h.refused); assertEquals(0,h.settled); assertFalse(h.controller.pending)
     }
   }
   @Test fun fallbackLatchesUntilABindFindsNoCauseAndExplicitModesNeverFallBack() = main {

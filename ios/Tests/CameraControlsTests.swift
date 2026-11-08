@@ -238,7 +238,7 @@ final class CameraControlsTests: XCTestCase {
     supported.lowLightBoost = true
     controls.unbind()
     controls.bind(supported)
-    XCTAssertEqual(camera.commands.last, .lowLightBoost(true))
+    XCTAssertTrue(camera.commands.contains(.lowLightBoost(true)))
     controls.capturePending = { true }
     controls.update(.init(lowLightBoost: false))
     XCTAssertFalse(camera.commands.contains(.lowLightBoost(false)))
@@ -248,16 +248,15 @@ final class CameraControlsTests: XCTestCase {
     XCTAssertEqual(camera.commands.filter { $0 == .lowLightBoost(false) }.count, 1)
   }
 
-  func testLowLightBoostIsAllowedOnlyInTorchOffMode() {
+  func testTorchChangesDoNotResendAutomaticBoost() {
     var supported = full
     supported.lowLightBoost = true
     let (camera, _, controls) = rig(supported, settings: .init(torch: .auto))
-    XCTAssertTrue(camera.commands.contains(.lowLightBoost(false)))
-    XCTAssertFalse(camera.commands.contains(.lowLightBoost(true)))
+    XCTAssertTrue(camera.commands.contains(.lowLightBoost(true)))
 
     camera.commands.removeAll()
     controls.update(.init(torch: .off))
-    XCTAssertEqual(camera.commands, [.lowLightBoost(true)])
+    XCTAssertTrue(camera.commands.isEmpty)
 
     camera.commands.removeAll()
     controls.capturePending = { true }
@@ -265,11 +264,11 @@ final class CameraControlsTests: XCTestCase {
     XCTAssertTrue(camera.commands.isEmpty)
     controls.capturePending = { false }
     controls.afterCapture()
-    XCTAssertEqual(Array(camera.commands.suffix(2)), [.lowLightBoost(false), .torch(true)])
+    XCTAssertEqual(camera.commands, [.torch(true)])
 
     camera.commands.removeAll()
     controls.update(.init(torch: .off))
-    XCTAssertEqual(camera.commands, [.torch(false), .lowLightBoost(true)])
+    XCTAssertEqual(camera.commands, [.torch(false)])
   }
 
   func testTorchModesDeferDuringACaptureAndCamerasWithoutATorchIgnoreThem() {

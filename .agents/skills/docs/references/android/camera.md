@@ -10,7 +10,7 @@
 ## Light and capture
 
 - `CameraLightController` owns torch/boost requests and confirmations. It applies deferred settings after capture and ignores late completions after unbind. Exposure compensation also defers and uses the latest prop.
-- Auto torch uses exposure × ISO and latches once lit. Boost is eligible with torch mode off and hardware support. For requested ZSL, a lit torch, sustained unsettled white balance or sustained darkness without boost can bind latency. The reason is attached to the binding. Recovery returns to ZSL on a later bind, and incomplete darkness/white-balance intervals do not count across camera stops.
+- Auto torch uses exposure × ISO and latches once lit. On supported cameras the boost setting is sent at bind and when changed. CameraX handles the interaction between torch and boost. For requested ZSL, a lit torch, sustained unsettled white balance or sustained darkness without boost can bind latency. The reason is attached to the binding. Recovery returns to ZSL on a later bind, and incomplete darkness/white-balance intervals do not count across camera stops.
 - For gated ZSL, readiness includes a buffer-eligible frame even when focus is optional, with a fixed-focus exception. CameraX owns buffered frame selection. Skipping the gate skips the buffer check. See [Shared engine](../engine.md) for policy decisions.
 
 ## Samples

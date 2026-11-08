@@ -19,8 +19,7 @@ internal class CameraLightController(private val executor: Executor, private val
   /** What CameraX confirmed for the current binding; null before a confirmation or after a failure. */
   var torchLit: Boolean? = null
     private set
-  var boostOn: Boolean? = null
-    private set
+  private var requestedBoost: Boolean? = null
   private val torch = Slot()
   private val boost = Slot()
   /** The camera refused the last boost enable, as it does above 30 fps; cleared when one succeeds. Survives unbinding,
@@ -40,20 +39,16 @@ internal class CameraLightController(private val executor: Executor, private val
     torch.request = null
     boost.request = null
     torchLit = null
-    boostOn = null
+    requestedBoost = null
   }
 
-  /** Sends the torch for [mode] and the boost for [lowLightBoost], which applies only with the torch mode `off`, unless
-   * a capture is pending. The boost goes off before a torch lights; CameraX turns the torch off when the boost goes on. */
+  /** Applies both settings when capture is idle. CameraX owns their interaction. */
   fun apply(camera: BoundCamera?, mode: TorchMode, lowLightBoost: Boolean, capturePending: Boolean, autoLit: () -> Boolean) {
     if (camera == null || capturePending) return
-    val boostSupported = camera.info.isLowLightBoostSupported
-    val boosted = boostSupported && lowLightBoost && mode == TorchMode.OFF
-    if (boostSupported && !boosted) setBoost(camera, false)
+    if (camera.info.isLowLightBoostSupported) setBoost(camera, lowLightBoost)
     if (camera.info.hasFlashUnit()) {
       setTorch(camera, when (mode) { TorchMode.ON -> true; TorchMode.AUTO -> autoLit(); TorchMode.OFF -> false })
     }
-    if (boosted) setBoost(camera, true)
   }
 
   /**
@@ -94,10 +89,10 @@ internal class CameraLightController(private val executor: Executor, private val
   }
 
   private fun setBoost(camera: BoundCamera, on: Boolean) {
-    if (on == (boost.request?.on ?: boostOn)) return
+    if (on == requestedBoost) return
+    requestedBoost = on
     log("low light boost enabled=$on")
     send(boost, on, camera.control.enableLowLightBoostAsync(on)) { ok ->
-      boostOn = if (ok) on else null
       if (on) {
         boostRejected = !ok
         if (!ok) boostRefused()

@@ -1107,7 +1107,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     let boost = configuration.map {
       if !$0.capabilities.lowLightBoost { return "unavailable" }
       if boostActive { return "active" }
-      return controls.automaticBoostAllowed ? "auto (idle)" : "off"
+      return lowLightBoost == false ? "off" : "auto (idle)"
     } ?? missing
     return [
       "Camera: \(cameraState.stringValue)",
