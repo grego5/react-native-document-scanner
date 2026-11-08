@@ -248,6 +248,30 @@ final class CameraControlsTests: XCTestCase {
     XCTAssertEqual(camera.commands.filter { $0 == .lowLightBoost(false) }.count, 1)
   }
 
+  func testLowLightBoostIsAllowedOnlyInTorchOffMode() {
+    var supported = full
+    supported.lowLightBoost = true
+    let (camera, _, controls) = rig(supported, settings: .init(torch: .auto))
+    XCTAssertTrue(camera.commands.contains(.lowLightBoost(false)))
+    XCTAssertFalse(camera.commands.contains(.lowLightBoost(true)))
+
+    camera.commands.removeAll()
+    controls.update(.init(torch: .off))
+    XCTAssertEqual(camera.commands, [.lowLightBoost(true)])
+
+    camera.commands.removeAll()
+    controls.capturePending = { true }
+    controls.update(.init(torch: .on))
+    XCTAssertTrue(camera.commands.isEmpty)
+    controls.capturePending = { false }
+    controls.afterCapture()
+    XCTAssertEqual(Array(camera.commands.suffix(2)), [.lowLightBoost(false), .torch(true)])
+
+    camera.commands.removeAll()
+    controls.update(.init(torch: .off))
+    XCTAssertEqual(camera.commands, [.torch(false), .lowLightBoost(true)])
+  }
+
   func testTorchModesDeferDuringACaptureAndCamerasWithoutATorchIgnoreThem() {
     let noTorch = rig(CameraCapabilities(focusPoint: true, scanFocus: true, continuousFocus: true), settings: .init(torch: .on))
     XCTAssertFalse(noTorch.0.commands.contains { if case .torch = $0 { return true } else { return false } })

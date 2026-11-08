@@ -2,7 +2,7 @@
 
 ## Owners
 
-- `CameraRef.getCameraFeatures()` reads support from the bound configuration without opening a camera. It returns undefined before configuration. AVFoundation decides when automatic low-light boost engages. `onLowLightBoostActiveChange` reports observed engagement separately from support. Changes to the opt-in wait for capture settlement.
+- `CameraRef.getCameraFeatures()` reads support from the bound configuration without opening a camera. It returns undefined before configuration. Torch mode `off` allows the low-light boost opt-in, and AVFoundation decides when boost engages. `onLowLightBoostActiveChange` reports observed engagement separately from support. Changes wait for capture settlement.
 
 - The camera view owns admission and the capture phase. `AVCameraSession` owns device commands, focus observations and acknowledgements on its session queue. Frames arrive on a separate serial queue with late-frame discard. UIKit publication runs on main. Run IDs retire stale callbacks.
 - Camera use requires an active, visible and sized view, foreground and permission. First-frame readiness is armed after the previous run drains. Square framing uses delivered buffer dimensions and can change without restarting. Overlay placement maps detection corners through raw frame space into the preview's framing.
