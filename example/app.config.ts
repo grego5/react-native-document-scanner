@@ -20,6 +20,7 @@ const config: ExpoConfig = {
   orientation: 'default',
   userInterfaceStyle: 'automatic',
   plugins: [
+    'react-native-document-scanner',
     'expo-dev-client',
     'expo-router',
     'expo-system-ui',
@@ -38,12 +39,6 @@ const config: ExpoConfig = {
       {
         ios: {
           deploymentTarget: '18.0',
-          extraPods: [
-            {
-              name: 'DocumentScannerOpenCV',
-              podspec: '../../ios/DocumentScannerOpenCV.podspec',
-            },
-          ],
         },
         android: {
           cmakeVersion: '4.1.2',

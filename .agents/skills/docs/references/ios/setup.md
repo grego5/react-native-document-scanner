@@ -2,13 +2,17 @@
 
 ## Host
 
-Set the deployment target to iOS 18 or later and supply a nonempty `NSCameraUsageDescription`. React Native autolinks the scanner. Declare its local OpenCV dependency inside the consuming Podfile target, adjusting for the host's package layout:
+Set the deployment target to iOS 18 or later and supply a nonempty `NSCameraUsageDescription`. React Native autolinks the scanner.
+
+For Expo prebuild, add `'react-native-document-scanner'` to the app's `plugins` array before `expo-build-properties` if you use it. The scanner plugin adds the bundled OpenCV podspec to the iOS extra pods. Remove any manual OpenCV entry from your Expo config.
+
+For apps with a manually maintained Podfile, declare the local OpenCV dependency inside the consuming target and adjust the path for your package layout.
 
 ```ruby
 pod 'DocumentScannerOpenCV', :podspec => '../node_modules/react-native-document-scanner/ios/DocumentScannerOpenCV.podspec'
 ```
 
-For Expo prebuild, see the deployment target and extra pod in `example/app.config.ts`. The package podspec owns the TensorFlow Lite dependency and canonical model bundle. The pinned OpenCV framework supports arm64 device and x86_64 simulator. Use an Intel simulator or a device build.
+The package podspec owns the TensorFlow Lite dependency and canonical model bundle. The pinned OpenCV framework supports arm64 device and x86_64 simulator. Use an Intel simulator or a device build.
 
 From `example/` on a Mac, run `npm run ios:prebuild`, then `npm run ios -- --device` for the Expo development build. The example supports iPhone and iPad. Its media-library plugin supplies `NSPhotoLibraryAddUsageDescription` for write-only Photos access. Expo Sharing presents the PDF share sheet and provides a default iPad popover anchor.
 
