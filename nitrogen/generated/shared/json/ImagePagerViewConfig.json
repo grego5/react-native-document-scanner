@@ -1,0 +1,17 @@
+{
+  "uiViewClassName": "ImagePagerView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "session": true,
+    "pageIds": true,
+    "direction": true,
+    "selectedPageId": true,
+    "swipeEnabled": true,
+    "onPageChange": true,
+    "onLoad": true,
+    "onError": true,
+    "hybridRef": true
+  }
+}

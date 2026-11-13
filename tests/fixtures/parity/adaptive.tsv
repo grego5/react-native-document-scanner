@@ -1,0 +1,47 @@
+# Adaptive inference pacing. Rows sharing a case run in file order on one fresh policy; exact values, no tolerance.
+# Corners are normalized upright TL,TR,BR,BL as eight comma-separated numbers; - means none or not applicable.
+# width/height are upright frame pixels. gap is nanoseconds before the next inference; max pauses it.
+# Steps: reference (corners), confirmed, reset, next (tracking, reliable, degraded, corners, width, height -> gap, status, lastReset, doubt).
+case	step	tracking	reliable	degraded	corners	width	height	gap	status	lastReset	doubt
+acquire	next	false	false	false	-	240	320	0	unconfirmed	unconfirmed	-
+acquire	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	0	unconfirmed	unconfirmed	-
+acquire	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-
+acquire	confirmed	-	-	-	-	-	-	-	-	-	-
+acquire	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	max	paused	unconfirmed	-
+acquire	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	max	paused	unconfirmed	-
+loss-then-clean-tracking	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-
+loss-then-clean-tracking	confirmed	-	-	-	-	-	-	-	-	-	-
+loss-then-clean-tracking	next	true	false	false	-	240	320	60000000	tracking lost	tracking lost	-
+loss-then-clean-tracking	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	60000000	revalidating	tracking lost	-
+loss-then-clean-tracking	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	60000000	revalidating	tracking lost	-
+loss-then-clean-tracking	confirmed	-	-	-	-	-	-	-	-	-	-
+loss-then-clean-tracking	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	max	paused	tracking lost	-
+degraded	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-
+degraded	confirmed	-	-	-	-	-	-	-	-	-	-
+degraded	next	true	true	true	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	60000000	tracking degraded	tracking degraded	-
+degraded	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	60000000	revalidating	tracking degraded	-
+degraded	confirmed	-	-	-	-	-	-	-	-	-	-
+degraded	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	max	paused	tracking degraded	-
+expiry-and-reset	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-
+expiry-and-reset	confirmed	-	-	-	-	-	-	-	-	-	-
+expiry-and-reset	next	false	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	0	unconfirmed	unconfirmed	-
+expiry-and-reset	reset	-	-	-	-	-	-	-	-	-	-
+expiry-and-reset	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	0	unconfirmed	unconfirmed	-
+translation-threshold	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-
+translation-threshold	confirmed	-	-	-	-	-	-	-	-	-	-
+translation-threshold	next	true	true	false	0.249,0.2,0.849,0.2,0.849,0.8,0.249,0.8	240	320	max	paused	none	-
+translation-threshold	next	true	true	false	0.251,0.2,0.851,0.2,0.851,0.8,0.251,0.8	240	320	60000000	scene changed	scene changed	scene changed
+translation-threshold	next	true	false	false	0.251,0.2,0.851,0.2,0.851,0.8,0.251,0.8	240	320	60000000	tracking lost	tracking lost	-
+translation-threshold	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	60000000	revalidating	tracking lost	-
+rotated-geometry	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-
+rotated-geometry	confirmed	-	-	-	-	-	-	-	-	-	-
+rotated-geometry	next	true	true	false	0.24,0.2,0.84,0.2,0.84,0.8,0.24,0.8	320	240	max	paused	none	-
+rotated-geometry	next	true	true	false	0.2,0.24,0.8,0.24,0.8,0.84,0.2,0.84	320	240	max	paused	none	-
+rotated-geometry	next	true	true	false	0.2,0.24,0.8,0.24,0.8,0.84,0.2,0.84	240	320	60000000	scene changed	scene changed	scene changed
+perspective	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-
+perspective	confirmed	-	-	-	-	-	-	-	-	-	-
+perspective	next	true	true	false	0.3,0.2,0.7,0.2,0.8,0.8,0.2,0.8	240	320	60000000	scene changed	scene changed	scene changed
+reference-cleared	reference	-	-	-	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	-	-	-	-	-	-
+reference-cleared	confirmed	-	-	-	-	-	-	-	-	-	-
+reference-cleared	reference	-	-	-	-	-	-	-	-	-	-
+reference-cleared	next	true	true	false	0.2,0.2,0.8,0.2,0.8,0.8,0.2,0.8	240	320	0	unconfirmed	unconfirmed	-

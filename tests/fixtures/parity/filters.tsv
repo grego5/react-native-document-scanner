@@ -1,0 +1,3 @@
+# v1; upright 400x300 RGBA8 white (255,255,255,255); BLACKWHITE; vertical gray strokes y=[80,220), width=1; every y=[90,210) at stroke x must be 1..254; paper sample exact 255; ranges preserve existing Android assertions
+id	width	height	strokes	paperX	paperY
+faint-strokes	400	300	100:180,150:225,200:235	30	150

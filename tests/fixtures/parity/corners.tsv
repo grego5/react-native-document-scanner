@@ -1,0 +1,8 @@
+# v1; 224x224 RGB float32 model input, nine float32 outputs; normalized upright TL/TR/BR/BL then score; exact float32 promotion for accepted corners; invalid geometry rejects, nonfinite output throws
+id	output	expected
+valid	0.1,0.2,0.8,0.1,0.9,0.8,0.2,0.9,0.7	accept
+low-score	0.1,0.2,0.8,0.1,0.9,0.8,0.2,0.9,0	accept
+outside	0.1,0.2,0.8,0.1,1.01,0.8,0.2,0.9,0.7	reject
+duplicate	0.1,0.2,0.8,0.1,0.1,0.2,0.2,0.9,0.7	reject
+crossed	0.1,0.1,0.9,0.9,0.9,0.1,0.1,0.9,0.7	reject
+nonfinite-score	0.1,0.2,0.8,0.1,0.9,0.8,0.2,0.9,NaN	error

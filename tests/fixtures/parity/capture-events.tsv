@@ -1,0 +1,15 @@
+# v1; no pixels/dimensions; ordered events per scenario, separate gate per scenario; monotonic elapsed milliseconds origin 0; focus timeout 2000, steady timeout 1500; all checks enabled, required document/focus; exact decisions/deadlines
+id	nowMs	document	focus	zsl	torch	steady	decision	reason	deadline
+ordered	0	false	false	false	true	false	wait	DOCUMENT	2000
+ordered	500	true	false	true	true	true	wait	FOCUS	2000
+ordered	600	true	true	false	true	true	wait	LIGHT	2100
+ordered	700	true	true	true	true	false	wait	STEADY	2100
+ordered	800	true	true	true	true	true	shoot	-	-
+focus-timeout	0	true	false	true	true	true	wait	FOCUS	2000
+focus-timeout	2000	true	false	true	true	true	CAPTURE_FOCUS_TIMEOUT	FOCUS	-
+motion-timeout	0	true	true	true	true	false	wait	STEADY	1500
+motion-timeout	1500	true	true	true	true	false	CAPTURE_MOTION_TIMEOUT	STEADY	-
+refocus	0	true	true	true	true	false	wait	STEADY	1500
+refocus	200	true	false	true	true	false	wait	FOCUS	1500
+refocus	1400	true	true	true	true	false	wait	STEADY	2900
+refocus	2000	true	true	true	true	true	shoot	-	-
