@@ -72,6 +72,10 @@ namespace margelo::nitro::documentscanner { enum class ImageFit; }
 namespace margelo::nitro::documentscanner { struct ImageOutputOptions; }
 // Forward declaration of `ImagePagerDirection` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ImagePagerDirection; }
+// Forward declaration of `ImportImageOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImportImageOptions; }
+// Forward declaration of `LibraryImportResult` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct LibraryImportResult; }
 // Forward declaration of `LowQualityControl` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct LowQualityControl; }
 // Forward declaration of `PageThumbnailResizeMode` to properly resolve imports.
@@ -132,6 +136,8 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "ImageFit.hpp"
 #include "ImageOutputOptions.hpp"
 #include "ImagePagerDirection.hpp"
+#include "ImportImageOptions.hpp"
+#include "LibraryImportResult.hpp"
 #include "LowQualityControl.hpp"
 #include "PageThumbnailResizeMode.hpp"
 #include "PaperSize.hpp"

@@ -1,12 +1,14 @@
 package com.margelo.nitro.documentscanner
 
 import android.content.Context
+import android.net.Uri
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
 import com.margelo.nitro.documentscanner.processing.SampleCollection
 import com.margelo.nitro.documentscanner.processing.CachedImageFiles
+import com.margelo.nitro.documentscanner.processing.DocumentRenderer
 import java.util.concurrent.CompletionException
 
 /** Thin typed boundary. Registry/state, rather than this JS wrapper's GC lifetime, own all pages. */
@@ -32,6 +34,41 @@ class HybridScanSession internal constructor(internal val state: ScanSessionStat
       promise.resolve(Variant_Array_String__ScannerFailure.create(scannerFailure(error, ScannerErrorCode.STORAGE_WRITE_FAILED)))
     }
     return promise
+  }
+
+  override fun importImageResult(uri: String, options: ImportImageOptions): Promise<Variant_String_ScannerFailure> {
+    val promise = Promise<String>()
+    try {
+      val context = NitroModules.applicationContext ?: throw ScannerException(ScannerErrorCode.PROCESSOR_UNAVAILABLE)
+      val source = Uri.parse(uri)
+      // Validate defaults before waiting for a model, so bad options reject as input.
+      val render = DocumentRenderer.effectiveOptions(renderOptions(options.imageCorrection, options.outputOptions))
+      ImageImport.model(context) { model ->
+        model.fold({ ImageImport.admit(context, state, source, render, options.autoCrop ?: true, it) { result ->
+          result.fold(promise::resolve, promise::reject)
+        } }, promise::reject)
+      }
+    } catch (error: Throwable) { promise.reject(error) }
+    return promise.scannerResult(ScannerErrorCode.IMAGE_LOAD_FAILED,
+      Variant_String_ScannerFailure::create, Variant_String_ScannerFailure::create)
+  }
+
+  override fun importFromLibraryResult(options: ImportImageOptions, maxCount: Double): Promise<Variant_ScannerFailure_LibraryImportResult> {
+    val promise = Promise<LibraryImportResult>()
+    try {
+      val context = NitroModules.applicationContext ?: throw ScannerException(ScannerErrorCode.PROCESSOR_UNAVAILABLE)
+      requireInput(maxCount.isFinite() && maxCount >= 0 && maxCount % 1.0 == 0.0) { "maxCount must be a whole number from 0." }
+      val render = DocumentRenderer.effectiveOptions(renderOptions(options.imageCorrection, options.outputOptions))
+      val autoCrop = options.autoCrop ?: true
+      // The model is frozen before presenting, so every pick of this call uses it whatever changes meanwhile.
+      ImageImport.model(context) { model ->
+        model.fold({ ImageImport.fromLibrary(context, state, maxCount.toInt(), render, autoCrop, it) { result ->
+          result.fold(promise::resolve, promise::reject)
+        } }, promise::reject)
+      }
+    } catch (error: Throwable) { promise.reject(error) }
+    return promise.scannerResult(ScannerErrorCode.IMAGE_LOAD_FAILED,
+      Variant_ScannerFailure_LibraryImportResult::create, Variant_ScannerFailure_LibraryImportResult::create)
   }
 
   override fun saveCaptureSampleResult(pageId: String): Promise<Variant_String_ScannerFailure> {

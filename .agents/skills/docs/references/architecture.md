@@ -2,7 +2,7 @@
 
 ```text
 React host → JS ScanSession → Nitro → native ScanSessionState
-   camera ── admits original ───────────────┘
+   camera / import ── admits original ──────┘
    image views ── borrow page sources ──────┘
                         state → analysis → render → ready artifact
                         state → frozen export snapshot → host destination
@@ -12,6 +12,7 @@ React host → JS ScanSession → Nitro → native ScanSessionState
 ## Ownership and publication
 
 - The processor creates sessions and exposes sample controls. Native state owns ordered membership, settings, analysis, render revisions and files. The host owns the session lifetime. Views borrow it.
+- Camera captures and gallery imports share one admission path, on the session's image worker. An import has no frame or live corners. Library picks reach admission natively and are never handed to JS. Each `importFromLibrary` call is one session-scoped import operation. The platform picker only presents, dismisses and holds the one-picker slot. The operation owns the call's frozen model and defaults, the picks it is handed, ordered admission and the result. Session close cancels it, the same as any work not yet queued. An import reserves only an original, never a frame output. Android reads the picker's `content://` grant directly. iOS clones each pick into a temporary file, deletes it after admission, and admits picks in picked order. If analysis finds no page, the page keeps the full image for the crop editor.
 - Admission freezes page defaults and model selection. Analysis precedes initial render. Explicit crop edits win over later automatic corners. Only the current revision publishes readiness or failure. The last displayable artifact stays available during replacement and after a failed render.
 - The shared image worker serializes session processing across sessions. Cleanup has a separate owner. A worker must not block waiting for work queued behind itself.
 - Native registration takes an initial snapshot atomically with subscription. Ordered events carry changed and removed page IDs and a version. JS reconciles gaps from a full snapshot and coalesces background changes to animation-frame publications. Successful awaited commands synchronize the snapshot before resolving. Snapshots are immutable to consumers, with runtime freezing in development.

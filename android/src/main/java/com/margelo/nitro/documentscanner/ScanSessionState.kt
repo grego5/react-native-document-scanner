@@ -35,6 +35,8 @@ internal class ScanSessionState(
   private var publications = 0
   private val publicationsDrained = CompletableFuture<Unit>()
   private var completion: CompletableFuture<Unit>? = null
+  // Work that has not reached the image worker yet, such as an open gallery picker, keyed by registration.
+  private val closeCancellations = LinkedHashMap<Any, () -> Unit>()
 
   // One recent capture placeholder; displayed views retain their own bitmap reference.
   private var capturePlaceholder: Pair<String, android.graphics.Bitmap>? = null
@@ -90,6 +92,17 @@ internal class ScanSessionState(
     events.observe(callback)
   }
 
+  /**
+   * Runs [cancel] once, on the closing thread, if the session closes before the returned unregistration is called.
+   * For operations that are not yet queued work. Throws `processor/disposed` when already closed.
+   */
+  fun onClose(cancel: () -> Unit): () -> Unit = synchronized(lock) {
+    requireOpen()
+    val key = Any()
+    closeCancellations[key] = cancel
+    return@synchronized { synchronized(lock) { closeCancellations.remove(key) } }
+  }
+
   private inline fun <T> transition(action: () -> T): T {
     try { return synchronized(lock) { action() } } finally { events.flush() }
   }
@@ -112,10 +125,12 @@ internal class ScanSessionState(
     options: DocumentRenderOptions?,
     selection: CornerModelStore.Selection? = CornerModelStore.selected,
     autoCrop: Boolean = true,
+    /** True only when [options] already came from [DocumentRenderer.effectiveOptions], as a reservation's do. */
+    normalized: Boolean = false,
   ) = transition {
     requireOpen()
     requireInput(id.isNotBlank() && !pages.containsKey(id)) { "Page ID must be nonempty and unique." }
-    val effective = DocumentRenderer.effectiveOptions(options)
+    val effective = if (normalized) requireNotNull(options) else DocumentRenderer.effectiveOptions(options)
     requireInput(original.owner === resources && original.kind == SessionResources.Kind.ORIGINAL) { "Expected a session original." }
     requireInput(frame == null || (frame.owner === resources && frame.kind == SessionResources.Kind.FRAME)) { "Expected a session frame." }
     requireInput(pages.values.none { it.original === original || (frame != null && it.frame === frame) }) { "Source already belongs to a page." }
@@ -313,15 +328,20 @@ internal class ScanSessionState(
   }
 
   fun close(): CompletableFuture<Unit> {
-    transition {
+    val cancellations = transition {
       completion?.let { return it }
       closed = true
+      val pending = closeCancellations.values.toList()
+      closeCancellations.clear()
       pages.clear()
       capturePlaceholder = null
       events.close()
       // Install before cancellation callbacks can reenter this state.
       completion = CompletableFuture()
+      pending
     }
+    // Unlocked: a cancellation may settle its caller's promise or reenter this state.
+    cancellations.forEach { runCatching(it) }
     val result = requireNotNull(completion)
     if (synchronized(lock) { publications == 0 }) publicationsDrained.complete(Unit)
     val modelClosed = queue.close(resources.workOwner).thenRun { actions.close() }

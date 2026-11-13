@@ -16,6 +16,8 @@ namespace margelo::nitro::documentscanner {
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridMethod("createPdfResult", &HybridScanSessionSpec::createPdfResult);
       prototype.registerHybridMethod("exportImagesResult", &HybridScanSessionSpec::exportImagesResult);
+      prototype.registerHybridMethod("importImageResult", &HybridScanSessionSpec::importImageResult);
+      prototype.registerHybridMethod("importFromLibraryResult", &HybridScanSessionSpec::importFromLibraryResult);
       prototype.registerHybridMethod("saveCaptureSampleResult", &HybridScanSessionSpec::saveCaptureSampleResult);
       prototype.registerHybridMethod("setDocumentCropResult", &HybridScanSessionSpec::setDocumentCropResult);
       prototype.registerHybridMethod("setFilterResult", &HybridScanSessionSpec::setFilterResult);

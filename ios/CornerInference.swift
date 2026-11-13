@@ -116,6 +116,19 @@ final class CornerInference: @unchecked Sendable {
     }
   }
 
+  /// Validates model bytes into a selection that is never made current, so a photo can use it without replacing the
+  /// camera's live model. Its generation is 0, which no published selection has.
+  func detached(data: Data) throws -> Selection {
+    try queue.sync {
+      guard !data.isEmpty, data.count <= 128 * 1024 * 1024 else { throw CornerInferenceError.modelLoadFailed }
+      let owned = data.withUnsafeBytes { Data($0) }
+      let candidate: any CornerRuntime
+      do { candidate = try makeRuntime(owned) }
+      catch { throw CornerInferenceError.modelLoadFailed }
+      return Selection(data: owned, generation: 0, width: candidate.inputWidth, height: candidate.inputHeight)
+    }
+  }
+
   /// Live callers must compare the frozen generation before publishing/resetting guidance.
   /// A historical photo selection remains usable without reactivating it for live callers.
   func isCurrent(_ snapshot: Selection) -> Bool {

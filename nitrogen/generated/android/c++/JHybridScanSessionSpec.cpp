@@ -11,6 +11,8 @@
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
+// Forward declaration of `LibraryImportResult` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct LibraryImportResult; }
 // Forward declaration of `ScanSessionSnapshot` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScanSessionSnapshot; }
 // Forward declaration of `ScanPageMetadata` to properly resolve imports.
@@ -37,6 +39,12 @@ namespace margelo::nitro::documentscanner { struct ScanSessionObservation; }
 namespace margelo::nitro::documentscanner { struct SessionPdfOptions; }
 // Forward declaration of `ImageFit` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ImageFit; }
+// Forward declaration of `ImportImageOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImportImageOptions; }
+// Forward declaration of `ImageCorrectionOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageCorrectionOptions; }
+// Forward declaration of `ImageOutputOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageOutputOptions; }
 // Forward declaration of `ScanSessionChange` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 
@@ -51,6 +59,9 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include "JScannerErrorCode.hpp"
 #include <vector>
 #include "JVariant_Array_String__ScannerFailure.hpp"
+#include "LibraryImportResult.hpp"
+#include "JVariant_ScannerFailure_LibraryImportResult.hpp"
+#include "JLibraryImportResult.hpp"
 #include "JVariant_Boolean_ScannerFailure.hpp"
 #include "ScanSessionSnapshot.hpp"
 #include "JScanSessionSnapshot.hpp"
@@ -84,6 +95,12 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include "JSessionPdfOptions.hpp"
 #include "ImageFit.hpp"
 #include "JImageFit.hpp"
+#include "ImportImageOptions.hpp"
+#include "JImportImageOptions.hpp"
+#include "ImageCorrectionOptions.hpp"
+#include "JImageCorrectionOptions.hpp"
+#include "ImageOutputOptions.hpp"
+#include "JImageOutputOptions.hpp"
 #include "ScanSessionChange.hpp"
 #include "JFunc_void_ScanSessionChange.hpp"
 #include "JScanSessionChange.hpp"
@@ -162,6 +179,38 @@ namespace margelo::nitro::documentscanner {
       auto __promise = Promise<std::variant<std::vector<std::string>, ScannerFailure>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
         auto __result = jni::static_ref_cast<JVariant_Array_String__ScannerFailure>(__boxedResult);
+        __promise->resolve(__result->toCpp());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
+  std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> JHybridScanSessionSpec::importImageResult(const std::string& uri, const ImportImageOptions& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* uri */, jni::alias_ref<JImportImageOptions> /* options */)>("importImageResult");
+    auto __result = method(_javaPart, jni::make_jstring(uri), JImportImageOptions::fromCpp(options));
+    return [&]() {
+      auto __promise = Promise<std::variant<std::string, ScannerFailure>>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<JVariant_String_ScannerFailure>(__boxedResult);
+        __promise->resolve(__result->toCpp());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
+  std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>> JHybridScanSessionSpec::importFromLibraryResult(const ImportImageOptions& options, double maxCount) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JImportImageOptions> /* options */, double /* maxCount */)>("importFromLibraryResult");
+    auto __result = method(_javaPart, JImportImageOptions::fromCpp(options), maxCount);
+    return [&]() {
+      auto __promise = Promise<std::variant<ScannerFailure, LibraryImportResult>>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<JVariant_ScannerFailure_LibraryImportResult>(__boxedResult);
         __promise->resolve(__result->toCpp());
       });
       __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {

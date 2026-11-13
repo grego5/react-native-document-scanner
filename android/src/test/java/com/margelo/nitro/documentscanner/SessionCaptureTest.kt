@@ -1,6 +1,7 @@
 package com.margelo.nitro.documentscanner
 
 import com.margelo.nitro.documentscanner.processing.CornerModelStore
+import com.margelo.nitro.documentscanner.processing.DocumentRenderer
 import java.io.File
 import java.io.IOException
 import java.util.ArrayDeque
@@ -46,12 +47,14 @@ class SessionCaptureTest {
   private val resources = registry.open(File("capture-state-test").absoluteFile)
   private var preparedSelection: CornerModelStore.Selection? = null
   private var preparedCorners: DocumentCorners? = null
+  private var candidate: DocumentCandidate? = null
   private val renders = mutableListOf<ScanPage.RenderKey>()
   private val actions = object : ScanSessionState.Actions {
     override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: CornerModelStore.Selection?): () -> DocumentAnalysis {
       preparedSelection = selection
       preparedCorners = liveCorners
-      return { DocumentAnalysis(320.0, 240.0, 1.0, null) }
+      val found = candidate
+      return { DocumentAnalysis(320.0, 240.0, 1.0, found) }
     }
     override fun render(original: SessionResources.Resource, key: ScanPage.RenderKey): ScanPage.Artifact {
       assertEquals(SessionResources.Kind.ORIGINAL, original.kind)
@@ -79,7 +82,7 @@ class SessionCaptureTest {
     CornerModelStore.activate(CornerModelStore.Selection(byteArrayOf(2)))
     assertTrue(state.snapshot().pages.isEmpty())
     val original = save(capture.original)
-    val frame = save(capture.frame)
+    val frame = save(requireNotNull(capture.frame))
     val id = capture.publish(frame, ScanPage.fullFrame())
     capture.close()
     assertEquals(capture.pageId, id)
@@ -114,6 +117,85 @@ class SessionCaptureTest {
     assertTrue(state.snapshot().pages.isEmpty())
   }
 
+  private val frozen = CornerModelStore.Selection(byteArrayOf(9))
+
+  private fun import(autoCrop: Boolean = true, write: (File) -> Unit = { files.existing.add(it) }): Result<String> {
+    var result: Result<String>? = null
+    val before = state.snapshot().pageIds.size
+    val options = DocumentRenderOptions(null, null, DocumentFilter.ENHANCE, null, null, null, null)
+    ImageImport.admit(state, DocumentRenderer.effectiveOptions(options), autoCrop, frozen, { file, effective ->
+      assertEquals(DocumentFilter.ENHANCE, effective.filter)
+      write(file)
+    }, { result = Result.success(it) }, { result = Result.failure(it) })
+    assertEquals("Admission waits for the image worker.", before, state.snapshot().pageIds.size)
+    finish()
+    return requireNotNull(result)
+  }
+
+  @Test fun importPublishesFramelessPageAndKeepsFullImageWithoutAPage() {
+    CornerModelStore.activate(CornerModelStore.Selection(byteArrayOf(1)))
+    val id = import().getOrThrow()
+    val page = requireNotNull(state.snapshot().pages[id])
+    // The call's frozen model wins over whatever the camera has active.
+    assertSame(frozen, preparedSelection)
+    assertNull(preparedCorners)
+    assertTrue(page.ready)
+    assertEquals(ScanPage.fullFrame(), page.corners)
+    assertEquals(DocumentFilter.ENHANCE, renders.single().options.filter)
+  }
+
+  @Test fun importAppliesTheFoundPageUnlessAutoCropIsOff() {
+    CornerModelStore.activate(CornerModelStore.Selection(byteArrayOf(1)))
+    val corners = DocumentCorners(DocumentPoint(0.1, 0.1), DocumentPoint(0.9, 0.12), DocumentPoint(0.88, 0.9), DocumentPoint(0.12, 0.88))
+    candidate = DocumentCandidate(corners, 1.0)
+    val cropped = import().getOrThrow()
+    val full = import(autoCrop = false).getOrThrow()
+    assertEquals(corners, requireNotNull(state.snapshot().pages[cropped]).corners)
+    assertEquals(ScanPage.fullFrame(), requireNotNull(state.snapshot().pages[full]).corners)
+  }
+
+  @Test fun importReservesNoFrameOutput() {
+    CornerModelStore.activate(CornerModelStore.Selection(byteArrayOf(1)))
+    files.failFrame = true
+    val id = import().getOrThrow()
+    assertTrue(requireNotNull(state.snapshot().pages[id]).ready)
+  }
+
+  @Test fun closeRunsPendingCancellationsOnceAndRejectsLateRegistration() {
+    var cancelled = 0
+    state.onClose { cancelled++ }
+    val unregistered = state.onClose { fail("Unregistered work is not cancelled.") }
+    unregistered()
+    val closing = state.close()
+    state.close()
+    assertEquals(1, cancelled)
+    val error = assertThrows(ScannerException::class.java) { state.onClose {} }
+    assertEquals(ScannerErrorCode.PROCESSOR_DISPOSED, error.code)
+    finish()
+    assertTrue(closing.isDone)
+  }
+
+  @Test fun closingTheSessionSettlesAnOpenLibraryImportAndEndsItsPicker() {
+    var result: Result<LibraryImportResult>? = null
+    var ended = 0
+    var onPicked: ((Result<List<String>>) -> Unit)? = null
+    val operation = LibraryImport<String>(0, { it() }, { _, _ -> fail("Nothing is admitted after close.") }) { result = it }
+    operation.start(state::onClose) { onPicked = it; { ended++ } }
+    state.close()
+    assertEquals(ScannerErrorCode.PROCESSOR_DISPOSED, (result?.exceptionOrNull() as ScannerException).code)
+    assertEquals(1, ended)
+    requireNotNull(onPicked)(Result.success(listOf("late")))
+    finish()
+  }
+
+  @Test fun failedImportReportsImageLoadAndLeavesNoPageOrFiles() {
+    CornerModelStore.activate(CornerModelStore.Selection(byteArrayOf(1)))
+    val error = import { files.existing.add(it); throw IOException("not an image") }.exceptionOrNull()
+    assertEquals(ScannerErrorCode.IMAGE_LOAD_FAILED, (error as ScannerException).code)
+    assertTrue(state.snapshot().pages.isEmpty())
+    assertTrue(files.existing.isEmpty())
+  }
+
   @Test fun replacingSessionInvalidatesPublicationWithoutClosingTheOldPhysicalWriter() {
     val capture = SessionCapture.reserve(state, null)
     save(capture.original)
@@ -142,7 +224,7 @@ class SessionCaptureTest {
     noFrame.publish(null, null)
     noFrame.close()
     finish()
-    assertTrue(noFrame.frame.resource.deleted.isDone)
+    assertTrue(requireNotNull(noFrame.frame).resource.deleted.isDone)
     assertFalse(noFrame.original.resource.deleted.isDone)
   }
 

@@ -1,6 +1,6 @@
 import { useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import { Alert } from 'react-native'
-import type { CropEditorRef, DocumentFilter, ScanSession as NativeScanSession } from 'react-native-document-scanner'
+import type { CropEditorRef, DocumentFilter, LibraryImportResult, ScanSession as NativeScanSession } from 'react-native-document-scanner'
 import { errorMessage } from '../lib/errorMessage'
 import { INITIAL_SESSION, sessionReducer } from '../lib/scanSession'
 
@@ -38,6 +38,20 @@ export function useScanReview(native: NativeScanSession, reset: () => void) {
     ...state, native, page, pageIds: metadata.pageIds, working, reset: () => { if (!operationLock.current) reset() },
     reviewCapture: (pageId: string) => dispatch({ type: 'captured', pageId }),
     run,
+    /**
+     * Runs an import as the current operation and routes its result while still owning it: one page opens review,
+     * several open the summary, none stays put. Failed images are reported on whichever screen results.
+     */
+    importPages: (operation: () => Promise<LibraryImportResult | undefined>) =>
+      run(async () => {
+        const result = await operation()
+        if (!result) return
+        const [first] = result.pageIds
+        if (result.pageIds.length === 1 && first != null) dispatch({ type: 'captured', pageId: first })
+        else if (result.pageIds.length > 1) dispatch({ type: 'navigate', screen: 'summary' })
+        if (result.failedCount > 0)
+          Alert.alert('Gallery', result.failedCount === 1 ? 'One image could not be imported.' : `${result.failedCount} images could not be imported.`)
+      }),
     navigate: (screen: 'camera' | 'summary') => { if (!operationLock.current) dispatch({ type: 'navigate', screen }) },
     startCrop: () => { if (page) dispatch({ type: 'start-crop' }) },
     cancelCrop: () => { if (!operationLock.current) dispatch({ type: 'end-crop' }) },

@@ -185,6 +185,9 @@ internal object SourceImageLoader {
     .coerceAtMost(Int.MAX_VALUE.toLong())
     .toInt()
 
+  /** [bitmap] turned upright for EXIF [orientation]; the same bitmap when already upright. */
+  internal fun orient(bitmap: Bitmap, orientation: Int): Bitmap = applyOrientation(bitmap, orientation)
+
   private fun applyOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
     if (orientation == ExifInterface.ORIENTATION_NORMAL) return bitmap
     val matrix = Matrix().apply {

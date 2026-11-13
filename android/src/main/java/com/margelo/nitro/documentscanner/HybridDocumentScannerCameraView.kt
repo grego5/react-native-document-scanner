@@ -433,14 +433,7 @@ open class HybridDocumentScannerCameraView(
   override var imageCorrection = ImageCorrectionOptions(null, null, null)
   override var outputOptions = ImageOutputOptions(null, null, null, null, null)
 
-  private fun resolveRenderOptions(): DocumentRenderOptions {
-    val correction = imageCorrection
-    val output = outputOptions
-    val paper = if (output.width == null && output.height == null) null
-      else PaperSize(output.width ?: Double.NaN, output.height ?: Double.NaN)
-    return DocumentRenderOptions(correction.removeShadows, output.jpegQuality, correction.filter,
-      output.format, paper, output.dpi, correction.simpleDewarp)
-  }
+  private fun resolveRenderOptions(): DocumentRenderOptions = renderOptions(imageCorrection, outputOptions)
 
   @Volatile private var requestedSession: HybridScanSessionSpec? = null
   private var sessionGeneration = 0L
@@ -1791,7 +1784,7 @@ open class HybridDocumentScannerCameraView(
       runCatching {
         // Without auto-crop the page keeps the whole photo, so its retained frame stays unstraightened too.
         val straighten = capture.liveCandidate?.corners?.takeIf { capture.config.autoCrop }
-        LatestFrameCapture.write(pending.get(FRAME_WAIT_MS, TimeUnit.MILLISECONDS), straighten, capture.source.frame)
+        LatestFrameCapture.write(pending.get(FRAME_WAIT_MS, TimeUnit.MILLISECONDS), straighten, requireNotNull(capture.source.frame))
       }.onFailure { logLifecycle("latest frame capture unavailable: ${it.javaClass.simpleName}") }.getOrNull()
     }
     return SavedCapture(width, height, orientation, frame)
