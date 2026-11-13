@@ -27,6 +27,8 @@ public extension ScannerErrorCode {
         self = .cameraNotReady
       case "capture/focus-timeout":
         self = .captureFocusTimeout
+      case "capture/document-timeout":
+        self = .captureDocumentTimeout
       case "capture/motion-timeout":
         self = .captureMotionTimeout
       case "capture/busy":
@@ -89,6 +91,8 @@ public extension ScannerErrorCode {
         return "camera/not-ready"
       case .captureFocusTimeout:
         return "capture/focus-timeout"
+      case .captureDocumentTimeout:
+        return "capture/document-timeout"
       case .captureMotionTimeout:
         return "capture/motion-timeout"
       case .captureBusy:

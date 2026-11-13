@@ -8,7 +8,7 @@ import org.junit.Test
 class CaptureGateTest {
   private val ready = CaptureState(
     nowMs = 0, focusCheckEnabled = true, documentRequired = true, requireFocus = true, focusTimeoutMs = 2_000,
-    documentFound = true, focused = true, zslCheckEnabled = true, zslReady = true, lightReady = true, motionCheckEnabled = true, steady = true,
+    documentFound = true, focused = true, zslCheckEnabled = true, zslReady = true, zslStatesKnown = true, lightReady = true, motionCheckEnabled = true, steady = true,
   )
 
   @Test
@@ -67,7 +67,7 @@ class CaptureGateTest {
     assertEquals(CaptureDecision.Shoot, gate.next(ready.copy(nowMs = 1_700)))
     val searching = CaptureGate(1_500)
     searching.next(ready.copy(documentFound = false, focusingUntilMs = Long.MAX_VALUE))
-    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.DOCUMENT),
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT),
       searching.next(ready.copy(nowMs = 2_000, documentFound = false, focusingUntilMs = Long.MAX_VALUE)))
   }
 
@@ -133,7 +133,8 @@ class CaptureGateTest {
 
     val later = CaptureGate(1_500)
     later.next(ready.copy(requireFocus = false, steady = false))
-    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FAILED, WaitReason.LIGHT), later.next(optional.copy(nowMs = 1_500)))
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FAILED, WaitReason.LIGHT, zslStarved = true),
+      later.next(optional.copy(nowMs = 1_500)))
   }
 
   @Test
@@ -178,7 +179,7 @@ class CaptureGateTest {
     unseen.next(missing.copy(nowMs = 2_500, ownScan = OwnScan.SCANNING))
     val noPage = missing.copy(nowMs = 2_600, ownScan = OwnScan.LOCKED, focused = true, postFocusInferenceFinished = false)
     assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE), unseen.next(noPage))
-    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.DOCUMENT),
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT),
       unseen.next(noPage.copy(postFocusInferenceFinished = true)))
   }
 
@@ -214,7 +215,8 @@ class CaptureGateTest {
   fun lightAndMotionKeepTheirErrorCodes() {
     val dark = CaptureGate(1_500)
     dark.next(ready.copy(zslReady = false))
-    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FAILED, WaitReason.LIGHT), dark.next(ready.copy(nowMs = 1_500, zslReady = false)))
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FAILED, WaitReason.LIGHT, zslStarved = true),
+      dark.next(ready.copy(nowMs = 1_500, zslReady = false)))
     val shaky = CaptureGate(1_500)
     shaky.next(ready.copy(steady = false))
     assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_MOTION_TIMEOUT, WaitReason.STEADY),
@@ -233,5 +235,22 @@ class CaptureGateTest {
   fun aZeroFocusTimeoutJudgesFocusAtThePressAlone() {
     assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.FOCUS),
       CaptureGate(1_500).next(ready.copy(focusTimeoutMs = 0, focused = false)))
+  }
+  @Test
+  fun onlyASteadyPageWithReportedStatesStarvesTheBuffer() {
+    fun rejectAtDeadline(state: CaptureState): CaptureDecision {
+      val gate = CaptureGate(1_500)
+      assertEquals(CaptureDecision.Wait(WaitReason.LIGHT, 1_500), gate.next(state))
+      return gate.next(state.copy(nowMs = 1_500))
+    }
+    fun reject(starved: Boolean) = CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FAILED, WaitReason.LIGHT, starved)
+    val starved = ready.copy(zslReady = false)
+    assertEquals(reject(true), rejectAtDeadline(starved))
+    assertEquals(reject(true), rejectAtDeadline(starved.copy(motionCheckEnabled = false, steady = false)))
+    // The buffered frame is named before motion; a moving page keeps exposure adjusting by itself.
+    assertEquals(reject(false), rejectAtDeadline(starved.copy(steady = false)))
+    // A frame without focus, exposure or white-balance states, or an old one, says nothing about the buffer.
+    assertEquals(reject(false), rejectAtDeadline(starved.copy(zslStatesKnown = false)))
+    assertEquals(reject(false), rejectAtDeadline(starved.copy(lightReady = false)))
   }
 }

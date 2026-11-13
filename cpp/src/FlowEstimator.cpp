@@ -12,7 +12,8 @@ namespace document_scanner::motion {
 struct FlowEstimator::State {
   int maxEdge, maxFeatures;
   int64_t maxGap;
-  cv::Mat previous, current, mask;
+  // Raw luma selects features; its light-normalised copy is tracked.
+  cv::Mat previous, current, previousTracked, currentTracked, mask, level, mean, spread;
   bool hasPrevious = false;
   int64_t previousNs = 0;
   std::array<int64_t, 7> geometry{};
@@ -68,8 +69,8 @@ struct FlowEstimator::State {
     std::vector<unsigned char> ok, backOk;
     std::vector<float> error, backError;
     const cv::TermCriteria criteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 20, .03);
-    cv::calcOpticalFlowPyrLK(previous, current, from, to, ok, error, {15, 15}, 3, criteria);
-    cv::calcOpticalFlowPyrLK(current, previous, to, back, backOk, backError, {15, 15}, 3, criteria);
+    cv::calcOpticalFlowPyrLK(previousTracked, currentTracked, from, to, ok, error, {15, 15}, 3, criteria);
+    cv::calcOpticalFlowPyrLK(currentTracked, previousTracked, to, back, backOk, backError, {15, 15}, 3, criteria);
     const double sx = double(cropWidth) / width, sy = double(cropHeight) / height, seconds = gap / 1e9;
     std::vector<double> speeds;
     std::array<int, 9> detectedIn{};
@@ -182,10 +183,23 @@ Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const st
     full.copyTo(s.current);
   else
     cv::resize(full, s.current, {w, h}, 0, 0, cv::INTER_AREA);
+  // Track texture, not light: removing each neighbourhood's mean and spread cancels moving shadows, flicker and
+  // exposure changes, which LK would read as motion. Features are still chosen on raw luma, so flat or noisy areas do
+  // not gain features; the spread offset bounds the gain there.
+  s.current.convertTo(s.level, CV_32F);
+  cv::GaussianBlur(s.level, s.mean, {0, 0}, 2);
+  cv::subtract(s.level, s.mean, s.level);
+  cv::multiply(s.level, s.level, s.spread);
+  cv::GaussianBlur(s.spread, s.spread, {0, 0}, 2);
+  cv::sqrt(s.spread, s.spread);
+  cv::add(s.spread, cv::Scalar(8), s.spread);
+  cv::divide(s.level, s.spread, s.level, 40);
+  s.level.convertTo(s.currentTracked, CV_8U, 1, 128);
   auto result = tracking ? s.track(l.size.width, crop.width, crop.height, rotation, sensor - s.previousNs, sensor,
                                    region, fitTransform)
                          : Estimate{Status::noReference, {}, int(l.size.width), sensor, sensor};
   std::swap(s.previous, s.current);
+  std::swap(s.previousTracked, s.currentTracked);
   s.previousNs = sensor;
   s.hasPrevious = true;
   return result;

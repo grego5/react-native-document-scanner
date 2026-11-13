@@ -31,6 +31,9 @@ internal data class FrameRecord(
   fun after(realtimeNs: Long, nanoTimeNs: Long): Boolean =
     realtimeSensorNs?.let { it >= realtimeNs } ?: (arrivalNs >= nanoTimeNs)
 
+  /** The capture result reported focus, exposure and white balance, so [zslReady] is the buffer's verdict. */
+  val zslStatesKnown: Boolean get() = frame?.afState != null && frame.aeState != null && frame.awbState != null
+
   /** The states CameraX requires before a frame enters its zero-shutter-lag buffer; unknown without the result. */
   val zslReady: Boolean get() = frame != null &&
     (frame.afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED || frame.afState == CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED) &&

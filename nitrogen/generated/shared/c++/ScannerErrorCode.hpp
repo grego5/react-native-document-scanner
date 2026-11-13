@@ -34,27 +34,28 @@ namespace margelo::nitro::documentscanner {
     CAMERA_PERMISSION_DENIED      SWIFT_NAME(cameraPermissionDenied) = 2,
     CAMERA_NOT_READY      SWIFT_NAME(cameraNotReady) = 3,
     CAPTURE_FOCUS_TIMEOUT      SWIFT_NAME(captureFocusTimeout) = 4,
-    CAPTURE_MOTION_TIMEOUT      SWIFT_NAME(captureMotionTimeout) = 5,
-    CAPTURE_BUSY      SWIFT_NAME(captureBusy) = 6,
-    CAPTURE_NOT_READY      SWIFT_NAME(captureNotReady) = 7,
-    CAPTURE_FAILED      SWIFT_NAME(captureFailed) = 8,
-    CAPTURE_METADATA_FAILED      SWIFT_NAME(captureMetadataFailed) = 9,
-    STORAGE_WRITE_FAILED      SWIFT_NAME(storageWriteFailed) = 10,
-    IMAGE_LOAD_FAILED      SWIFT_NAME(imageLoadFailed) = 11,
-    EDITOR_FILTER_FAILED      SWIFT_NAME(editorFilterFailed) = 12,
-    PROCESSOR_SUPERSEDED      SWIFT_NAME(processorSuperseded) = 13,
-    PROCESSOR_DISPOSED      SWIFT_NAME(processorDisposed) = 14,
-    PROCESSOR_UNAVAILABLE      SWIFT_NAME(processorUnavailable) = 15,
-    ANALYSIS_FAILED      SWIFT_NAME(analysisFailed) = 16,
-    RENDER_FAILED      SWIFT_NAME(renderFailed) = 17,
-    PDF_WRITE_FAILED      SWIFT_NAME(pdfWriteFailed) = 18,
-    CACHE_DELETE_FAILED      SWIFT_NAME(cacheDeleteFailed) = 19,
-    PERMISSION_REQUEST_FAILED      SWIFT_NAME(permissionRequestFailed) = 20,
-    PERMISSION_UNAVAILABLE      SWIFT_NAME(permissionUnavailable) = 21,
-    MODEL_LOAD_FAILED      SWIFT_NAME(modelLoadFailed) = 22,
-    MODEL_SUPERSEDED      SWIFT_NAME(modelSuperseded) = 23,
-    INPUT_INVALID      SWIFT_NAME(inputInvalid) = 24,
-    CAMERA_ANALYSIS_SLOW      SWIFT_NAME(cameraAnalysisSlow) = 25,
+    CAPTURE_DOCUMENT_TIMEOUT      SWIFT_NAME(captureDocumentTimeout) = 5,
+    CAPTURE_MOTION_TIMEOUT      SWIFT_NAME(captureMotionTimeout) = 6,
+    CAPTURE_BUSY      SWIFT_NAME(captureBusy) = 7,
+    CAPTURE_NOT_READY      SWIFT_NAME(captureNotReady) = 8,
+    CAPTURE_FAILED      SWIFT_NAME(captureFailed) = 9,
+    CAPTURE_METADATA_FAILED      SWIFT_NAME(captureMetadataFailed) = 10,
+    STORAGE_WRITE_FAILED      SWIFT_NAME(storageWriteFailed) = 11,
+    IMAGE_LOAD_FAILED      SWIFT_NAME(imageLoadFailed) = 12,
+    EDITOR_FILTER_FAILED      SWIFT_NAME(editorFilterFailed) = 13,
+    PROCESSOR_SUPERSEDED      SWIFT_NAME(processorSuperseded) = 14,
+    PROCESSOR_DISPOSED      SWIFT_NAME(processorDisposed) = 15,
+    PROCESSOR_UNAVAILABLE      SWIFT_NAME(processorUnavailable) = 16,
+    ANALYSIS_FAILED      SWIFT_NAME(analysisFailed) = 17,
+    RENDER_FAILED      SWIFT_NAME(renderFailed) = 18,
+    PDF_WRITE_FAILED      SWIFT_NAME(pdfWriteFailed) = 19,
+    CACHE_DELETE_FAILED      SWIFT_NAME(cacheDeleteFailed) = 20,
+    PERMISSION_REQUEST_FAILED      SWIFT_NAME(permissionRequestFailed) = 21,
+    PERMISSION_UNAVAILABLE      SWIFT_NAME(permissionUnavailable) = 22,
+    MODEL_LOAD_FAILED      SWIFT_NAME(modelLoadFailed) = 23,
+    MODEL_SUPERSEDED      SWIFT_NAME(modelSuperseded) = 24,
+    INPUT_INVALID      SWIFT_NAME(inputInvalid) = 25,
+    CAMERA_ANALYSIS_SLOW      SWIFT_NAME(cameraAnalysisSlow) = 26,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::documentscanner
@@ -72,6 +73,7 @@ namespace margelo::nitro {
         case hashString("camera/permission-denied"): return margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_PERMISSION_DENIED;
         case hashString("camera/not-ready"): return margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_NOT_READY;
         case hashString("capture/focus-timeout"): return margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_FOCUS_TIMEOUT;
+        case hashString("capture/document-timeout"): return margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_DOCUMENT_TIMEOUT;
         case hashString("capture/motion-timeout"): return margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_MOTION_TIMEOUT;
         case hashString("capture/busy"): return margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_BUSY;
         case hashString("capture/not-ready"): return margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_NOT_READY;
@@ -104,6 +106,7 @@ namespace margelo::nitro {
         case margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_PERMISSION_DENIED: return JSIConverter<std::string>::toJSI(runtime, "camera/permission-denied");
         case margelo::nitro::documentscanner::ScannerErrorCode::CAMERA_NOT_READY: return JSIConverter<std::string>::toJSI(runtime, "camera/not-ready");
         case margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_FOCUS_TIMEOUT: return JSIConverter<std::string>::toJSI(runtime, "capture/focus-timeout");
+        case margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_DOCUMENT_TIMEOUT: return JSIConverter<std::string>::toJSI(runtime, "capture/document-timeout");
         case margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_MOTION_TIMEOUT: return JSIConverter<std::string>::toJSI(runtime, "capture/motion-timeout");
         case margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_BUSY: return JSIConverter<std::string>::toJSI(runtime, "capture/busy");
         case margelo::nitro::documentscanner::ScannerErrorCode::CAPTURE_NOT_READY: return JSIConverter<std::string>::toJSI(runtime, "capture/not-ready");
@@ -141,6 +144,7 @@ namespace margelo::nitro {
         case hashString("camera/permission-denied"):
         case hashString("camera/not-ready"):
         case hashString("capture/focus-timeout"):
+        case hashString("capture/document-timeout"):
         case hashString("capture/motion-timeout"):
         case hashString("capture/busy"):
         case hashString("capture/not-ready"):

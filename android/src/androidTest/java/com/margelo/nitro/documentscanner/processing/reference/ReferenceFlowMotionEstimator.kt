@@ -43,7 +43,12 @@ internal class ReferenceFlowMotionEstimator(
   private val full = Mat()
   private var previous = Mat()
   private var current = Mat()
+  private var previousTracked = Mat()
+  private var currentTracked = Mat()
   private val mask = Mat()
+  private val level = Mat()
+  private val mean = Mat()
+  private val spread = Mat()
   private val corners = MatOfPoint()
   private val previousPoints = MatOfPoint2f()
   private val nextPoints = MatOfPoint2f()
@@ -99,6 +104,7 @@ internal class ReferenceFlowMotionEstimator(
     val estimate = if (tracking) track(region, cropWidth, cropHeight, gap, sensorTimestampNs, fitTransform)
       else FlowMotionEstimate(FlowMotionStatus.NO_REFERENCE, null, bufferWidth, sensorTimestampNs, sensorTimestampNs, 0.0, 0)
     previous = current.also { current = previous }
+    previousTracked = currentTracked.also { currentTracked = previousTracked }
     previousSensorNs = sensorTimestampNs
     hasPrevious = true
     return estimate
@@ -133,6 +139,16 @@ internal class ReferenceFlowMotionEstimator(
     val height = max(1, (cropHeight * scale).roundToInt())
     if (width == cropWidth && height == cropHeight) full.copyTo(current)
     else Imgproc.resize(full, current, Size(width.toDouble(), height.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+    // Texture, not light: each neighbourhood's mean and spread cancel shadows, flicker and exposure changes.
+    current.convertTo(level, CvType.CV_32F)
+    Imgproc.GaussianBlur(level, mean, Size(0.0, 0.0), LIGHT_SIGMA_PX)
+    Core.subtract(level, mean, level)
+    Core.multiply(level, level, spread)
+    Imgproc.GaussianBlur(spread, spread, Size(0.0, 0.0), LIGHT_SIGMA_PX)
+    Core.sqrt(spread, spread)
+    Core.add(spread, Scalar(LIGHT_SPREAD_OFFSET), spread)
+    Core.divide(level, spread, level, LIGHT_CONTRAST)
+    level.convertTo(currentTracked, CvType.CV_8U, 1.0, 128.0)
   }
 
   private fun track(region: DocumentCorners?, cropWidth: Int, cropHeight: Int, gapNs: Long, sensorNs: Long, fitTransform: Boolean): FlowMotionEstimate {
@@ -145,8 +161,8 @@ internal class ReferenceFlowMotionEstimator(
     val detected = corners.rows()
     if (detected < MIN_TRACKS) return unknown(FlowMotionStatus.TOO_FEW_FEATURES)
     corners.convertTo(previousPoints, CvType.CV_32FC2)
-    Video.calcOpticalFlowPyrLK(previous, current, previousPoints, nextPoints, status, error, window, PYRAMID_LEVELS, criteria)
-    Video.calcOpticalFlowPyrLK(current, previous, nextPoints, backPoints, backStatus, backError, window, PYRAMID_LEVELS, criteria)
+    Video.calcOpticalFlowPyrLK(previousTracked, currentTracked, previousPoints, nextPoints, status, error, window, PYRAMID_LEVELS, criteria)
+    Video.calcOpticalFlowPyrLK(currentTracked, previousTracked, nextPoints, backPoints, backStatus, backError, window, PYRAMID_LEVELS, criteria)
     val from = previousPoints.toArray()
     val to = nextPoints.toArray()
     val back = backPoints.toArray()
@@ -260,7 +276,7 @@ internal class ReferenceFlowMotionEstimator(
     hasPrevious = false
     row = ByteArray(0)
     luma = ByteArray(0)
-    for (mat in listOf(full, previous, current, mask, corners, previousPoints, nextPoints, backPoints, status, backStatus,
+    for (mat in listOf(full, previous, current, previousTracked, currentTracked, mask, level, mean, spread, corners, previousPoints, nextPoints, backPoints, status, backStatus,
       error, backError)) mat.release()
   }
 
@@ -271,6 +287,9 @@ internal class ReferenceFlowMotionEstimator(
     const val MAX_GAP_NS = 200_000_000L
     const val MIN_TRACKS = 8
     const val SPEED_PERCENTILE = 0.9
+    private const val LIGHT_SIGMA_PX = 2.0
+    private const val LIGHT_SPREAD_OFFSET = 8.0
+    private const val LIGHT_CONTRAST = 40.0
     private const val QUALITY_LEVEL = 0.01
     private const val MIN_DISTANCE_FRACTION = 0.05
     private const val WINDOW_PX = 15

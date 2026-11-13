@@ -57,6 +57,9 @@ namespace margelo::nitro::documentscanner {
         case ScannerErrorCode::CAPTURE_FOCUS_TIMEOUT:
           static const auto fieldCAPTURE_FOCUS_TIMEOUT = clazz->getStaticField<JScannerErrorCode>("CAPTURE_FOCUS_TIMEOUT");
           return clazz->getStaticFieldValue(fieldCAPTURE_FOCUS_TIMEOUT);
+        case ScannerErrorCode::CAPTURE_DOCUMENT_TIMEOUT:
+          static const auto fieldCAPTURE_DOCUMENT_TIMEOUT = clazz->getStaticField<JScannerErrorCode>("CAPTURE_DOCUMENT_TIMEOUT");
+          return clazz->getStaticFieldValue(fieldCAPTURE_DOCUMENT_TIMEOUT);
         case ScannerErrorCode::CAPTURE_MOTION_TIMEOUT:
           static const auto fieldCAPTURE_MOTION_TIMEOUT = clazz->getStaticField<JScannerErrorCode>("CAPTURE_MOTION_TIMEOUT");
           return clazz->getStaticFieldValue(fieldCAPTURE_MOTION_TIMEOUT);

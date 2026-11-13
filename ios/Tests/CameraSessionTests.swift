@@ -949,7 +949,7 @@ final class CameraSessionTests: XCTestCase {
     let shot = photo(h.view, gated: true)
     h.clockOffsetNs = 4_100_000_000
     h.detector.onFrames?()
-    XCTAssertEqual(outcome(shot), .second(.captureFocusTimeout), "no page within the focus timeout")
+    XCTAssertEqual(outcome(shot), .second(.captureDocumentTimeout), "no page within the focus timeout")
     XCTAssertTrue(h.fake.stills.isEmpty)
     _ = photo(h.view)
     XCTAssertEqual(h.fake.stills.count, 1, "a capture that never shot frees its slot at once")
