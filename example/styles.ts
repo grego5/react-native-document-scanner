@@ -113,15 +113,22 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 12,
   },
+  // Three buttons, the shutter, three buttons: equal columns, so labels never resize them.
   shutterRow: {
     alignItems: 'center',
     alignSelf: 'stretch',
     flexDirection: 'row',
+    gap: 8,
   },
   shutterSide: {
-    alignItems: 'center',
-    flex: 1,
+    flexBasis: 0,
+    flexGrow: 1,
     gap: 8,
+  },
+  shutterCenter: {
+    alignItems: 'center',
+    flexBasis: 0,
+    flexGrow: 1,
   },
   shutter: {
     alignItems: 'center',

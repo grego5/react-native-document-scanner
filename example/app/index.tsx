@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Camera,
   DocumentScanner,
@@ -106,6 +106,7 @@ export function ScanScreen({
   removeShadows: boolean;
   setRemoveShadows: (value: boolean) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const cameraRef = useRef<CameraRef>(null);
   const [cameraFeatures, setCameraFeatures] = useState<CameraFeatureSupport>();
   const session = useScanReview(native, onReset);
@@ -216,6 +217,15 @@ export function ScanScreen({
       }
     });
 
+  const busy = capturing || session.working || view !== 'camera';
+  const switchMode = (next: typeof tuning.mode) => {
+    if (next === tuning.mode) return;
+    confirmDiscard(() => {
+      setTuning((t) => ({ ...t, mode: next }));
+      session.reset();
+    });
+  };
+
   const showing = view === 'camera' && !optionsOpen;
   // The saved Hi-res camera option applies only to photos; documents use their default.
   const { mode, highResolutionPhoto, ...shared } = tuning;
@@ -239,7 +249,17 @@ export function ScanScreen({
 
   return (
     <View style={styles.screen}>
-      <SafeAreaView style={styles.screen}>
+      {/* Provider insets are known on the first frame, so a remount on mode change keeps its place. */}
+      <View
+        style={[
+          styles.screen,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          },
+        ]}>
         <View style={styles.cameraStage}>
           <Camera
             {...cameraProps}
@@ -282,60 +302,64 @@ export function ScanScreen({
             <View style={styles.shutterRow}>
               <View style={styles.shutterSide}>
                 <ActionButton
-                  label={tuning.mode === 'document' ? 'Document' : 'Photo'}
-                  accessibilityHint="Switches between document scanning and plain photos."
-                  disabled={capturing || session.working || view !== 'camera'}
-                  onPress={() => confirmDiscard(() => {
-                    setTuning((t) => ({ ...t, mode: t.mode === 'document' ? 'photo' : 'document' }));
-                    session.reset();
-                  })}
+                  label={`Torch ${torch}`}
+                  accessibilityHint="Tap to switch between on and the default for this scan. Long press to make auto or off the default."
+                  disabled={busy}
+                  onPress={() => setTorchOverride(torchOverride ? undefined : 'on')}
+                  onLongPress={() => {
+                    setTorchOverride(undefined);
+                    setTuning((t) => ({
+                      ...t,
+                      torch: t.torch === 'auto' ? 'off' : 'auto',
+                    }));
+                  }}
+                />
+                <ActionButton
+                  label="Scanner"
+                  accessibilityHint="Scans documents with edge detection and correction."
+                  selected={mode === 'document'}
+                  disabled={busy}
+                  onPress={() => switchMode('document')}
+                />
+                <ActionButton
+                  label="Camera"
+                  accessibilityHint="Takes plain photos without document correction."
+                  selected={mode === 'photo'}
+                  disabled={busy}
+                  onPress={() => switchMode('photo')}
+                />
+              </View>
+              <View style={styles.shutterCenter}>
+                <ShutterButton
+                  disabled={
+                    capturing ||
+                    !granted ||
+                    captureState !== 'ready' ||
+                    full ||
+                    view !== 'camera' ||
+                    session.working
+                  }
+                  onPress={takePhoto}
+                />
+              </View>
+              <View style={styles.shutterSide}>
+                <ActionButton
+                  label={pageIds.length > 0 ? `Pages · ${pageIds.length}` : 'Pages'}
+                  disabled={busy || pageIds.length === 0}
+                  onPress={() => session.navigate('summary')}
                 />
                 <ActionButton
                   label="Gallery"
                   accessibilityHint="Adds photos from the library as pages, cropped like captures."
-                  disabled={capturing || session.working || full || view !== 'camera'}
+                  disabled={busy || full}
                   onPress={importFromGallery}
                 />
-                {pageIds.length > 0 && (
-                  <ActionButton
-                    label={`Pages · ${pageIds.length}`}
-                    disabled={capturing || session.working || view !== 'camera'}
-                    onPress={() => session.navigate('summary')}
-                  />
-                )}
-              </View>
-              <ShutterButton
-                disabled={
-                  capturing ||
-                  !granted ||
-                  captureState !== 'ready' ||
-                  full ||
-                  view !== 'camera' ||
-                  session.working
-                }
-                onPress={takePhoto}
-              />
-              <View style={styles.shutterSide}>
-                <ActionButton
-                  label={`Torch ${torch}`}
-                  accessibilityHint="Tap to switch between on and the default for this scan. Long press to make auto or off the default."
-                  disabled={capturing || session.working || view !== 'camera'}
-                  onPress={() => setTorchOverride(torchOverride ? undefined : 'on')}
-                  onLongPress={() => {
-                    setTorchOverride(undefined);
-                    setTuning((t) => ({ ...t, torch: t.torch === 'auto' ? 'off' : 'auto' }));
-                  }}
-                />
-                <ActionButton
-                  label="Options"
-                  disabled={capturing || session.working || view !== 'camera'}
-                  onPress={() => setOptionsOpen(true)}
-                />
+                <ActionButton label="Options" disabled={busy} onPress={() => setOptionsOpen(true)} />
               </View>
             </View>
           </View>
         </View>
-      </SafeAreaView>
+      </View>
       <ReviewPanel
         visible={view !== 'camera'}
         session={session}
@@ -360,7 +384,11 @@ export function ScanScreen({
         <View
           style={[
             StyleSheet.absoluteFill,
-            { alignItems: 'center', justifyContent: 'center', backgroundColor: '#0006' },
+            {
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#0006',
+            },
           ]}>
           <ActivityIndicator size="large" color="white" accessibilityLabel="Working" />
         </View>
@@ -368,4 +396,3 @@ export function ScanScreen({
     </View>
   );
 }
-
