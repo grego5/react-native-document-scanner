@@ -10,5 +10,13 @@
     "strict": true,
     "target": "ES2020"
   },
-  "include": ["app", "components", "hooks", "lib", "styles.ts", "app.config.ts"]
+  "include": [
+    "app",
+    "components",
+    "hooks",
+    "lib",
+    "styles.ts",
+    "app.config.ts"
+  ],
+  "extends": "expo/tsconfig.base"
 }

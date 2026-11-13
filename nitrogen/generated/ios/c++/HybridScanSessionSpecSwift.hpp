@@ -20,12 +20,22 @@ namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
 namespace margelo::nitro::documentscanner { struct SessionPdfOptions; }
 // Forward declaration of `ImageFit` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ImageFit; }
+// Forward declaration of `ImportImageOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImportImageOptions; }
+// Forward declaration of `ImageCorrectionOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageCorrectionOptions; }
+// Forward declaration of `DocumentFilter` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
+// Forward declaration of `ImageOutputOptions` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct ImageOutputOptions; }
+// Forward declaration of `DocumentImageFormat` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class DocumentImageFormat; }
+// Forward declaration of `LibraryImportResult` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct LibraryImportResult; }
 // Forward declaration of `DocumentCorners` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentPoint` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentPoint; }
-// Forward declaration of `DocumentFilter` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
 // Forward declaration of `ScanSessionSnapshot` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScanSessionSnapshot; }
 // Forward declaration of `ScanPageMetadata` to properly resolve imports.
@@ -36,8 +46,6 @@ namespace margelo::nitro::documentscanner { struct DocumentAnalysis; }
 namespace margelo::nitro::documentscanner { struct DocumentCandidate; }
 // Forward declaration of `DocumentRenderOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
-// Forward declaration of `DocumentImageFormat` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class DocumentImageFormat; }
 // Forward declaration of `PaperSize` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct PaperSize; }
 // Forward declaration of `ScanSessionObservation` to properly resolve imports.
@@ -54,16 +62,20 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include <optional>
 #include "SessionPdfOptions.hpp"
 #include "ImageFit.hpp"
+#include "ImportImageOptions.hpp"
+#include "ImageCorrectionOptions.hpp"
+#include "DocumentFilter.hpp"
+#include "ImageOutputOptions.hpp"
+#include "DocumentImageFormat.hpp"
+#include "LibraryImportResult.hpp"
 #include "DocumentCorners.hpp"
 #include "DocumentPoint.hpp"
-#include "DocumentFilter.hpp"
 #include "ScanSessionSnapshot.hpp"
 #include "ScanPageMetadata.hpp"
 #include <unordered_map>
 #include "DocumentAnalysis.hpp"
 #include "DocumentCandidate.hpp"
 #include "DocumentRenderOptions.hpp"
-#include "DocumentImageFormat.hpp"
 #include "PaperSize.hpp"
 #include "ScanSessionObservation.hpp"
 #include <functional>
@@ -129,6 +141,22 @@ namespace margelo::nitro::documentscanner {
     }
     inline std::shared_ptr<Promise<std::variant<std::vector<std::string>, ScannerFailure>>> exportImagesResult(const std::optional<std::vector<std::string>>& pageIds, const std::string& outputDirectory) override {
       auto __result = _swiftPart.exportImagesResult(pageIds, outputDirectory);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> importImageResult(const std::string& uri, const ImportImageOptions& options) override {
+      auto __result = _swiftPart.importImageResult(uri, std::forward<decltype(options)>(options));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>> importFromLibraryResult(const ImportImageOptions& options, double maxCount) override {
+      auto __result = _swiftPart.importFromLibraryResult(std::forward<decltype(options)>(options), std::forward<decltype(maxCount)>(maxCount));
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

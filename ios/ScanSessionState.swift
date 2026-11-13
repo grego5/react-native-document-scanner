@@ -28,6 +28,9 @@ final class ScanSessionState: @unchecked Sendable {
   private var publications = 0
   private let publicationsDrained = NativeCompletion()
   private var completion: NativeCompletion?
+  // Work that has not reached the image worker yet, such as an open gallery picker, keyed by registration.
+  private var closeCancellations: [Int: @Sendable () -> NativeCompletion] = [:]
+  private var nextCancellation = 0
 
   init(resources: SessionResources, actions: ScanSessionActions,
        dispatcher: @escaping (@escaping () -> Void) -> Void) {
@@ -45,6 +48,19 @@ final class ScanSessionState: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock(); events.flush() }
     return try action()
+  }
+
+  /// Runs `cancel` once, on the closing thread, if the session closes before the returned unregistration is called.
+  /// For operations that are not yet queued work; close completes only after the completion `cancel` returns, such
+  /// as a picker's release of its slot. Throws `processor/disposed` when already closed.
+  func onClose(_ cancel: @escaping @Sendable () -> NativeCompletion) throws -> () -> Void {
+    let key: Int = try locked {
+      try requireOpen()
+      nextCancellation += 1
+      closeCancellations[nextCancellation] = cancel
+      return nextCancellation
+    }
+    return { [self] in _ = locked { closeCancellations.removeValue(forKey: key) } }
   }
 
   private func changed(_ page: ScanPage) { events.updatePage(page.metadata) }
@@ -385,17 +401,21 @@ final class ScanSessionState: @unchecked Sendable {
   /// claimed publications and physical cleanup. Idempotent.
   @discardableResult
   func close() -> NativeCompletion {
-    let (result, first): (NativeCompletion, Bool) = transition {
-      if let completion { return (completion, false) }
+    let (result, first, cancellations): (NativeCompletion, Bool, [@Sendable () -> NativeCompletion]) = transition {
+      if let completion { return (completion, false, []) }
       closed = true
+      let pending = Array(closeCancellations.values)
+      closeCancellations.removeAll()
       pages.removeAll()
       if let capturePreview { releaseCapturePreview(capturePreview.id) }
       events.close()
       let created = NativeCompletion()
       completion = created
-      return (created, true)
+      return (created, true, pending)
     }
     guard first else { return result }
+    // Unlocked: a cancellation may settle its caller's promise or reenter this state.
+    let cancelled = NativeCompletion.all(cancellations.map { $0() })
     if locked({ publications == 0 }) { publicationsDrained.complete() }
     let modelClosed = NativeCompletion()
     queue.close(resources.workOwner).whenComplete { [self] _ in
@@ -404,7 +424,7 @@ final class ScanSessionState: @unchecked Sendable {
         modelClosed.complete()
       }
     }
-    NativeCompletion.all([resources.close(), modelClosed, publicationsDrained]).whenComplete { error in
+    NativeCompletion.all([resources.close(), modelClosed, publicationsDrained, cancelled]).whenComplete { error in
       result.complete(error.map { ScannerCodeError(code: ScannerCodeError.code($0, fallback: .cacheDeleteFailed)) as Error })
     }
     return result

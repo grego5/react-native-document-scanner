@@ -40,6 +40,14 @@ abstract class HybridScanSessionSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun importImageResult(uri: String, options: ImportImageOptions): Promise<Variant_String_ScannerFailure>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun importFromLibraryResult(options: ImportImageOptions, maxCount: Double): Promise<Variant_ScannerFailure_LibraryImportResult>
+  
+  @DoNotStrip
+  @Keep
   abstract fun saveCaptureSampleResult(pageId: String): Promise<Variant_String_ScannerFailure>
   
   @DoNotStrip

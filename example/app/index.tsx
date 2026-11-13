@@ -37,6 +37,8 @@ import { CAPTURE_PAPER, MAX_PAGES } from '../lib/scanSession';
 import { styles } from '../styles';
 import { captureWaitLabels } from '../lib/labels';
 
+const CORNER_MODEL = 'asset:///doccornernet/model.tflite';
+
 /** One headless owner. Attached camera and review views borrow it. */
 export default function App() {
   const [native, setNative] = useState<NativeScanSession | null>(null);
@@ -193,6 +195,27 @@ export function ScanScreen({
       }
     });
 
+  // Picked images become pages with the same defaults the camera gives a capture in this mode.
+  const importFromGallery = () =>
+    session.importPages(async () => {
+      setMessage('');
+      try {
+        const photo = tuning.mode === 'photo';
+        return await session.native.importFromLibrary({
+          imageCorrection: photo
+            ? { filter: 'none', removeShadows: false, simpleDewarp: false }
+            : { filter: 'none', removeShadows },
+          outputOptions: { ...CAPTURE_PAPER, format: 'auto' },
+          autoCrop: !photo,
+          maxCount: MAX_PAGES - pageIds.length,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return undefined;
+        setMessage(errorMessage(error, 'Could not import from the photo library.'));
+        return undefined;
+      }
+    });
+
   const showing = view === 'camera' && !optionsOpen;
   // The saved Hi-res camera option applies only to photos; documents use their default.
   const { mode, highResolutionPhoto, ...shared } = tuning;
@@ -200,7 +223,7 @@ export function ScanScreen({
     ...shared,
     lowQualityControl: { enabled: shared.lowQualityControl },
     session: session.native,
-    cornerDetectionModel: 'asset:///doccornernet/model.tflite',
+    cornerDetectionModel: CORNER_MODEL,
     ref: cameraRef,
     torch,
     active: showing,
@@ -266,6 +289,12 @@ export function ScanScreen({
                     setTuning((t) => ({ ...t, mode: t.mode === 'document' ? 'photo' : 'document' }));
                     session.reset();
                   })}
+                />
+                <ActionButton
+                  label="Gallery"
+                  accessibilityHint="Adds photos from the library as pages, cropped like captures."
+                  disabled={capturing || session.working || full || view !== 'camera'}
+                  onPress={importFromGallery}
                 />
                 {pageIds.length > 0 && (
                   <ActionButton

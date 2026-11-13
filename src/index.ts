@@ -3,8 +3,8 @@ import { NitroModules } from 'react-native-nitro-modules';
 import type { DocumentScannerProcessor } from './DocumentScannerProcessor.nitro';
 import { ScannerError, scannerOperation, scannerValue, unwrapScannerResult } from './ScannerError';
 import { createScanSession } from './ScanSession';
-export type { SessionPdfOptions } from './ScanSession.nitro';
-export type { ScanSession, ScanSessionSnapshot, ScanPageMetadata } from './ScanSession';
+export type { ImportImageOptions, LibraryImportResult, SessionPdfOptions } from './ScanSession.nitro';
+export type { ImportImageOutcome, LibraryImportOptions, ScanSession, ScanSessionSnapshot, ScanPageMetadata } from './ScanSession';
 
 export { ScannerError, ScannerCancellation } from './ScannerError';
 export type { ScannerErrorCode } from './ScannerFailure';

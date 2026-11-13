@@ -4,13 +4,14 @@ import com.margelo.nitro.documentscanner.processing.DocumentRenderer
 import com.margelo.nitro.documentscanner.processing.CornerModelStore
 import java.util.UUID
 
-/** Reserves one physical capture's immutable destinations and keeps writer pins through its last callback. */
+/** Reserves one camera capture's or gallery import's immutable destinations and keeps writer pins through its last callback. */
 internal class SessionCapture private constructor(
   val session: ScanSessionState,
   val options: DocumentRenderOptions,
   private val selection: CornerModelStore.Selection?,
   val original: SessionResources.Output,
-  val frame: SessionResources.Output,
+  /** Camera captures only; an import has no frame. */
+  val frame: SessionResources.Output?,
 ) : AutoCloseable {
   val pageId = UUID.randomUUID().toString()
   private var kept = false
@@ -22,7 +23,7 @@ internal class SessionCapture private constructor(
   fun publish(frameResource: SessionResources.Resource?, liveCorners: DocumentCorners?, autoCrop: Boolean = true): String {
     check(!ended && !kept)
     if (invalidated) throw ScannerException(ScannerErrorCode.PROCESSOR_SUPERSEDED)
-    session.admit(pageId, original.resource, frameResource, liveCorners, options, selection, autoCrop)
+    session.admit(pageId, original.resource, frameResource, liveCorners, options, selection, autoCrop, normalized = true)
     kept = true
     return pageId
   }
@@ -30,19 +31,30 @@ internal class SessionCapture private constructor(
   override fun close() {
     if (ended) return
     ended = true
-    if (!kept) { original.discard(); frame.discard() }
-    frame.close()
+    if (!kept) { original.discard(); frame?.discard() }
+    frame?.close()
     original.close()
   }
 
   companion object {
-    fun reserve(session: ScanSessionState, options: DocumentRenderOptions?): SessionCapture {
+    /**
+     * [selection] defaults to the camera's model at reservation; imports pass the one their call froze. Only a
+     * camera capture reserves a [frame] output. [normalized] skips validating options the caller already made
+     * effective, as an import does once per call rather than once per pick.
+     */
+    fun reserve(
+      session: ScanSessionState,
+      options: DocumentRenderOptions?,
+      selection: CornerModelStore.Selection? = CornerModelStore.selected,
+      frame: Boolean = true,
+      normalized: Boolean = false,
+    ): SessionCapture {
       if (session.snapshot().closed) throw ScannerException(ScannerErrorCode.PROCESSOR_DISPOSED)
-      val effective = DocumentRenderer.effectiveOptions(options)
-      val selection = CornerModelStore.selected
+      val effective = if (normalized) requireNotNull(options) else DocumentRenderer.effectiveOptions(options)
       val original = session.resources.output(SessionResources.Kind.ORIGINAL)
       try {
-        return SessionCapture(session, effective, selection, original, session.resources.output(SessionResources.Kind.FRAME))
+        return SessionCapture(session, effective, selection, original,
+          if (frame) session.resources.output(SessionResources.Kind.FRAME) else null)
       } catch (error: Throwable) {
         original.close()
         throw error

@@ -680,11 +680,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     if let code = captureRejection() { ticket.reject(code); return }
     guard let borrowed else { return }
     let settings = StillSettings.resolve(mode: captureMode, zeroShutterLag: configuration?.zeroShutterLag ?? false)
-    let paper: PaperSize? = outputOptions.width == nil && outputOptions.height == nil ? nil :
-      PaperSize(width: outputOptions.width ?? .nan, height: outputOptions.height ?? .nan)
-    let renderOptions = DocumentRenderOptions(removeShadows: imageCorrection.removeShadows,
-      jpegQuality: outputOptions.jpegQuality, filter: imageCorrection.filter, format: outputOptions.format,
-      paperSize: paper, dpi: outputOptions.dpi, simpleDewarp: imageCorrection.simpleDewarp)
+    let renderOptions = DocumentRenderOptions.from(imageCorrection, outputOptions)
     let capture = GatedCapture(ticket: ticket, session: borrowed, options: renderOptions,
                                selection: try? CornerInference.shared.selection(), settings: settings,
                                autoCrop: autoCrop ?? true, config: gateConfig, skip: skipLowQualityControl,

@@ -68,6 +68,7 @@ target_sources(
   ../nitrogen/generated/android/c++/JHybridScanSessionSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_String_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_Array_String__ScannerFailure.cpp
+  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_LibraryImportResult.cpp
   ../nitrogen/generated/android/c++/JVariant_ScanSessionObservation_ScannerFailure.cpp
 )
 

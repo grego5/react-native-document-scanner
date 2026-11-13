@@ -713,6 +713,54 @@ test('awaited page mutations publish accepted state before resolving without wai
   assert.equal(notifications, 2)
 })
 
+test('image imports run in order, publish each admitted page and isolate failures', async () => {
+  const f = sessionFixture()
+  const session = f.create()
+  const native = sessionAdapter.getNativeScanSession(session)
+  const requests = []
+  let active = 0
+  native.importImageResult = async (uri, options) => {
+    requests.push([uri, options])
+    assert.equal(active++, 0, 'imports must not overlap')
+    await Promise.resolve()
+    active--
+    if (uri.endsWith('bad.png')) return { code: 'image/load-failed' }
+    const id = uri.slice(-5, -4)
+    f.emit(sourceSnapshot(f.current.sourceVersion + 1, { ...f.current.pages, [id]: sessionPage(id, { analyzing: true, ready: false }) }))
+    return id
+  }
+  const options = { outputOptions: { width: 21, height: 29.7, dpi: 200 } }
+  const outcomes = await session.importImages(['file:///a.jpg', 'file:///bad.png', 'file:///b.jpg'], options)
+  assert.deepEqual(requests.map(([uri]) => uri), ['file:///a.jpg', 'file:///bad.png', 'file:///b.jpg'])
+  assert.ok(requests.every(([, sent]) => sent === options))
+  assert.deepEqual(outcomes.map((outcome) => outcome.pageId), ['a', undefined, 'b'])
+  assert.equal(outcomes[1].error.code, 'image/load-failed')
+  assert.deepEqual(session.getSession().pageIds, ['a', 'b'])
+  assert.equal(f.frames.size, 0)
+  await assert.rejects(session.importImage('file:///bad.png'), (error) => error.code === 'image/load-failed')
+})
+
+test('library import forwards defaults and selection limit, then publishes admitted pages before resolving', async () => {
+  const f = sessionFixture()
+  const session = f.create()
+  const native = sessionAdapter.getNativeScanSession(session)
+  const calls = []
+  native.importFromLibraryResult = async (options, maxCount) => {
+    calls.push([options, maxCount])
+    if (maxCount === 0) return { pageIds: [], failedCount: 0 }
+    f.emit(sourceSnapshot(1, { a: sessionPage('a', { analyzing: true, ready: false }) }))
+    return { pageIds: ['a'], failedCount: 1 }
+  }
+  const result = await session.importFromLibrary({ autoCrop: false, maxCount: 3 })
+  assert.deepEqual(calls[0], [{ autoCrop: false }, 3])
+  assert.deepEqual(result, { pageIds: ['a'], failedCount: 1 })
+  assert.deepEqual(session.getSession().pageIds, ['a'])
+  assert.deepEqual(await session.importFromLibrary(), { pageIds: [], failedCount: 0 })
+  assert.deepEqual(calls[1], [{}, 0])
+  native.importFromLibraryResult = async () => ({ code: 'capture/busy' })
+  await assert.rejects(session.importFromLibrary(), (error) => error.code === 'capture/busy')
+})
+
 test('session snapshots are stable and pending frames never leak into reads or subscription', () => {
   const fixture = sessionFixture(sourceSnapshot(30, { a: sessionPage('a') }))
   const session = fixture.create()

@@ -1,5 +1,7 @@
 import type { DocumentFilter, DocumentCorners } from './DocumentScannerProcessor.nitro'
 import type {
+  ImportImageOptions,
+  LibraryImportResult,
   SessionPdfOptions,
   ScanSessionChange,
   ScanPageMetadata as NativePageMetadata,
@@ -17,6 +19,15 @@ export interface ScanSessionSnapshot {
   readonly closed: boolean
   readonly pageIds: readonly string[]
   readonly pages: Readonly<Record<string, ScanPageMetadata>>
+}
+
+/** One picked image's import: its admitted page, or why it was not admitted. */
+export type ImportImageOutcome =
+  | { readonly uri: string; readonly pageId: string; readonly error?: undefined }
+  | { readonly uri: string; readonly pageId?: undefined; readonly error: Error }
+
+export interface LibraryImportOptions extends ImportImageOptions {
+  maxCount?: number
 }
 
 // Pending state can reuse the frozen order from the last publication.
@@ -40,6 +51,18 @@ export interface ScanSession {
   exportImages(outputDirectory: string): Promise<string[]>
   exportImages(pageIds: readonly string[], outputDirectory: string): Promise<string[]>
   saveCaptureSample(pageId: string): Promise<string>
+  /**
+   * Appends a picked image as a page that is analyzed, cropped and filtered like a capture; resolves with its page ID
+   * once admitted. Rendering continues in the background, as for a capture.
+   */
+  importImage(uri: string, options?: ImportImageOptions): Promise<string>
+  /** Imports images one at a time in order; each succeeds or fails on its own. */
+  importImages(uris: readonly string[], options?: ImportImageOptions): Promise<ImportImageOutcome[]>
+  /**
+   * Presents the system photo picker and imports the picked images in order, like `importImage`. Cancelling resolves
+   * with no pages. `maxCount` limits the selection; omitted, the system maximum applies.
+   */
+  importFromLibrary(options?: LibraryImportOptions): Promise<LibraryImportResult>
   close(): Promise<void>
 }
 
@@ -283,6 +306,23 @@ class SessionStore implements ScanSession {
 
   saveCaptureSample = (pageId: string): Promise<string> =>
     scannerOperation(() => this.native.saveCaptureSampleResult(pageId), 'storage/write-failed')
+
+  importImage = (uri: string, options: ImportImageOptions = {}): Promise<string> =>
+    scannerOperation(() => this.native.importImageResult(uri, options), 'image/load-failed')
+      .then((pageId) => { this.synchronize(); return pageId })
+
+  importImages = async (uris: readonly string[], options?: ImportImageOptions): Promise<ImportImageOutcome[]> => {
+    const outcomes: ImportImageOutcome[] = []
+    for (const uri of uris) {
+      try { outcomes.push({ uri, pageId: await this.importImage(uri, options) }) }
+      catch (error) { outcomes.push({ uri, error: error instanceof Error ? error : new Error(String(error)) }) }
+    }
+    return outcomes
+  }
+
+  importFromLibrary = ({ maxCount = 0, ...options }: LibraryImportOptions = {}): Promise<LibraryImportResult> =>
+    scannerOperation(() => this.native.importFromLibraryResult(options, maxCount), 'image/load-failed')
+      .then((result) => { this.synchronize(); return result })
 
   close = (): Promise<void> => {
     if (this.closePromise !== undefined) return this.closePromise
