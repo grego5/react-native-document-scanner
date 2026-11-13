@@ -3,9 +3,9 @@ package com.margelo.nitro.documentscanner
 import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executor
 
-/** Why `zsl` bound `latency`: a lit torch, white balance that keeps searching, or a sustained dark scene with nothing
- * lighting it. */
-internal enum class LightFallback { TORCH, WHITE_BALANCE, DARK }
+/** Why `zsl` bound `latency`: a lit torch, white balance that keeps searching, a gated shot the zero-shutter-lag buffer
+ * starved, or a sustained dark scene with nothing lighting it. */
+internal enum class LightFallback { TORCH, WHITE_BALANCE, STARVED_BUFFER, DARK }
 
 /**
  * Main-thread owner of the camera's light: the torch and low-light boost commands, their CameraX acknowledgements, their
@@ -30,6 +30,8 @@ internal class CameraLightController(private val executor: Executor, private val
   /** The torch was lit or lighting when the last binding stopped. The auto torch relearns the room after a stop, which
    * takes a dark second, so the next bind takes it as still lit. */
   private var litAtStop = false
+  /** A gated `zsl` shot was rejected with everything but a buffered frame ready; see [bufferStarved]. */
+  private var starved = false
 
   /** A torch or boost change CameraX has not confirmed yet. */
   val pending: Boolean get() = torch.pending || boost.pending
@@ -56,7 +58,10 @@ internal class CameraLightController(private val executor: Executor, private val
    * only frames reporting focus, exposure and white balance settled and returns the newest one however old. In a
    * sustained [dark] scene with the torch mode `off` and no boost that works, focus scans and autofocus blur, and the
    * buffer returned frames from before the scan or the page. While white balance stays [whiteBalanceUnsettled], the
-   * buffer takes no new frame: under the auto torch and a lamp on the SM-G998U every gated shot was rejected. A lit
+   * buffer takes no new frame: under the auto torch and a lamp on the SM-G998U every gated shot was rejected. Once a
+   * gated shot was rejected for want of a buffered frame ([bufferStarved]), `latency` holds for this controller's life:
+   * flickering light or moving shadows keep exposure adjusting, and on the SM-G998U under a ceiling fan the buffer took
+   * no frame while page, focus and steadiness held. A lit
    * torch switches by itself: on the SM-G998U white balance under it almost always searched, so waiting for that cost a
    * second and a restart after the press. The torch counts as lit with [mode] `on`, or `auto` once it decided to light
    * ([autoLit]) or was lit when the camera last stopped, on a camera with a [hasFlash] unit.
@@ -73,11 +78,18 @@ internal class CameraLightController(private val executor: Executor, private val
     val cause = when {
       torchLit -> LightFallback.TORCH
       whiteBalanceUnsettled -> LightFallback.WHITE_BALANCE
+      starved -> LightFallback.STARVED_BUFFER
       unlit && dark -> LightFallback.DARK
       else -> null
     }
     if (cause != null || atBind) fallback = cause
     return fallback
+  }
+
+  /** Main thread: a gated `zsl` shot was rejected because no frame the buffer accepts arrived; later binds of this
+   * controller choose `latency`. */
+  fun bufferStarved() {
+    starved = true
   }
 
   private fun setTorch(camera: BoundCamera, lit: Boolean) {

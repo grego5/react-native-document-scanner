@@ -161,6 +161,19 @@ class CameraLightControllerTest {
       assertEquals(LightFallback.DARK,c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,true,false,true,false,true))
     }
   }
+  @Test fun aStarvedBufferHoldsLatencyAcrossBindsButNeverOverridesAnExplicitMode() = main {
+    Harness().use { h ->
+      val c = h.controller
+      assertNull(c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,false,false,false,false,true))
+      c.bufferStarved()
+      assertEquals(LightFallback.STARVED_BUFFER,c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,false,false,false,false,false))
+      // The restart it causes and every later bind keep `latency`; a lit torch still names itself.
+      c.unbind()
+      assertEquals(LightFallback.STARVED_BUFFER,c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,false,false,false,false,true))
+      assertEquals(LightFallback.TORCH,c.zslFallback(CaptureMode.ZSL,TorchMode.ON,false,true,false,false,false,false,true))
+      assertNull(c.zslFallback(CaptureMode.QUALITY,TorchMode.OFF,false,true,false,false,false,false,true))
+    }
+  }
   @Test fun aLitTorchFallsBackAtOnceAndAnAutoTorchLitAtTheStopCountsAtTheNextBind() = main {
     Harness().use { h ->
       val c = h.controller

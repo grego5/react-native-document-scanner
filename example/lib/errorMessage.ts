@@ -8,6 +8,7 @@ const SCANNER_MESSAGES: Record<ScannerErrorCode, string> = {
   'camera/not-ready': 'Wait for the camera preview, then try again.',
   'camera/analysis-slow': 'Camera analysis is running slowly. Detection may take longer.',
   'capture/focus-timeout': 'The camera could not focus. Adjust the distance and try again.',
+  'capture/document-timeout': 'No page was found. Fit the whole page in the frame and try again.',
   'capture/motion-timeout': 'Hold the camera steady and try again.',
   'capture/busy': 'A photo is already being captured. Wait for it to finish.',
   'capture/not-ready': 'The scanner is not ready. Wait and try again.',

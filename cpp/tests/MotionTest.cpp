@@ -1,10 +1,12 @@
 #include <document_scanner/Motion.hpp>
 #include <opencv2/imgproc.hpp>
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 using namespace document_scanner;
 namespace m = document_scanner::motion;
@@ -365,6 +367,23 @@ void tracking() {
   update(first, start);
   r = update(image(patch), start + interval);
   check(r.status == m::Status::measured && r.lostRegions >= 1, "Occlusion region loss");
+  // A soft shadow band sweeping across a still page, and a dimming flicker, are neither motion nor loss.
+  auto shaded = [&](double shadowX, double gain) {
+    cv::Mat out = gray.clone();
+    for (int x = 0; x < 640; ++x) {
+      const double shadow = shadowX < 0 ? 0 : 1 / (1 + std::exp((std::abs(x - shadowX) - 60) / 10));
+      const double factor = gain * (1 - .55 * shadow);
+      for (int y = 0; y < 480; ++y)
+        out.at<uint8_t>(y, x) = uint8_t(std::clamp(int(gray.at<uint8_t>(y, x) * factor), 0, 255));
+    }
+    return image(out);
+  };
+  for (const auto &[a, b] : {std::pair{shaded(200, 1), shaded(260, 1)}, std::pair{shaded(-1, 1), shaded(-1, .7)}}) {
+    estimator.reset();
+    update(a, start);
+    r = update(b, start + interval);
+    check(r.status == m::Status::measured && r.lostRegions == 0 && *r.speed < 10, "Light change on a still page");
+  }
   cv::Mat tilted;
   const cv::Mat h = (cv::Mat_<double>(3, 3) << 1.01, .01, 2, -.005, 1, -1, .00005, -.000025, 1);
   cv::warpPerspective(gray, tilted, h, {640, 480});

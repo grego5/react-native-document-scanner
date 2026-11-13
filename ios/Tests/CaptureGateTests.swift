@@ -49,13 +49,14 @@ final class CaptureGateTests: XCTestCase {
       case "wait": expected = .wait(wait(v[8]), untilMs: Int64(v[9])!)
       case "shoot": expected = .shoot
       case "CAPTURE_FOCUS_TIMEOUT": expected = .reject(.captureFocusTimeout, wait(v[8]))
+      case "CAPTURE_DOCUMENT_TIMEOUT": expected = .reject(.captureDocumentTimeout, wait(v[8]))
       case "CAPTURE_MOTION_TIMEOUT": expected = .reject(.captureMotionTimeout, wait(v[8]))
       default: expected = .reject(.captureFailed, wait(v[8]))
       }
       XCTAssertEqual(current.next(evidence), expected, line)
       gates[v[0]] = current
     }
-    XCTAssertEqual(rows.count, 13)
+    XCTAssertEqual(rows.count, 15)
   }
 
   // MARK: - Decisions
@@ -194,7 +195,7 @@ final class CaptureGateTests: XCTestCase {
     _ = coalesced.next(with { $0 = missing; $0.nowMs = 100; $0.ownScan = .scanning })
     XCTAssertEqual(coalesced.next(settled), .wait(.document, untilMs: .max))
     XCTAssertEqual(coalesced.next(with { $0 = settled; $0.focused = true; $0.postFocusInferenceFinished = true }),
-                   .reject(.captureFocusTimeout, .document))
+                   .reject(.captureDocumentTimeout, .document))
   }
 
   func testAZeroFocusTimeoutJudgesFocusAtThePressAlone() {

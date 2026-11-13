@@ -7,6 +7,8 @@ ordered	700	true	true	true	true	false	wait	STEADY	2100
 ordered	800	true	true	true	true	true	shoot	-	-
 focus-timeout	0	true	false	true	true	true	wait	FOCUS	2000
 focus-timeout	2000	true	false	true	true	true	CAPTURE_FOCUS_TIMEOUT	FOCUS	-
+document-timeout	0	false	false	true	true	true	wait	DOCUMENT	2000
+document-timeout	2000	false	false	true	true	true	CAPTURE_DOCUMENT_TIMEOUT	DOCUMENT	-
 motion-timeout	0	true	true	true	true	false	wait	STEADY	1500
 motion-timeout	1500	true	true	true	true	false	CAPTURE_MOTION_TIMEOUT	STEADY	-
 refocus	0	true	true	true	true	false	wait	STEADY	1500

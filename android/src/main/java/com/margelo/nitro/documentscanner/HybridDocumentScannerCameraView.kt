@@ -986,19 +986,21 @@ open class HybridDocumentScannerCameraView(
     // Frames judged before focus was accepted do not count toward steadiness: the sequence starts with the first frame of
     // accepted focus.
     if (waitsForFocus && !skip && !capture.gate.focusSkipped && !focused) capture.stability.reset()
+    // Zero shutter lag saves the newest buffered frame CameraX found focused, exposed and balanced, however old, so a gated
+    // shot waits for the newest frame to qualify, whether or not focus is required. A fixed-focus camera never reports
+    // focus, so its buffer stays empty and CameraX takes a new frame.
+    val waitForZsl = config.lowQualityControl && binding?.zsl == true && hasAutofocus
+    // One age for the newest frame, so the focus and buffer checks judge it at the same instant.
+    val latestAgeNs = latest?.takeIf { scanningFrame || waitForZsl }?.ageNanos(System.nanoTime(), SystemClock.elapsedRealtimeNanos())
     // Autofocus is still moving, so a focus wait outlasts its limit rather than fail or shoot halfway. An owned scan
     // still pending counts by itself; a frame's scanning state counts only while that frame is recent, so a stalled
     // analysis cannot hold the shot on an old result.
-    val frameScanningUntilMs = latest?.takeIf { scanningFrame }?.let { nowMs + (FRESH_FOCUS_FRAME_NS - it.ageNanos(System.nanoTime(), SystemClock.elapsedRealtimeNanos())) / 1_000_000 }
+    val frameScanningUntilMs = latestAgeNs?.takeIf { scanningFrame }?.let { nowMs + (FRESH_FOCUS_FRAME_NS - it) / 1_000_000 }
     val focusingUntilMs = when {
       !hasAutofocus -> null
       snapshot.scanning(nowMs) -> Long.MAX_VALUE
       else -> frameScanningUntilMs?.takeIf { it > nowMs }
     }
-    // Zero shutter lag saves the newest buffered frame CameraX found focused, exposed and balanced, however old, so a gated
-    // shot waits for the newest frame to qualify, whether or not focus is required. A fixed-focus camera never reports
-    // focus, so its buffer stays empty and CameraX takes a new frame.
-    val waitForZsl = config.lowQualityControl && binding?.zsl == true && hasAutofocus
     val lightPending = light.pending
     val postFocusInferenceFinished = if (documentRequired && ownScan == OwnScan.LOCKED) {
       capture.inferenceFinished || liveDetector.hasFailed() || !props.guide
@@ -1010,6 +1012,7 @@ open class HybridDocumentScannerCameraView(
       focused = focused,
       zslCheckEnabled = waitForZsl,
       zslReady = latest?.zslReady == true,
+      zslStatesKnown = waitForZsl && latest?.zslStatesKnown == true && latestAgeNs != null && latestAgeNs < FRESH_FOCUS_FRAME_NS,
       lightReady = !lightPending,
       motionCheckEnabled = motionCheckEnabled,
       // The sequence must reach the newest frame, so a sequence that stopped short of it is not steady.
@@ -1059,6 +1062,12 @@ open class HybridDocumentScannerCameraView(
           "document=${captureState.documentFound} focused=$focused lightReady=${captureState.lightReady} zsl=${latest?.zslReady} ae/awb=$aeAwbStates " +
           "stableFrames=${capture.stability.count} break=${capture.stability.lastBreak}")
         traceGate(fired = false)
+        // Exposure or white balance kept adjusting, as under flicker or moving shadows. The capture still holds its
+        // slot, so the rebind to `latency` waits for its completion, where a deactivation or model change goes first.
+        if (decision.zslStarved) {
+          light.bufferStarved()
+          rebindForLight()
+        }
         rejectPromise(capture.promise, ScannerException(decision.code))
       }
       CaptureDecision.Shoot -> {

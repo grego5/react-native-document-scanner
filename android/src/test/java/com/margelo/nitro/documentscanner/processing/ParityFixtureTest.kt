@@ -35,7 +35,8 @@ class ParityFixtureTest {
         val actual = gate.next(CaptureState(
           nowMs = row.getValue("nowMs").toLong(), focusCheckEnabled = true, documentRequired = true,
           requireFocus = true, focusTimeoutMs = 2_000, documentFound = b("document"), focused = b("focus"),
-          zslCheckEnabled = true, zslReady = b("zsl"), lightReady = b("torch"),
+          // The shared fixture has no buffer-starvation column, an Android-only restart cause.
+          zslCheckEnabled = true, zslReady = b("zsl"), zslStatesKnown = false, lightReady = b("torch"),
           motionCheckEnabled = true, steady = b("steady"),
         ))
         val expected = when (row.getValue("decision")) {

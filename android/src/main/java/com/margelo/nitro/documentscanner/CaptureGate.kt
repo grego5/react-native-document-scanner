@@ -159,14 +159,16 @@ internal sealed interface CaptureDecision {
    * re-evaluates. */
   data class StartFocusScan(val trigger: ScanTrigger, val attempt: Int) : CaptureDecision
   data object Shoot : CaptureDecision
-  data class Reject(val code: ScannerErrorCode, val reason: WaitReason?) : CaptureDecision
+  /** [zslStarved]: everything held but a frame the zero-shutter-lag buffer accepts; internal, the public error stays. */
+  data class Reject(val code: ScannerErrorCode, val reason: WaitReason?, val zslStarved: Boolean = false) : CaptureDecision
 }
 
 /**
  * Inputs to the capture readiness check. [focusCheckEnabled] enables focus checking; [documentRequired] also requires
  * a confirmed page. [focused] and [documentFound] come from the focus controller and the newest frame record.
  * [zslCheckEnabled] requires eligible AF/AE/AWB states in [zslReady], whether or not focus is required: CameraX would
- * otherwise return the newest frame its buffer accepted, however old. [lightReady] requires no pending torch or boost
+ * otherwise return the newest frame its buffer accepted, however old. [zslStatesKnown] means the newest frame is recent
+ * and reported all three states, so its [zslReady] false is the buffer's refusal rather than missing metadata. [lightReady] requires no pending torch or boost
  * change. [motionCheckEnabled] enables [steady], the stability check's result for consecutive frames. [focusingUntilMs]:
  * until when autofocus counts as still moving, a scan pending or a recent frame searching; it extends a focus wait past
  * its deadline, and is null while autofocus is still. A pending scan's is [Long.MAX_VALUE]: its settling is a focus
@@ -186,6 +188,7 @@ internal data class CaptureState(
   val focused: Boolean,
   val zslCheckEnabled: Boolean,
   val zslReady: Boolean,
+  val zslStatesKnown: Boolean,
   val lightReady: Boolean,
   val motionCheckEnabled: Boolean,
   val steady: Boolean,
@@ -270,7 +273,7 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
     if (blocker() == WaitReason.DOCUMENT && captureState.requireFocus) {
       when (captureState.postFocusInferenceFinished) {
         false -> return CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE)
-        true -> return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.DOCUMENT)
+        true -> return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT)
         null -> Unit
       }
     }
@@ -280,7 +283,7 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
         if (focusDeadlineMs == 0L) focusDeadlineMs = now + captureState.focusTimeoutMs
         if (now < focusDeadlineMs) return CaptureDecision.Wait(reason, focusDeadlineMs)
         focusingUntil(reason)?.let { return CaptureDecision.Wait(reason, it) }
-        if (captureState.requireFocus) return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, reason)
+        if (captureState.requireFocus) return CaptureDecision.Reject(timeoutCode(reason), reason)
         focusSkipped = true
       }
       steadyDeadlineMs = now + steadyTimeoutMs
@@ -300,13 +303,21 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
       reason = blocker() ?: return CaptureDecision.Shoot
     }
     return CaptureDecision.Reject(when (reason) {
-      WaitReason.DOCUMENT, WaitReason.FOCUS -> ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT
+      WaitReason.DOCUMENT, WaitReason.FOCUS -> timeoutCode(reason)
       // Exposure, white balance or the torch never settled: a capture failure, as before these checks existed. Zero
       // shutter lag must not shoot anyway: CameraX then returns the newest frame its buffer accepted, however old.
       WaitReason.LIGHT -> ScannerErrorCode.CAPTURE_FAILED
       WaitReason.STEADY -> ScannerErrorCode.CAPTURE_MOTION_TIMEOUT
-    }, reason)
+    }, reason, reason == WaitReason.LIGHT && zslStarved(captureState))
   }
+
+  /**
+   * Only the buffered frame blocks: no torch or boost change pending, and the newest recent frame reported states the
+   * buffer refuses. [blocker] names the buffered frame before motion, so steadiness is checked here; a moving page keeps
+   * exposure and focus adjusting by itself.
+   */
+  private fun zslStarved(s: CaptureState) = s.lightReady && s.zslCheckEnabled && !s.zslReady && s.zslStatesKnown &&
+    (!s.motionCheckEnabled || s.steady)
 
   /** The capture's next own scan, if one should start now. */
   private fun scanToStart(captureState: CaptureState): CaptureDecision.StartFocusScan? {
@@ -320,6 +331,10 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
     scans++
     return CaptureDecision.StartFocusScan(why, scans)
   }
+
+  /** A missing page and a missing focus fail with their own codes; the page is checked first. */
+  private fun timeoutCode(reason: WaitReason) =
+    if (reason == WaitReason.DOCUMENT) ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT else ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT
 }
 
 /** Public wait status contains no presentation text. */

@@ -96,6 +96,19 @@ class FlowMotionEstimatorTest {
   }
 
   @Test
+  fun lightChangesOnAStillPageAreNeitherMotionNorLoss() {
+    // A soft shadow band sweeping across the page, like a fan blade under a ceiling light, and a dimming flicker.
+    for ((first, second) in listOf(shaded(shadowX = 200.0) to shaded(shadowX = 260.0),
+                                   shaded(gain = 1.0) to shaded(gain = .7))) {
+      estimator.reset()
+      val estimate = measure(first, second)
+      assertEquals(FlowMotionStatus.MEASURED, estimate.status)
+      assertEquals(0, estimate.lostRegions)
+      assertTrue("speed=${estimate.speedPxPerSecond}", estimate.speedPxPerSecond!! < 10.0) // Before light normalisation: about 2000 px/s.
+    }
+  }
+
+  @Test
   fun doublingTheIntervalHalvesTheSpeed() {
     val still = frame()
     val moved = frame(dx = 6.0)
@@ -164,7 +177,7 @@ class FlowMotionEstimatorTest {
   }
 
   @Test
-  fun sharedEvidenceMatchesFormerEstimatorAcrossFrameSequences() {
+  fun sharedEvidenceMatchesKotlinReferenceAcrossFrameSequences() {
     val reference = ReferenceFlowMotionEstimator()
     try {
       for (rotation in listOf(0, 90, 180, 270)) {
@@ -271,6 +284,24 @@ class FlowMotionEstimatorTest {
     Imgproc.warpAffine(page, grey, transform, Size(WIDTH.toDouble(), HEIGHT.toDouble()), Imgproc.INTER_LINEAR)
     transform.release()
     return grey
+  }
+
+  /** The still page scaled by [gain], darkened to 45% under a soft vertical shadow band centred on [shadowX]. */
+  private fun shaded(shadowX: Double? = null, gain: Double = 1.0): ByteBuffer {
+    val grey = frameGrey()
+    val pixels = ByteArray(WIDTH * HEIGHT)
+    grey.get(0, 0, pixels)
+    for (x in 0 until WIDTH) {
+      // A 120 px band whose edges fade over about 40 px.
+      val shadow = shadowX?.let { 1.0 / (1.0 + kotlin.math.exp((kotlin.math.abs(x - it) - 60.0) / 10.0)) } ?: 0.0
+      val factor = gain * (1.0 - .55 * shadow)
+      for (y in 0 until HEIGHT) {
+        val i = y * WIDTH + x
+        pixels[i] = ((pixels[i].toInt() and 0xFF) * factor).toInt().coerceIn(0, 255).toByte()
+      }
+    }
+    grey.put(0, 0, pixels)
+    return rgba(grey)
   }
 
   private fun blank(): ByteBuffer = rgba(Mat(HEIGHT, WIDTH, CvType.CV_8UC1, Scalar(200.0)))

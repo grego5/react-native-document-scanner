@@ -49,6 +49,11 @@ class FrameHistoryTest {
     assertFalse(frameResult(state(CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED, CaptureResult.CONTROL_AE_STATE_SEARCHING, balanced)).zslReady)
     assertFalse(frameResult(state(CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED, converged, CaptureResult.CONTROL_AWB_STATE_SEARCHING)).zslReady)
     assertFalse(frameResult(null).zslReady)
+    // Searching states are a verdict; missing ones are not.
+    assertTrue(frameResult(state(CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN, CaptureResult.CONTROL_AE_STATE_SEARCHING, balanced)).zslStatesKnown)
+    assertFalse(frameResult(CameraFrameState(30_000_000, 0, false, CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED, awbState = balanced)).zslStatesKnown)
+    assertFalse(frameResult(CameraFrameState(30_000_000, 0, false, null, aeState = converged, awbState = balanced)).zslStatesKnown)
+    assertFalse(frameResult(null).zslStatesKnown)
   }
 
   @Test

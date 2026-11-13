@@ -321,7 +321,7 @@ struct CaptureGate {
       return nil
     }
     if blocker() == .document, e.requireFocus, let finished = e.postFocusInferenceFinished {
-      return finished ? .reject(.captureFocusTimeout, .document) : .wait(.document, untilMs: .max)
+      return finished ? .reject(.captureDocumentTimeout, .document) : .wait(.document, untilMs: .max)
     }
     if steadyDeadlineMs == 0 {
       let reason = blocker()
@@ -329,7 +329,7 @@ struct CaptureGate {
         if focusDeadlineMs == 0 { focusDeadlineMs = now + e.focusTimeoutMs }
         if now < focusDeadlineMs { return .wait(reason!, untilMs: focusDeadlineMs) }
         if let until = focusingUntil(reason) { return .wait(reason!, untilMs: until) }
-        if e.requireFocus { return .reject(.captureFocusTimeout, reason) }
+        if e.requireFocus { return .reject(Self.timeoutCode(reason!), reason) }
         focusSkipped = true
       }
       steadyDeadlineMs = now + steadyTimeoutMs
@@ -350,11 +350,16 @@ struct CaptureGate {
       reason = next
     }
     switch reason {
-    case .document, .focus: return .reject(.captureFocusTimeout, reason)
+    case .document, .focus: return .reject(Self.timeoutCode(reason), reason)
     // Light that never settled is a capture failure, as on Android.
     case .light: return .reject(.captureFailed, reason)
     case .steady: return .reject(.captureMotionTimeout, reason)
     }
+  }
+
+  /// A missing page and a missing focus fail with their own codes; the page is checked first.
+  private static func timeoutCode(_ reason: GateWait) -> ScannerErrorCode {
+    reason == .document ? .captureDocumentTimeout : .captureFocusTimeout
   }
 
   private mutating func scanToStart(_ e: CaptureEvidence) -> CaptureDecision? {

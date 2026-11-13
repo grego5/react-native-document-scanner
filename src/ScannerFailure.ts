@@ -5,6 +5,7 @@ export type ScannerErrorCode =
   | 'camera/permission-denied'
   | 'camera/not-ready'
   | 'capture/focus-timeout'
+  | 'capture/document-timeout'
   | 'capture/motion-timeout'
   | 'capture/busy'
   | 'capture/not-ready'
