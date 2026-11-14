@@ -30,10 +30,11 @@ namespace margelo::nitro::documentscanner {
    */
   enum class DocumentState {
     OFF      SWIFT_NAME(off) = 0,
-    SEARCHING      SWIFT_NAME(searching) = 1,
-    TRACKING      SWIFT_NAME(tracking) = 2,
-    HELD      SWIFT_NAME(held) = 3,
-    UNAVAILABLE      SWIFT_NAME(unavailable) = 4,
+    LOADING      SWIFT_NAME(loading) = 1,
+    SEARCHING      SWIFT_NAME(searching) = 2,
+    TRACKING      SWIFT_NAME(tracking) = 3,
+    HELD      SWIFT_NAME(held) = 4,
+    UNAVAILABLE      SWIFT_NAME(unavailable) = 5,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::documentscanner
@@ -47,6 +48,7 @@ namespace margelo::nitro {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, arg);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
         case hashString("off"): return margelo::nitro::documentscanner::DocumentState::OFF;
+        case hashString("loading"): return margelo::nitro::documentscanner::DocumentState::LOADING;
         case hashString("searching"): return margelo::nitro::documentscanner::DocumentState::SEARCHING;
         case hashString("tracking"): return margelo::nitro::documentscanner::DocumentState::TRACKING;
         case hashString("held"): return margelo::nitro::documentscanner::DocumentState::HELD;
@@ -58,6 +60,7 @@ namespace margelo::nitro {
     static inline jsi::Value toJSI(jsi::Runtime& runtime, margelo::nitro::documentscanner::DocumentState arg) {
       switch (arg) {
         case margelo::nitro::documentscanner::DocumentState::OFF: return JSIConverter<std::string>::toJSI(runtime, "off");
+        case margelo::nitro::documentscanner::DocumentState::LOADING: return JSIConverter<std::string>::toJSI(runtime, "loading");
         case margelo::nitro::documentscanner::DocumentState::SEARCHING: return JSIConverter<std::string>::toJSI(runtime, "searching");
         case margelo::nitro::documentscanner::DocumentState::TRACKING: return JSIConverter<std::string>::toJSI(runtime, "tracking");
         case margelo::nitro::documentscanner::DocumentState::HELD: return JSIConverter<std::string>::toJSI(runtime, "held");
@@ -74,6 +77,7 @@ namespace margelo::nitro {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, value);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
         case hashString("off"):
+        case hashString("loading"):
         case hashString("searching"):
         case hashString("tracking"):
         case hashString("held"):

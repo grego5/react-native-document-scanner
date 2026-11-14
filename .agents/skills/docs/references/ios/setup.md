@@ -12,7 +12,7 @@ For apps with a manually maintained Podfile, declare the local OpenCV dependency
 pod 'DocumentScannerOpenCV', :podspec => '../node_modules/react-native-document-scanner/ios/DocumentScannerOpenCV.podspec'
 ```
 
-The package podspec owns the TensorFlow Lite dependency and canonical model bundle. The pinned OpenCV framework supports arm64 device and x86_64 simulator. Use an Intel simulator or a device build.
+The package podspec owns the TensorFlow Lite dependency. The pinned OpenCV framework supports arm64 device and x86_64 simulator. Use an Intel simulator or a device build.
 
 From `example/` on a Mac, run `npm run ios:prebuild`, then `npm run ios -- --device` for the Expo development build. The example supports iPhone and iPad. Its media-library plugin supplies `NSPhotoLibraryAddUsageDescription` for write-only Photos access. Expo Sharing presents the PDF share sheet and provides a default iPad popover anchor.
 

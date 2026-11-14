@@ -14,6 +14,7 @@ public protocol HybridDocumentScannerProcessorSpec_protocol: HybridObject {
 
   // Methods
   func createSessionResult() throws -> Variant__any_HybridScanSessionSpec__ScannerFailure
+  func waitForCornerDetectionModelResult() throws -> Promise<Variant_Bool_ScannerFailure>
   func pickSampleFolderResult() throws -> Promise<Variant_ScannerFailure_SampleFolder>
   func getSampleFolder() throws -> SampleFolder
   func clearSampleFolder() throws -> Void

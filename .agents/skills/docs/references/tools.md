@@ -2,8 +2,9 @@
 
 ## Model export and private fixtures
 
-- `tools/models/export_adapted_doccornernet.py` takes `--checkpoint`, `--layers` and `--output resources/doccornernet`. Keep the layer definitions beside the checkpoint. Verify TensorFlow/TFLite parity and retain model provenance with the resource.
-- `tools/models/prepare_doccornernet_runtime.py --photos <directory>` prepares private runtime assets under `.local/doccornernet-runtime/assets/`. Android instrumentation accepts `-PdocCornerFixtures=<absolute assets directory>` on the test build. Run its private-photo test with `-Measure`. The fixture compares deployment parity rather than detection accuracy. Keep photos and reports out of source control.
+- `example/assets/doccornernet/` is the repository's only working model: the upstream `mapo80/DocCornerNet-CoordClass` checkpoint `mobilenetv2_224_best` as float32 TFLite, with its MIT license. `provenance.json` pins the upstream revision and source, config, weights and TFLite hashes. Android instrumentation and iOS XCTest load it as their test model; Android instrumentation builds check its hash.
+- Keep your own checkpoints and exports under `.local/`. `tools/models/export_adapted_doccornernet.py --checkpoint <keras> --layers <model.py>` exports one to `.local/doccornernet-export/` with a parity check and provenance. Keep the layer definitions beside the checkpoint.
+- `tools/models/prepare_doccornernet_runtime.py` with `--photos`, `--checkpoint`, `--layers` and `--model` (each defaults under `.local/`) prepares private runtime assets under `.local/doccornernet-runtime/assets/`, with a copy of the model its references come from. Android instrumentation accepts `-PdocCornerFixtures=<absolute assets directory>` on the test build. Run its private-photo test with `-Measure`. The fixture compares deployment parity rather than detection accuracy. Keep photos and reports out of source control.
 
 ## Sample labeling
 

@@ -12,6 +12,9 @@ if (androidAbi !== 'arm64-v8a' && androidAbi !== 'x86_64') {
   );
 }
 
+const cornerDetectionModel =
+  process.env.DOCUMENT_SCANNER_CORNER_MODEL || './assets/doccornernet/model.tflite';
+
 const config: ExpoConfig = {
   name: appName,
   slug,
@@ -20,7 +23,7 @@ const config: ExpoConfig = {
   orientation: 'default',
   userInterfaceStyle: 'automatic',
   plugins: [
-    'react-native-document-scanner',
+    ['react-native-document-scanner', { cornerDetectionModel }],
     'expo-dev-client',
     'expo-router',
     'expo-system-ui',

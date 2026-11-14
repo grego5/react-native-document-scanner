@@ -223,28 +223,34 @@ open class HybridScanSessionSpec_cxx {
   }
   
   @inline(__always)
-  public final func importFromLibraryResult(options: ImportImageOptions, maxCount: Double) -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult____ {
+  public final func importFromLibraryResult(options: ImportImageOptions, maxCount: Double) -> bridge.Result_std__shared_ptr_Promise_std__variant_std__vector_std__string___ScannerFailure____ {
     do {
       let __result = try self.__implementation.importFromLibraryResult(options: options, maxCount: maxCount)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult___ in
-        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult___()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult___(__promise)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_std__vector_std__string___ScannerFailure___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_std__vector_std__string___ScannerFailure___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_std__vector_std__string___ScannerFailure___(__promise)
         __result
-          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_ScannerFailure__LibraryImportResult_ in
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_std__vector_std__string___ScannerFailure_ in
               switch __result {
                 case .first(let __value):
-                  return bridge.create_std__variant_ScannerFailure__LibraryImportResult_(__value)
+                  return bridge.create_std__variant_std__vector_std__string___ScannerFailure_({ () -> bridge.std__vector_std__string_ in
+                    var __vector = bridge.create_std__vector_std__string_(__value.count)
+                    for __item in __value {
+                      __vector.push_back(std.string(__item))
+                    }
+                    return __vector
+                  }())
                 case .second(let __value):
-                  return bridge.create_std__variant_ScannerFailure__LibraryImportResult_(__value)
+                  return bridge.create_std__variant_std__vector_std__string___ScannerFailure_(__value)
               }
             }().variant) })
           .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
         return __promise
       }()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult____(__resultCpp)
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_std__vector_std__string___ScannerFailure____(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult____(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_std__vector_std__string___ScannerFailure____(__exceptionPtr)
     }
   }
   

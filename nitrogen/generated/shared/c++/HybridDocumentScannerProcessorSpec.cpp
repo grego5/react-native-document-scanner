@@ -15,6 +15,7 @@ namespace margelo::nitro::documentscanner {
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridMethod("createSessionResult", &HybridDocumentScannerProcessorSpec::createSessionResult);
+      prototype.registerHybridMethod("waitForCornerDetectionModelResult", &HybridDocumentScannerProcessorSpec::waitForCornerDetectionModelResult);
       prototype.registerHybridMethod("pickSampleFolderResult", &HybridDocumentScannerProcessorSpec::pickSampleFolderResult);
       prototype.registerHybridMethod("getSampleFolder", &HybridDocumentScannerProcessorSpec::getSampleFolder);
       prototype.registerHybridMethod("clearSampleFolder", &HybridDocumentScannerProcessorSpec::clearSampleFolder);

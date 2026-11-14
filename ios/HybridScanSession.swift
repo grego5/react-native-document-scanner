@@ -72,15 +72,8 @@ class HybridScanSession: HybridScanSessionSpec {
     do {
       let state = try open()
       guard let url = URL(string: uri), url.isFileURL else { throw ScannerCodeError.inputInvalid }
-      // Validate defaults before waiting for a model, so bad options reject as input.
-      let render = try DocumentRenderService.effectiveOptions(.from(options.imageCorrection, options.outputOptions))
-      let autoCrop = options.autoCrop ?? true
-      ImportModel.resolve { model in
-        do {
-          ImageImport.admit(state, url: url, options: render, selection: try model.get(), autoCrop: autoCrop,
-                            completion: resolve)
-        } catch { resolve(.failure(error)) }
-      }
+      let settings = try RenderSettings(.from(options.imageCorrection, options.outputOptions))
+      ImageImport.admit(state, url: url, settings: settings, autoCrop: options.autoCrop ?? true, completion: resolve)
     } catch {
       resolve(.failure(error))
     }
@@ -88,33 +81,25 @@ class HybridScanSession: HybridScanSessionSpec {
   }
 
   func importFromLibraryResult(options: ImportImageOptions, maxCount: Double) throws
-    -> Promise<Variant_ScannerFailure_LibraryImportResult> {
-    let promise = Promise<Variant_ScannerFailure_LibraryImportResult>()
+    -> Promise<Variant__String__ScannerFailure> {
+    let promise = Promise<Variant__String__ScannerFailure>()
     let reject = { (error: Error) in
-      promise.resolve(withResult: .first(HybridScanSession.failure(error, .imageLoadFailed)))
+      promise.resolve(withResult: .second(HybridScanSession.failure(error, .imageLoadFailed)))
     }
     do {
       let state = try open()
       // Int(exactly:) rejects fractions, NaN, infinities and values past Int's range, where Int(_:) would trap.
       guard maxCount >= 0, let limit = Int(exactly: maxCount) else { throw ScannerCodeError.inputInvalid }
-      nonisolated(unsafe) let render = try DocumentRenderService.effectiveOptions(
-        .from(options.imageCorrection, options.outputOptions))
-      let autoCrop = options.autoCrop ?? true
-      // The model is frozen before presenting, so every pick of this call uses it whatever changes meanwhile.
-      nonisolated(unsafe) let settle = { (result: Result<LibraryImportResult, Error>) in
+      // Options are validated once, before the picker opens, and every pick is admitted with these settings.
+      let settings = try RenderSettings(.from(options.imageCorrection, options.outputOptions))
+      let settle = { (result: Result<[String], Error>) in
         switch result {
-        case .success(let value): promise.resolve(withResult: .second(value))
+        case .success(let ids): promise.resolve(withResult: .first(ids))
         case .failure(let error): reject(error)
         }
       }
-      ImportModel.resolve { model in
-        DispatchQueue.main.async {
-          do {
-            ImageImport.fromLibrary(state, maxCount: limit, options: render, autoCrop: autoCrop,
-                                    selection: try model.get(), completion: settle)
-          } catch { settle(.failure(error)) }
-        }
-      }
+      ImageImport.fromLibrary(state, maxCount: limit, settings: settings, autoCrop: options.autoCrop ?? true,
+                              completion: settle)
     } catch {
       reject(error)
     }

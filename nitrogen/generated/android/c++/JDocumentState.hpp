@@ -45,6 +45,9 @@ namespace margelo::nitro::documentscanner {
         case DocumentState::OFF:
           static const auto fieldOFF = clazz->getStaticField<JDocumentState>("OFF");
           return clazz->getStaticFieldValue(fieldOFF);
+        case DocumentState::LOADING:
+          static const auto fieldLOADING = clazz->getStaticField<JDocumentState>("LOADING");
+          return clazz->getStaticFieldValue(fieldLOADING);
         case DocumentState::SEARCHING:
           static const auto fieldSEARCHING = clazz->getStaticField<JDocumentState>("SEARCHING");
           return clazz->getStaticFieldValue(fieldSEARCHING);

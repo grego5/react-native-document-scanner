@@ -1,7 +1,9 @@
 package com.margelo.nitro.documentscanner
 
 import com.margelo.nitro.documentscanner.processing.DocumentRenderer
+import com.margelo.nitro.documentscanner.processing.CornerModelStatus
 import com.margelo.nitro.documentscanner.processing.CornerModelStore
+import com.margelo.nitro.documentscanner.processing.CornerTensorModelLoader
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 
@@ -15,6 +17,8 @@ internal class ScanSessionState(
   private val actions: Actions,
   dispatcher: Executor = ScanSessionMainOwner,
   report: (Throwable) -> Unit = ScanSessionMainOwner::report,
+  /** Registers for the app-wide model status, current status first; returns the removal. */
+  observeModel: ((CornerModelStatus) -> Unit) -> () -> Unit = CornerTensorModelLoader.shared::observe,
   private val failure: (Throwable, ScannerErrorCode) -> ScannerFailure = ::scannerFailure,
 ) {
   interface Actions : AutoCloseable {
@@ -35,8 +39,11 @@ internal class ScanSessionState(
   private var publications = 0
   private val publicationsDrained = CompletableFuture<Unit>()
   private var completion: CompletableFuture<Unit>? = null
-  // Work that has not reached the image worker yet, such as an open gallery picker, keyed by registration.
-  private val closeCancellations = LinkedHashMap<Any, () -> Unit>()
+  // Work that has not reached the image worker yet, such as an open gallery picker, in registration order.
+  private val closeCancellations = LinkedHashMap<CloseRegistration, () -> CompletableFuture<Unit>>()
+  /** The shared model status this session last observed. Import admission and the observer both use it under lock. */
+  private var model: CornerModelStatus = CornerModelStatus.Absent
+  private val stopObservingModel = observeModel(::modelChanged)
 
   // One recent capture placeholder; displayed views retain their own bitmap reference.
   private var capturePlaceholder: Pair<String, android.graphics.Bitmap>? = null
@@ -93,14 +100,32 @@ internal class ScanSessionState(
   }
 
   /**
-   * Runs [cancel] once, on the closing thread, if the session closes before the returned unregistration is called.
-   * For operations that are not yet queued work. Throws `processor/disposed` when already closed.
+   * Work tied to this session's close before it reaches the image worker, such as a gallery import. Close takes every
+   * registration in one step under the session lock, then runs each cancellation once, outside that lock.
    */
-  fun onClose(cancel: () -> Unit): () -> Unit = synchronized(lock) {
+  interface CloseRegistration {
+    /** True until close takes the registration or [tryUnregister] removes it; for authorizing a presentation. */
+    val isRegistered: Boolean
+    /**
+     * Claims a normal outcome: true when this removed the registration first. False once close has taken it, so the
+     * cancellation owns the outcome even before close has invoked it.
+     */
+    fun tryUnregister(): Boolean
+  }
+
+  /**
+   * Runs [cancel] once, on the closing thread, if close takes the registration first. Close completes only after the
+   * future [cancel] returns, such as a picker's release of its slot; work without async cleanup returns a completed
+   * future. Throws `processor/disposed` when already closed.
+   */
+  fun registerCloseCancellation(cancel: () -> CompletableFuture<Unit>): CloseRegistration = synchronized(lock) {
     requireOpen()
-    val key = Any()
-    closeCancellations[key] = cancel
-    return@synchronized { synchronized(lock) { closeCancellations.remove(key) } }
+    val registration = object : CloseRegistration {
+      override val isRegistered get() = synchronized(lock) { closeCancellations.containsKey(this) }
+      override fun tryUnregister() = synchronized(lock) { closeCancellations.remove(this) != null }
+    }
+    closeCancellations[registration] = cancel
+    registration
   }
 
   private inline fun <T> transition(action: () -> T): T {
@@ -114,9 +139,12 @@ internal class ScanSessionState(
       value.analysis, value.corners, value.options, value.analysisFailure, value.renderFailure))
   }
 
-  /** Takes ownership of already published immutable source tokens only on successful admission. Without [autoCrop] the
+  /**
+   * Takes ownership of already published immutable source tokens only on successful admission. Without [autoCrop] the
    * page keeps the full frame: it is still analyzed, so the editor's automatic preset and samples have the candidate,
-   * but the candidate is never applied by itself. */
+   * but the candidate is never applied by itself. A capture analyzes with its frozen [selection] before its first
+   * render.
+   */
   fun admit(
     id: String,
     original: SessionResources.Resource,
@@ -127,6 +155,34 @@ internal class ScanSessionState(
     autoCrop: Boolean = true,
     /** True only when [options] already came from [DocumentRenderer.effectiveOptions], as a reservation's do. */
     normalized: Boolean = false,
+  ) = admitPage(id, original, frame, liveCorners, options, autoCrop, normalized) { page -> analyze(page, selection) }
+
+  /**
+   * Admits an imported [original], which has no frame or live corners, with already effective [options]. The page
+   * follows the shared model: analyzed at once when it is ready, analyzed without a model when it is absent or failed,
+   * otherwise displayed at full frame until it settles. Ownership transfers as for [admit].
+   */
+  fun admitImport(id: String, original: SessionResources.Resource, options: DocumentRenderOptions, autoCrop: Boolean) =
+    admitPage(id, original, null, null, options, autoCrop, normalized = true) { page ->
+      val shared = model
+      if (shared is CornerModelStatus.Loading) {
+        page.awaitingModel = true
+        page.analysisGatesRender = false
+      } else {
+        analyze(page, (shared as? CornerModelStatus.Ready)?.selection)
+      }
+    }
+
+  /** [startAnalysis] runs under the lock before the page is published. */
+  private fun admitPage(
+    id: String,
+    original: SessionResources.Resource,
+    frame: SessionResources.Resource?,
+    liveCorners: DocumentCorners?,
+    options: DocumentRenderOptions?,
+    autoCrop: Boolean,
+    normalized: Boolean,
+    startAnalysis: (ScanPage) -> Unit,
   ) = transition {
     requireOpen()
     requireInput(id.isNotBlank() && !pages.containsKey(id)) { "Page ID must be nonempty and unique." }
@@ -136,28 +192,56 @@ internal class ScanSessionState(
     requireInput(pages.values.none { it.original === original || (frame != null && it.frame === frame) }) { "Source already belongs to a page." }
     resources.lease(original).close()
     frame?.let { resources.lease(it).close() }
-    val analysisSource = resources.lease(original)
-    val analyze = try { actions.preparePinnedAnalysis(analysisSource, liveCorners, selection) }
-      catch (error: Throwable) { analysisSource.close(); throw error }
-    val page = ScanPage(id, original, frame, effective, selection, liveCorners)
+    val page = ScanPage(id, original, frame, effective, liveCorners)
     page.explicitGeometry = !autoCrop
+    startAnalysis(page)
     pages[id] = page
     changed(page)
-    queue.submit(resources.workOwner, ScannerWorkQueue.Kind.ANALYSIS, id,
+    if (page.awaitingModel) requestRender(page)
+  }
+
+  /** Pins the original only now and submits analysis with [selection], frozen for the result and samples. Under lock. */
+  private fun analyze(page: ScanPage, selection: CornerModelStore.Selection?) {
+    val source = resources.lease(page.original)
+    val analyze = try { actions.preparePinnedAnalysis(source, page.liveCorners, selection) }
+      catch (error: Throwable) { source.close(); throw error }
+    page.awaitingModel = false
+    page.model = selection
+    page.analyzing = true
+    queue.submit(resources.workOwner, ScannerWorkQueue.Kind.ANALYSIS, page.id,
       operation = {
         synchronized(lock) { if (page.exportAnalysisPins == 0) requireCurrent(page) }
         analyze()
       },
       onSuccess = { analysis ->
-        analysisSource.close()
+        source.close()
         page.analysisOutcome.complete(analysis)
         finishAnalysis(page, analysis, null)
       },
       onFailure = { error ->
-        analysisSource.close()
+        source.close()
         page.analysisOutcome.completeExceptionally(error)
         finishAnalysis(page, null, error)
       })
+  }
+
+  /**
+   * Ready submits every waiting import with its selection; absent or failed analyzes them without a model, so they
+   * keep their full frame. Loading keeps them waiting. Configuration errors never fail an admitted page.
+   */
+  private fun modelChanged(status: CornerModelStatus) = transition {
+    if (closed) return@transition
+    model = status
+    if (status is CornerModelStatus.Loading) return@transition
+    val selection = (status as? CornerModelStatus.Ready)?.selection
+    for (page in pages.values) {
+      if (!page.awaitingModel) continue
+      try { analyze(page, selection) } catch (error: Throwable) {
+        page.awaitingModel = false
+        page.analysisFailure = failure(error, ScannerErrorCode.ANALYSIS_FAILED)
+        changed(page)
+      }
+    }
   }
 
   fun setDocumentCrop(id: String, corners: DocumentCorners) = transition {
@@ -184,11 +268,9 @@ internal class ScanSessionState(
     if (page.corners == corners && page.options == options && page.renderFailure == null) return
     page.corners = corners
     page.options = options
-    page.requestedRevision++
-    page.renderFailure = null
-    invalidate(page)
+    revise(page)
     changed(page)
-    if (!page.analyzing) requestRender(page)
+    if (!page.renderWaitsForAnalysis) requestRender(page)
   }
 
   private fun finishAnalysis(page: ScanPage, analysis: DocumentAnalysis?, error: Throwable?) = transition {
@@ -197,14 +279,15 @@ internal class ScanSessionState(
     page.analysis = analysis
     page.analysisFailure = error?.let { failure(it, ScannerErrorCode.ANALYSIS_FAILED) }
     val candidate = analysis?.candidate?.corners
-    if (!page.explicitGeometry && candidate != null &&
-      NativeCornerGeometry.renderIssue(NativeCornerGeometry.coordinates(candidate)) == null && page.corners != candidate) {
-      page.corners = candidate
-      page.requestedRevision++
-      invalidate(page)
+    val cropped = !page.explicitGeometry && candidate != null &&
+      NativeCornerGeometry.renderIssue(NativeCornerGeometry.coordinates(candidate)) == null && page.corners != candidate
+    if (cropped) {
+      page.corners = requireNotNull(candidate)
+      revise(page)
     }
     changed(page)
-    requestRender(page)
+    // A page displayed while it waited already rendered its current geometry.
+    if (page.analysisGatesRender || cropped) requestRender(page)
   }
 
   private fun requestRender(page: ScanPage) {
@@ -249,7 +332,10 @@ internal class ScanSessionState(
   private fun compatible(a: ScanPage.RenderKey, b: ScanPage.RenderKey) =
     a.corners == b.corners && a.options.copy(filter = b.options.filter, removeShadows = b.options.removeShadows) == b.options
 
-  private fun invalidate(page: ScanPage) {
+  /** Every geometry or output change: a new revision without the old error or output it no longer matches. */
+  private fun revise(page: ScanPage) {
+    page.requestedRevision++
+    page.renderFailure = null
     val iterator = page.cache.iterator()
     while (iterator.hasNext()) {
       val entry = iterator.next()
@@ -289,7 +375,11 @@ internal class ScanSessionState(
     page.frame?.let { resources.remove(it) }
   }
 
-  /** Snapshot admission is one state-lock operation, including all source/cache pins and input order. */
+  /**
+   * Snapshot admission is one state-lock operation, including all source/cache pins and input order. Automatic geometry
+   * waits only for analysis already queued ahead of the export; an import still waiting for the model exports the
+   * geometry and settings it has now.
+   */
   fun exportSnapshot(requestedIds: List<String>?): SessionExportSnapshot = synchronized(lock) {
     requireOpen()
     val ids = requestedIds ?: events.latest.pageIds.toList()
@@ -328,6 +418,7 @@ internal class ScanSessionState(
   }
 
   fun close(): CompletableFuture<Unit> {
+    stopObservingModel() // Idempotent; a late status finds the session closed.
     val cancellations = transition {
       completion?.let { return it }
       closed = true
@@ -340,13 +431,15 @@ internal class ScanSessionState(
       completion = CompletableFuture()
       pending
     }
-    // Unlocked: a cancellation may settle its caller's promise or reenter this state.
-    cancellations.forEach { runCatching(it) }
+    // Unlocked: a cancellation may settle its caller's promise or reenter this state. A thrown cancellation has
+    // nothing left to wait for.
+    val cancelled = cancellations.map { cancel -> runCatching(cancel).getOrElse { CompletableFuture.completedFuture(Unit) } }
     val result = requireNotNull(completion)
     if (synchronized(lock) { publications == 0 }) publicationsDrained.complete(Unit)
     val modelClosed = queue.close(resources.workOwner).thenRun { actions.close() }
     resources.close().thenCombine(modelClosed) { _, _ -> Unit }
-      .thenCombine(publicationsDrained) { _, _ -> Unit }.whenComplete { _, error ->
+      .thenCombine(publicationsDrained) { _, _ -> Unit }
+      .thenCombine(CompletableFuture.allOf(*cancelled.toTypedArray())) { _, _ -> Unit }.whenComplete { _, error ->
       if (error == null) result.complete(Unit) else result.completeExceptionally(error)
     }
     return result

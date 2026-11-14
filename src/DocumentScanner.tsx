@@ -50,15 +50,22 @@ export interface CameraProps
       'hybridRef' | 'guideColor' | 'captureColor' | 'onError' | 'session' | 'imageCorrection' | 'outputOptions' | 'lowQualityControl'
     >,
     ViewProps {
-  /** Document scanning by default; photo disables document guidance and processing. */
+  /**
+   * Document scanning by default; photo disables document guidance and processing and needs no model. The camera never
+   * switches by itself: while document mode waits for or lacks its model, `onDocumentStateChange` reports `loading` or
+   * `unavailable`, and the app decides whether to wait or render photo mode.
+   */
   mode?: CameraMode;
   lowQualityControl?: LowQualityControl;
   /** Native session that owns new captures. */
   session: ScanSession;
   imageCorrection?: ImageCorrectionOptions;
   outputOptions?: ImageOutputOptions;
-  /** Required local model source. Camera stays off until validation succeeds; failures emit onError. */
-  cornerDetectionModel: string;
+  /**
+   * Local model source for document mode; defaults to the Expo plugin's model. Document mode keeps the camera off until
+   * the model is ready. A failed load emits `model/load-failed`, and no model at all `input/invalid`.
+   */
+  cornerDetectionModel?: string;
   onError?: (error: ScannerError) => void;
   /**
    * Guide color for every guide state, as a React Native color string such as '#ff3b30', 'rgba(255, 59, 48, 0.8)' or
@@ -87,7 +94,7 @@ const PHOTO_CORRECTION = { filter: 'none', removeShadows: false, simpleDewarp: f
 export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
   {
     mode = 'document',
-    cornerDetectionModel,
+    cornerDetectionModel: requestedModel,
     session,
     imageCorrection = DEFAULT_IMAGE_CORRECTION,
     outputOptions = DEFAULT_OUTPUT_OPTIONS,
@@ -123,7 +130,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
   forwardedRef,
 ) {
   const photo = mode === 'photo';
-  const effectiveDocumentState = mode === 'photo' ? undefined : onDocumentStateChange;
+  const effectiveDocumentState = photo ? undefined : onDocumentStateChange;
   // Native re-sends the current state whenever a callback prop changes, so pass a stable wrapper that calls the
   // latest handler, and change it only when a handler is added or removed; without a handler it gets a no-op.
   const handlers = useRef({
@@ -152,6 +159,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
   const hasBoostActivity = onLowLightBoostActiveChange != null;
   const hasDocumentState = effectiveDocumentState != null;
   const hasCaptureStage = onCaptureStage != null;
+  const hasError = onError != null;
   // Separate memos, so adding or removing one handler does not make native resend the others' states.
   const nativeCameraState = useMemo(
     () =>
@@ -196,13 +204,10 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
         : noop,
     [hasCaptureStage],
   );
-  const hasError = onError != null;
   const nativeError = useMemo(
     () =>
       hasError
-        ? callback((error: ScannerFailure) =>
-            handlers.current.onError?.(new ScannerError(error.code)),
-          )
+        ? callback((error: ScannerFailure) => handlers.current.onError?.(new ScannerError(error.code)))
         : noop,
     [hasError],
   );
@@ -252,7 +257,8 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       {...props}
       session={getNativeScanSession(session)}
       active={active}
-      cornerDetectionModel={cornerDetectionModel ?? ''}
+      // Only an explicit source; empty lets native follow the shared default. Photo mode needs no model.
+      cornerDetectionModel={photo ? '' : requestedModel ?? ''}
       onError={nativeError}
       guideLiveCorners={photo ? false : guideLiveCorners}
       autoCrop={photo ? false : autoCrop}

@@ -147,6 +147,32 @@ open class HybridDocumentScannerProcessorSpec_cxx {
   }
   
   @inline(__always)
+  public final func waitForCornerDetectionModelResult() -> bridge.Result_std__shared_ptr_Promise_std__variant_bool__ScannerFailure____ {
+    do {
+      let __result = try self.__implementation.waitForCornerDetectionModelResult()
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_bool__ScannerFailure___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_bool__ScannerFailure___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_bool__ScannerFailure___(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_bool__ScannerFailure_ in
+              switch __result {
+                case .first(let __value):
+                  return bridge.create_std__variant_bool__ScannerFailure_(__value)
+                case .second(let __value):
+                  return bridge.create_std__variant_bool__ScannerFailure_(__value)
+              }
+            }().variant) })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_bool__ScannerFailure____(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_bool__ScannerFailure____(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func pickSampleFolderResult() -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__SampleFolder____ {
     do {
       let __result = try self.__implementation.pickSampleFolderResult()

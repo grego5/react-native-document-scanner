@@ -173,7 +173,7 @@ class ScanSessionPipelineTest {
       capture.original.commit()
       val pixels = ByteArray(64 * 64 * 4) { if (it % 4 == 3) 255.toByte() else 120.toByte() }
       val frame = com.margelo.nitro.documentscanner.processing.LatestFrameCapture.write(
-        com.margelo.nitro.documentscanner.processing.LiveFrame(pixels, 64, 64, 0), null, requireNotNull(capture.frame))
+        com.margelo.nitro.documentscanner.processing.LiveFrame(pixels, 64, 64, 0), null, capture.frame)
       val frameBytes = resources.lease(frame).use { it.file.readBytes() }
       assertTrue(state.snapshot().pages.isEmpty())
       val id = capture.publish(frame, null)

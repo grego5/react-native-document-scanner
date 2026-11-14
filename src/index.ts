@@ -1,9 +1,8 @@
 import { Platform } from 'react-native';
-import { NitroModules } from 'react-native-nitro-modules';
-import type { DocumentScannerProcessor } from './DocumentScannerProcessor.nitro';
+import { nativeProcessor } from './Processor';
 import { ScannerError, scannerOperation, scannerValue, unwrapScannerResult } from './ScannerError';
 import { createScanSession } from './ScanSession';
-export type { ImportImageOptions, LibraryImportResult, SessionPdfOptions } from './ScanSession.nitro';
+export type { ImportImageOptions, SessionPdfOptions } from './ScanSession.nitro';
 export type { ImportImageOutcome, LibraryImportOptions, ScanSession, ScanSessionSnapshot, ScanPageMetadata } from './ScanSession';
 
 export { ScannerError, ScannerCancellation } from './ScannerError';
@@ -51,10 +50,6 @@ export type {
   SampleFolder,
 } from './DocumentScannerProcessor.nitro';
 
-const nativeProcessor = NitroModules.createHybridObject<DocumentScannerProcessor>(
-  'DocumentScannerProcessor',
-);
-
 /** Creates an explicitly owned session with a stable frame-batched metadata store. */
 function createSession() {
   return scannerValue(
@@ -65,6 +60,9 @@ function createSession() {
 /** Public operations reject with ScannerError or ScannerCancellation; native failure payloads stay behind this facade. */
 export const DocumentScanner = {
   createSession,
+  /** See `DocumentScannerProcessor.waitForCornerDetectionModelResult`. */
+  waitForCornerDetectionModel: () =>
+    scannerOperation(() => nativeProcessor.waitForCornerDetectionModelResult(), 'model/load-failed'),
   /** See `DocumentScannerProcessor.pickSampleFolderResult`. */
   pickSampleFolder: () =>
     scannerOperation(() => nativeProcessor.pickSampleFolderResult(), 'permission/request-failed'),

@@ -17,7 +17,6 @@
     "cpp/CMakeLists.txt",
     "cpp/include",
     "cpp/src",
-    "resources/doccornernet",
     "nitrogen/generated",
     "src",
     "!src/**/*.test.cjs",

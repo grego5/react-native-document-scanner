@@ -309,14 +309,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     };
   }
   
-  // pragma MARK: std::function<void(const std::variant<ScannerFailure, LibraryImportResult>& /* result */)>
-  Func_void_std__variant_ScannerFailure__LibraryImportResult_ create_Func_void_std__variant_ScannerFailure__LibraryImportResult_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_ScannerFailure__LibraryImportResult_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::variant<ScannerFailure, LibraryImportResult>& result) mutable -> void {
-      swiftClosure.call(result);
-    };
-  }
-  
   // pragma MARK: std::function<void(const ScanSessionChange& /* change */)>
   Func_void_ScanSessionChange create_Func_void_ScanSessionChange(void* NON_NULL swiftClosureWrapper) noexcept {
     auto swiftClosure = ReactNativeDocumentScanner::Func_void_ScanSessionChange::fromUnsafe(swiftClosureWrapper);

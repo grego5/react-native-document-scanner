@@ -19,6 +19,7 @@ private final class ScriptedActions: ScanSessionActions, @unchecked Sendable {
   let resources: SessionResources
   private let lock = NSLock()
   private var entries: [String] = []
+  private var chosen: [CornerInference.Selection?] = []
   var analysisGate: DispatchSemaphore?
   var renderGate: DispatchSemaphore?
   var renderStarted: DispatchSemaphore?
@@ -29,11 +30,14 @@ private final class ScriptedActions: ScanSessionActions, @unchecked Sendable {
   init(resources: SessionResources) { self.resources = resources }
 
   var log: [String] { lock.lock(); defer { lock.unlock() }; return entries }
+  /// The selection of each prepared analysis, in order.
+  var selections: [CornerInference.Selection?] { lock.lock(); defer { lock.unlock() }; return chosen }
   private func record(_ entry: String) { lock.lock(); entries.append(entry); lock.unlock() }
 
   func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
-    { [self] in
+    lock.lock(); chosen.append(selection); lock.unlock()
+    return { [self] in
       record("analysis")
       analysisGate?.wait()
       if let analysisError { throw analysisError }
@@ -227,15 +231,14 @@ final class ScanSessionTests: XCTestCase {
     XCTAssertNil(closed(state))
   }
 
-  func testMissingModelSelectionRendersFullFrameAndRequiresExplicitCropForExport() throws {
+  func testMissingModelSelectionFindsNoPageAndExportsFullFrame() throws {
     let (state, _) = try production()
     _ = try admit(state, "a", selection: nil)
     waitUntil("render") { ready(state, "a") }
     let metadata = try XCTUnwrap(page(state, "a"))
-    XCTAssertEqual(metadata.analysisFailure?.code, .modelLoadFailed)
+    XCTAssertNil(metadata.analysisFailure)
+    XCTAssertNil(metadata.analysis?.candidate)
     XCTAssertEqual(SessionCorners.coordinates(metadata.corners), SessionCorners.fullFrame)
-    XCTAssertThrowsError(try state.exportSnapshot(nil)) { XCTAssertEqual(($0 as? ScannerCodeError)?.code, .analysisFailed) }
-    try state.setDocumentCrop("a", corners: SessionCorners.corners(SessionCorners.fullFrame))
     XCTAssertNoThrow(try state.exportSnapshot(nil).close())
     XCTAssertNil(closed(state))
   }
@@ -631,6 +634,172 @@ final class ScanSessionTests: XCTestCase {
     XCTAssertEqual(ScannerCodeError.code(error, fallback: .storageWriteFailed), .processorDisposed)
     XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: outputs.path), [])
     XCTAssertNil(result ?? nil)
+  }
+
+  // MARK: Imports and the shared model
+
+  private func importing(_ models: ModelStatusStub) throws -> (ScanSessionState, ScriptedActions) {
+    var actions: ScriptedActions!
+    let state = try registry.createState(models: models.observe, actions: { resources in
+      actions = ScriptedActions(resources: resources)
+      return actions
+    })
+    return (state, actions)
+  }
+
+  private func importPage(_ state: ScanSessionState, _ id: String, autoCrop: Bool = true) throws {
+    try state.admitImport(id: id, source: try store.publish(image: photo()), settings: RenderSettings(nil), autoCrop: autoCrop)
+  }
+
+  private func loadedSelection() throws -> CornerInference.Selection {
+    try CornerInference(makeRuntime: { _ in CandidateRuntime() }).replace(data: Data([1]))
+  }
+
+  func testAWaitingImportRendersItsFullFrameThenTakesTheLateCandidateOnce() throws {
+    let models = ModelStatusStub()
+    models.loading()
+    let (state, actions) = try importing(models)
+    try importPage(state, "a")
+    XCTAssertEqual(page(state, "a")?.analyzing, true, "waiting for the model reads as analysis")
+    XCTAssertEqual(page(state, "a")?.rendering, true)
+    waitUntil("full frame") { ready(state, "a") }
+    XCTAssertEqual(actions.log, ["render:none"])
+    models.loading()
+    let selection = try loadedSelection()
+    models.ready(selection)
+    models.ready(selection)
+    waitUntil("crop") { page(state, "a")?.readyRevision == 2 }
+    XCTAssertEqual(actions.log, ["render:none", "analysis", "render:none"])
+    XCTAssertTrue(actions.selections.count == 1 && actions.selections[0] === selection)
+    XCTAssertEqual(page(state, "a").map { SessionCorners.coordinates($0.corners) }, candidateCorners)
+    XCTAssertEqual(page(state, "a")?.analyzing, false)
+    models.failed()
+    XCTAssertEqual(page(state, "a").map { SessionCorners.coordinates($0.corners) }, candidateCorners,
+                   "completed analyses stay final")
+    XCTAssertNil(closed(state))
+  }
+
+  func testAReadyModelAnalyzesAnImportBeforeItsFirstRender() throws {
+    let models = ModelStatusStub()
+    models.ready(try loadedSelection())
+    let (state, actions) = try importing(models)
+    try importPage(state, "a")
+    XCTAssertEqual(page(state, "a")?.rendering, false)
+    waitUntil("render") { ready(state, "a") }
+    XCTAssertEqual(actions.log, ["analysis", "render:none"], "no provisional full-frame render")
+    XCTAssertEqual(page(state, "a")?.revision, 2)
+    XCTAssertNil(closed(state))
+  }
+
+  func testALateCropClearsTheFailedPreviewBeforeItsReplacementRenders() throws {
+    let models = ModelStatusStub()
+    models.loading()
+    let (state, actions) = try importing(models)
+    defer { XCTAssertNil(closed(state)) }
+    actions.failRenders = 1
+    try importPage(state, "a")
+    waitUntil("full-frame render failure") { page(state, "a")?.renderFailure?.code == .renderFailed }
+
+    let renderGate = DispatchSemaphore(value: 0)
+    actions.renderGate = renderGate
+    do {
+      defer { renderGate.signal() }
+      models.ready(try loadedSelection())
+      waitUntil("late crop revision") { page(state, "a")?.revision == 2 }
+      let export = try state.exportSnapshot(nil)
+      defer { export.close() }
+      XCTAssertEqual(try export.pages[0].key().corners, candidateCorners)
+    }
+    waitUntil("replacement render") { page(state, "a")?.readyRevision == 2 }
+  }
+
+  func testEditsWhileWaitingRenderAndOnlyAutomaticGeometryTakesTheLateCandidate() throws {
+    let models = ModelStatusStub()
+    models.loading()
+    let (state, actions) = try importing(models)
+    let ids = ["manual", "photo", "filtered"]
+    try importPage(state, "manual")
+    try importPage(state, "photo", autoCrop: false)
+    try importPage(state, "filtered")
+    try state.setDocumentCrop("manual", corners: SessionCorners.corners(SessionCorners.fullFrame))
+    try state.setFilter("filtered", filter: .grayscale)
+    waitUntil("waiting renders") { ids.allSatisfy { ready(state, $0) } }
+    XCTAssertTrue(actions.log.contains("render:grayscale"))
+    XCTAssertFalse(actions.log.contains("analysis"))
+    models.ready(try loadedSelection())
+    waitUntil("late analyses") { ids.allSatisfy { page(state, $0)?.analyzing == false } && page(state, "filtered")?.readyRevision == 3 }
+    for id in ["manual", "photo"] {
+      XCTAssertEqual(page(state, id).map { SessionCorners.coordinates($0.corners) }, SessionCorners.fullFrame)
+      XCTAssertEqual(page(state, id)?.analysis?.candidate?.score, 0.9)
+    }
+    XCTAssertEqual(page(state, "filtered").map { SessionCorners.coordinates($0.corners) }, candidateCorners,
+                   "filter edits keep the automatic crop")
+    XCTAssertEqual(actions.log.filter { $0 == "analysis" }.count, 3)
+    XCTAssertNil(closed(state))
+  }
+
+  func testAFailedModelCompletesWaitingImportsWithoutACandidate() throws {
+    let models = ModelStatusStub()
+    models.loading()
+    let (state, actions) = try importing(models)
+    actions.candidate = nil
+    try importPage(state, "a")
+    waitUntil("render") { ready(state, "a") }
+    models.failed()
+    waitUntil("analysis") { page(state, "a")?.analyzing == false }
+    XCTAssertNotNil(page(state, "a")?.analysis)
+    XCTAssertNil(page(state, "a")?.analysisFailure)
+    XCTAssertEqual(actions.selections.count, 1)
+    XCTAssertNil(actions.selections.first ?? nil)
+    XCTAssertEqual(page(state, "a").map { SessionCorners.coordinates($0.corners) }, SessionCorners.fullFrame)
+    XCTAssertEqual(actions.log, ["render:none", "analysis"])
+    XCTAssertNil(closed(state))
+  }
+
+  func testRemovalAndCloseWhileWaitingDropThePendingAnalysis() throws {
+    let models = ModelStatusStub()
+    models.loading()
+    let (state, actions) = try importing(models)
+    try importPage(state, "removed")
+    try importPage(state, "closed")
+    waitUntil("renders") { ready(state, "removed") && ready(state, "closed") }
+    try state.removePage("removed")
+    XCTAssertNil(closed(state))
+    XCTAssertEqual(models.observers, 0)
+    models.ready(try loadedSelection())
+    XCTAssertFalse(actions.log.contains("analysis"))
+  }
+
+  func testALateAnalysisForARemovedPageNeverRepublishesIt() throws {
+    let models = ModelStatusStub()
+    models.loading()
+    let (state, _) = try importing(models)
+    try importPage(state, "a")
+    waitUntil("render") { ready(state, "a") }
+    models.ready(try loadedSelection())
+    try state.removePage("a")
+    var changes: [ScanSessionChange] = []
+    _ = try state.observe { changes.append($0) }
+    XCTAssertNil(closed(state))
+    XCTAssertFalse(changes.contains { $0.updatedPages["a"] != nil })
+  }
+
+  func testAnExportBeforeTheModelIsReadyKeepsItsGeometryWhileQueuedAnalysisDecidesLaterOnes() throws {
+    let models = ModelStatusStub()
+    models.loading()
+    let (state, actions) = try importing(models)
+    try importPage(state, "a")
+    let waiting = try state.exportSnapshot(nil)
+    actions.analysisGate = DispatchSemaphore(value: 0)
+    models.ready(try loadedSelection())
+    let queued = try state.exportSnapshot(nil)
+    XCTAssertEqual(try waiting.pages[0].key().corners, SessionCorners.fullFrame)
+    actions.analysisGate?.signal()
+    waitUntil("analysis") { page(state, "a")?.analyzing == false }
+    XCTAssertEqual(try queued.pages[0].key().corners, candidateCorners)
+    waiting.close()
+    queued.close()
+    XCTAssertNil(closed(state))
   }
 }
 

@@ -19,8 +19,6 @@ namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 namespace margelo::nitro::documentscanner { struct SessionPdfOptions; }
 // Forward declaration of `ImportImageOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ImportImageOptions; }
-// Forward declaration of `LibraryImportResult` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct LibraryImportResult; }
 // Forward declaration of `DocumentCorners` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 // Forward declaration of `DocumentFilter` to properly resolve imports.
@@ -40,7 +38,6 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include <optional>
 #include "SessionPdfOptions.hpp"
 #include "ImportImageOptions.hpp"
-#include "LibraryImportResult.hpp"
 #include "DocumentCorners.hpp"
 #include "DocumentFilter.hpp"
 #include "ScanSessionSnapshot.hpp"
@@ -82,7 +79,7 @@ namespace margelo::nitro::documentscanner {
       virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> createPdfResult(const std::optional<std::vector<std::string>>& pageIds, const SessionPdfOptions& options) = 0;
       virtual std::shared_ptr<Promise<std::variant<std::vector<std::string>, ScannerFailure>>> exportImagesResult(const std::optional<std::vector<std::string>>& pageIds, const std::string& outputDirectory) = 0;
       virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> importImageResult(const std::string& uri, const ImportImageOptions& options) = 0;
-      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>> importFromLibraryResult(const ImportImageOptions& options, double maxCount) = 0;
+      virtual std::shared_ptr<Promise<std::variant<std::vector<std::string>, ScannerFailure>>> importFromLibraryResult(const ImportImageOptions& options, double maxCount) = 0;
       virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> saveCaptureSampleResult(const std::string& pageId) = 0;
       virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setDocumentCropResult(const std::string& pageId, const DocumentCorners& corners) = 0;
       virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> setFilterResult(const std::string& pageId, DocumentFilter filter) = 0;

@@ -654,7 +654,7 @@ final class LiveGuidanceTests: XCTestCase {
     var documents: [DocumentState] = []
     var errors: [ScannerErrorCode] = []
 
-    init() {
+    init(models: ((String, @escaping (ScannerErrorCode?) -> Void) -> Void)? = nil) {
       let notifications = NotificationCenter()
       let script = self.script
       let inference = CornerInference(makeRuntime: { _ in ScriptedRuntime(script) })
@@ -663,7 +663,7 @@ final class LiveGuidanceTests: XCTestCase {
       view = HybridDocumentScannerCameraView(
         camera: camera, permissions: CameraPermissions(authorization: Granted(), notifications: notifications),
         notifications: notifications, inBackground: { false },
-        models: { source, done in
+        models: models ?? { source, done in
           rig?.models.append(source)
           done(rig?.modelResult)
         },
@@ -684,6 +684,110 @@ final class LiveGuidanceTests: XCTestCase {
   }
 
   @MainActor
+  func testACameraOnTheDefaultStartsWhenAnExplicitReplacementLoads() throws {
+    let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let fallback = folder.appendingPathComponent("default.tflite"), custom = folder.appendingPathComponent("custom.tflite")
+    try Data([2]).write(to: fallback)
+    try Data([1]).write(to: custom)
+    let script = Script()
+    let loader = CornerModelLoader(inference: CornerInference(makeRuntime: { data in
+      // The default is validating when the replacement arrives.
+      if data.first == 2 { entered.signal(); _ = release.wait(timeout: .now() + 5) }
+      return ScriptedRuntime(script)
+    }), defaultSource: fallback.path)
+    let rig = ViewRig(models: { loader.loadCameraSource($0, completion: $1) })
+    rig.view.cornerDetectionModel = ""
+    rig.view.afterUpdate()
+    XCTAssertEqual(entered.wait(timeout: .now() + 5), .success)
+    loader.load(custom.path) { _ in }
+    release.signal()
+    let deadline = Date().addingTimeInterval(5)
+    while rig.camera.starts == 0, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    XCTAssertEqual(rig.camera.starts, 1, "unchanged props follow the replacement")
+    XCTAssertEqual(rig.errors, [])
+  }
+
+  @MainActor
+  func testAutoCropWithoutTheGuideWaitsForThePendingDefault() throws {
+    let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let fallback = folder.appendingPathComponent("default.tflite")
+    try Data([2]).write(to: fallback)
+    let script = Script()
+    let loader = CornerModelLoader(inference: CornerInference(makeRuntime: { _ in
+      entered.signal(); _ = release.wait(timeout: .now() + 5)
+      return ScriptedRuntime(script)
+    }), defaultSource: fallback.path)
+    let rig = ViewRig(models: { loader.loadCameraSource($0, completion: $1) })
+    rig.view.cornerDetectionModel = ""
+    rig.view.guideLiveCorners = false
+    rig.view.autoCrop = true
+    rig.view.afterUpdate()
+    XCTAssertEqual(entered.wait(timeout: .now() + 5), .success)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    XCTAssertEqual(rig.camera.starts, 0, "no capture before the packaged model is active")
+    release.signal()
+    let deadline = Date().addingTimeInterval(5)
+    while rig.camera.starts == 0, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    XCTAssertEqual(rig.camera.starts, 1)
+    XCTAssertEqual(rig.errors, [])
+  }
+
+  @MainActor
+  func testWithoutAPackagedModelAutoCropAloneStaysOffAsInvalid() {
+    let loader = CornerModelLoader(inference: CornerInference(makeRuntime: { _ in ScriptedRuntime(Script()) }),
+                                   defaultSource: nil)
+    let rig = ViewRig(models: { loader.loadCameraSource($0, completion: $1) })
+    rig.view.cornerDetectionModel = ""
+    rig.view.guideLiveCorners = false
+    rig.view.autoCrop = true
+    rig.view.afterUpdate()
+    let deadline = Date().addingTimeInterval(5)
+    while rig.errors.isEmpty, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    XCTAssertEqual(rig.errors, [.inputInvalid], "auto-crop needs a model, as the guide does")
+    XCTAssertEqual(rig.camera.starts, 0)
+  }
+
+  @MainActor
+  func testPhotoModeStartsWithoutRequestingAModel() {
+    var requests = 0
+    let rig = ViewRig(models: { _, _ in requests += 1 })
+    rig.view.cornerDetectionModel = ""
+    rig.view.guideLiveCorners = false
+    rig.view.autoCrop = false
+    rig.view.afterUpdate()
+    XCTAssertEqual(requests, 0)
+    XCTAssertEqual(rig.camera.starts, 1, "the camera starts without waiting for a model")
+    XCTAssertEqual(rig.errors, [])
+  }
+
+  @MainActor
+  func testAutoCropWithoutTheGuideReportsAnInheritedInvalidSource() {
+    let loader = CornerModelLoader(inference: CornerInference(makeRuntime: { _ in ScriptedRuntime(Script()) }),
+                                   defaultSource: "/unused-default.tflite")
+    let failed = expectation(description: "explicit failed")
+    loader.load("https://scanner-test.invalid/model.tflite") { code in
+      XCTAssertEqual(code, .inputInvalid)
+      failed.fulfill()
+    }
+    wait(for: [failed], timeout: 5)
+    let rig = ViewRig(models: { loader.loadCameraSource($0, completion: $1) })
+    rig.view.cornerDetectionModel = ""
+    rig.view.guideLiveCorners = false
+    rig.view.autoCrop = true
+    rig.view.afterUpdate()
+    let deadline = Date().addingTimeInterval(5)
+    while rig.errors.isEmpty, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    XCTAssertEqual(rig.errors, [.inputInvalid], "the default joins the failed explicit source")
+    XCTAssertEqual(rig.camera.starts, 0)
+  }
+
+  @MainActor
   func testCameraWaitsForTheModelAndAFailureKeepsItSuspended() {
     let rig = ViewRig()
     rig.modelResult = .modelLoadFailed
@@ -700,6 +804,43 @@ final class LiveGuidanceTests: XCTestCase {
     rig.view.afterUpdate()
     XCTAssertEqual(rig.camera.starts, 1)
     XCTAssertEqual(rig.documents.last, .searching)
+  }
+
+  @MainActor
+  func testAPendingModelReportsLoadingUntilItIsReady() {
+    var pending: ((ScannerErrorCode?) -> Void)?
+    let rig = ViewRig(models: { _, done in pending = done })
+    rig.view.afterUpdate()
+    XCTAssertEqual(rig.documents.last, .loading)
+    XCTAssertEqual(rig.camera.starts, 0)
+    pending?(nil)
+    XCTAssertEqual(rig.camera.starts, 1)
+    XCTAssertEqual(rig.documents.last, .searching)
+    let reported = rig.documents.count
+    rig.view.cornerDetectionModel = ""
+    rig.view.guideLiveCorners = false
+    rig.view.autoCrop = false
+    rig.view.afterUpdate()
+    XCTAssertFalse(rig.documents.dropFirst(reported).contains(.loading), "photo mode needs no model")
+    XCTAssertEqual(rig.documents.last, .off)
+  }
+
+  @MainActor
+  func testTogglingTheGuideWhileAutoCropNeedsTheDefaultKeepsItsRequest() {
+    let rig = ViewRig()
+    rig.view.cornerDetectionModel = ""
+    rig.view.afterUpdate()
+    XCTAssertEqual(rig.models, [""])
+    let reported = rig.documents.count
+    rig.view.guideLiveCorners = false
+    rig.view.afterUpdate()
+    XCTAssertEqual(rig.models, [""], "auto-crop still needs the same model")
+    XCTAssertFalse(rig.documents.dropFirst(reported).contains(.loading))
+    rig.view.autoCrop = false
+    rig.view.afterUpdate()
+    rig.view.guideLiveCorners = true
+    rig.view.afterUpdate()
+    XCTAssertEqual(rig.models, ["", ""], "leaving photo mode requests the default again")
   }
 
   @MainActor

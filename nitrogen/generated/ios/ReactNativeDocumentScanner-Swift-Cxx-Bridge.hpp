@@ -70,8 +70,6 @@ namespace margelo::nitro::documentscanner { enum class ImageFit; }
 namespace margelo::nitro::documentscanner { struct ImageOutputOptions; }
 // Forward declaration of `ImagePagerDirection` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ImagePagerDirection; }
-// Forward declaration of `LibraryImportResult` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct LibraryImportResult; }
 // Forward declaration of `PageThumbnailResizeMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class PageThumbnailResizeMode; }
 // Forward declaration of `PaperSize` to properly resolve imports.
@@ -145,7 +143,6 @@ namespace ReactNativeDocumentScanner { class HybridScanSessionSpec_cxx; }
 #include "ImageFit.hpp"
 #include "ImageOutputOptions.hpp"
 #include "ImagePagerDirection.hpp"
-#include "LibraryImportResult.hpp"
 #include "PageThumbnailResizeMode.hpp"
 #include "PaperSize.hpp"
 #include "SampleFolder.hpp"
@@ -1651,69 +1648,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::variant<ScannerFailure, LibraryImportResult>
-  /**
-   * Wrapper struct for `std::variant<ScannerFailure, LibraryImportResult>`.
-   * std::variant cannot be used in Swift because of a Swift bug.
-   * Not even specializing it works. So we create a wrapper struct.
-   */
-  struct std__variant_ScannerFailure__LibraryImportResult_ final {
-    std::variant<ScannerFailure, LibraryImportResult> variant;
-    std__variant_ScannerFailure__LibraryImportResult_(std::variant<ScannerFailure, LibraryImportResult> variant): variant(variant) { }
-    operator std::variant<ScannerFailure, LibraryImportResult>() const noexcept {
-      return variant;
-    }
-    inline size_t index() const noexcept {
-      return variant.index();
-    }
-    inline ScannerFailure get_0() const noexcept {
-      return std::get<0>(variant);
-    }
-    inline LibraryImportResult get_1() const noexcept {
-      return std::get<1>(variant);
-    }
-  };
-  inline std__variant_ScannerFailure__LibraryImportResult_ create_std__variant_ScannerFailure__LibraryImportResult_(const ScannerFailure& value) noexcept {
-    return std__variant_ScannerFailure__LibraryImportResult_(value);
-  }
-  inline std__variant_ScannerFailure__LibraryImportResult_ create_std__variant_ScannerFailure__LibraryImportResult_(const LibraryImportResult& value) noexcept {
-    return std__variant_ScannerFailure__LibraryImportResult_(value);
-  }
-  
-  // pragma MARK: std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>>
-  /**
-   * Specialized version of `std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>>`.
-   */
-  using std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult___ = std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>>;
-  inline std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>> create_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult___() noexcept {
-    return Promise<std::variant<ScannerFailure, LibraryImportResult>>::create();
-  }
-  inline PromiseHolder<std::variant<ScannerFailure, LibraryImportResult>> wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult___(std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>> promise) noexcept {
-    return PromiseHolder<std::variant<ScannerFailure, LibraryImportResult>>(std::move(promise));
-  }
-  
-  // pragma MARK: std::function<void(const std::variant<ScannerFailure, LibraryImportResult>& /* result */)>
-  /**
-   * Specialized version of `std::function<void(const std::variant<ScannerFailure, LibraryImportResult>&)>`.
-   */
-  using Func_void_std__variant_ScannerFailure__LibraryImportResult_ = std::function<void(const std::variant<ScannerFailure, LibraryImportResult>& /* result */)>;
-  /**
-   * Wrapper class for a `std::function<void(const std::variant<ScannerFailure, LibraryImportResult>& / * result * /)>`, this can be used from Swift.
-   */
-  class Func_void_std__variant_ScannerFailure__LibraryImportResult__Wrapper final {
-  public:
-    explicit Func_void_std__variant_ScannerFailure__LibraryImportResult__Wrapper(std::function<void(const std::variant<ScannerFailure, LibraryImportResult>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::variant<ScannerFailure, LibraryImportResult>& /* result */)>>(std::move(func))) {}
-    inline void call(std::variant<ScannerFailure, LibraryImportResult> result) const noexcept {
-      _function->operator()(result);
-    }
-  private:
-    std::unique_ptr<std::function<void(const std::variant<ScannerFailure, LibraryImportResult>& /* result */)>> _function;
-  } SWIFT_NONCOPYABLE;
-  Func_void_std__variant_ScannerFailure__LibraryImportResult_ create_Func_void_std__variant_ScannerFailure__LibraryImportResult_(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_std__variant_ScannerFailure__LibraryImportResult__Wrapper wrap_Func_void_std__variant_ScannerFailure__LibraryImportResult_(Func_void_std__variant_ScannerFailure__LibraryImportResult_ value) noexcept {
-    return Func_void_std__variant_ScannerFailure__LibraryImportResult__Wrapper(std::move(value));
-  }
-  
   // pragma MARK: std::variant<ScanSessionObservation, ScannerFailure>
   /**
    * Wrapper struct for `std::variant<ScanSessionObservation, ScannerFailure>`.
@@ -1781,15 +1715,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
   }
   inline Result_std__shared_ptr_Promise_std__variant_std__vector_std__string___ScannerFailure____ create_Result_std__shared_ptr_Promise_std__variant_std__vector_std__string___ScannerFailure____(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<Promise<std::variant<std::vector<std::string>, ScannerFailure>>>>::withError(error);
-  }
-  
-  // pragma MARK: Result<std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>>>
-  using Result_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult____ = Result<std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>>>;
-  inline Result_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult____ create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult____(const std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>>& value) noexcept {
-    return Result<std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>>>::withValue(value);
-  }
-  inline Result_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult____ create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__LibraryImportResult____(const std::exception_ptr& error) noexcept {
-    return Result<std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>>>::withError(error);
   }
   
   // pragma MARK: Result<ScanSessionSnapshot>

@@ -55,6 +55,7 @@ namespace margelo::nitro::documentscanner {
   public:
     // Methods
     std::variant<std::shared_ptr<HybridScanSessionSpec>, ScannerFailure> createSessionResult() override;
+    std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> waitForCornerDetectionModelResult() override;
     std::shared_ptr<Promise<std::variant<ScannerFailure, SampleFolder>>> pickSampleFolderResult() override;
     SampleFolder getSampleFolder() override;
     void clearSampleFolder() override;

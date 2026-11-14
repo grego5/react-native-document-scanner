@@ -17,10 +17,11 @@ import com.facebook.proguard.annotations.DoNotStrip
 @Keep
 enum class DocumentState(@DoNotStrip @Keep val value: Int) {
   OFF(0),
-  SEARCHING(1),
-  TRACKING(2),
-  HELD(3),
-  UNAVAILABLE(4);
+  LOADING(1),
+  SEARCHING(2),
+  TRACKING(3),
+  HELD(4),
+  UNAVAILABLE(5);
 
   companion object
 }

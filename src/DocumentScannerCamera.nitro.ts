@@ -21,10 +21,12 @@ export type CameraState = 'suspended' | 'starting' | 'ready' | 'capturing'
 export type AutofocusState = 'inactive' | 'scan' | 'focused' | 'unfocused' | 'locked'
 
 /**
- * Live guidance: `off` when `guideLiveCorners` is false or no camera is bound, `held` while the last guide is dimmed for
- * up to 400 ms, and `unavailable` after a runtime failure.
+ * Document scanning: `loading` while the guide or `autoCrop` waits for its corner model, and the camera stays off;
+ * `unavailable` when that model failed (`model/load-failed` or, without any model, `input/invalid` on `onError`) or
+ * the live detector failed. Otherwise `off` when `guideLiveCorners` is false or no camera is bound, and `held` while
+ * the last guide is dimmed for up to 400 ms.
  */
-export type DocumentState = 'off' | 'searching' | 'tracking' | 'held' | 'unavailable'
+export type DocumentState = 'off' | 'loading' | 'searching' | 'tracking' | 'held' | 'unavailable'
 
 /**
  * Still-capture mode: `quality` favors image quality, `latency` the time to deliver each photo, and `zsl`
@@ -100,7 +102,10 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   /** Correction and output defaults for new pages, frozen when capture is admitted. */
   imageCorrection: ImageCorrectionOptions
   outputOptions: ImageOutputOptions
-  /** Required local model path/URI. Native prepares it before binding; dimensions come from the tensor. */
+  /**
+   * Local model path or URI. When `guideLiveCorners` or `autoCrop` is enabled, an omitted or empty source uses the
+   * Expo plugin's model. If that model is absent, the camera stays off and reports `input/invalid`.
+   */
   cornerDetectionModel?: string
   /** Native camera failure. A model preparation failure keeps the camera suspended until the source changes. */
   /** Reports camera failures and the non-blocking `camera/analysis-slow` warning. */
@@ -113,7 +118,9 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   active?: boolean
   /**
    * Enable live corner detection and the guide; defaults to true. Android also aims focus at the guide and can wait for
-   * a detected page during capture. Changing this setting does not rebind the camera.
+   * a detected page during capture. Toggling the guide keeps the current model request while `autoCrop` stays enabled
+   * or the same explicit source is set. With an omitted or empty source, disabling both lets the camera run without
+   * waiting for a model.
    */
   guideLiveCorners?: boolean
   /**

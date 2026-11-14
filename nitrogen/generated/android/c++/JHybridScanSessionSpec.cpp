@@ -11,8 +11,6 @@
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
-// Forward declaration of `LibraryImportResult` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct LibraryImportResult; }
 // Forward declaration of `ScanSessionSnapshot` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScanSessionSnapshot; }
 // Forward declaration of `ScanPageMetadata` to properly resolve imports.
@@ -59,9 +57,6 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include "JScannerErrorCode.hpp"
 #include <vector>
 #include "JVariant_Array_String__ScannerFailure.hpp"
-#include "LibraryImportResult.hpp"
-#include "JVariant_ScannerFailure_LibraryImportResult.hpp"
-#include "JLibraryImportResult.hpp"
 #include "JVariant_Boolean_ScannerFailure.hpp"
 #include "ScanSessionSnapshot.hpp"
 #include "JScanSessionSnapshot.hpp"
@@ -204,13 +199,13 @@ namespace margelo::nitro::documentscanner {
       return __promise;
     }();
   }
-  std::shared_ptr<Promise<std::variant<ScannerFailure, LibraryImportResult>>> JHybridScanSessionSpec::importFromLibraryResult(const ImportImageOptions& options, double maxCount) {
+  std::shared_ptr<Promise<std::variant<std::vector<std::string>, ScannerFailure>>> JHybridScanSessionSpec::importFromLibraryResult(const ImportImageOptions& options, double maxCount) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JImportImageOptions> /* options */, double /* maxCount */)>("importFromLibraryResult");
     auto __result = method(_javaPart, JImportImageOptions::fromCpp(options), maxCount);
     return [&]() {
-      auto __promise = Promise<std::variant<ScannerFailure, LibraryImportResult>>::create();
+      auto __promise = Promise<std::variant<std::vector<std::string>, ScannerFailure>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
-        auto __result = jni::static_ref_cast<JVariant_ScannerFailure_LibraryImportResult>(__boxedResult);
+        auto __result = jni::static_ref_cast<JVariant_Array_String__ScannerFailure>(__boxedResult);
         __promise->resolve(__result->toCpp());
       });
       __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {

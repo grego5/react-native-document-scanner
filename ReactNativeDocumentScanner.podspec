@@ -14,7 +14,6 @@ Pod::Spec.new do |s|
   s.source_files = ['ios/*.{swift,h,mm}', 'cpp/include/**/*.hpp', 'cpp/src/**/*.{hpp,cpp}']
   s.public_header_files = ['ios/ScannerSourcePixels.h', 'ios/ScannerCornerRuntime.h', 'ios/ScannerDocumentRender.h', 'ios/ScannerLiveTracking.h']
   s.private_header_files = ['cpp/include/**/*.hpp', 'cpp/src/**/*.hpp']
-  s.resource_bundles = { 'DocumentScannerModels' => ['resources/doccornernet/*'] }
   s.dependency 'DocumentScannerOpenCV', '4.12.0'
   s.dependency 'TensorFlowLiteC', '2.17.0'
   s.frameworks = ['UIKit', 'Accelerate', 'AVFoundation', 'CoreMedia', 'CoreVideo', 'ImageIO', 'UniformTypeIdentifiers']
@@ -30,7 +29,7 @@ Pod::Spec.new do |s|
   s.test_spec 'ScaffoldTests' do |test|
     test.source_files = 'ios/Tests/**/*.{swift,mm}'
     test.frameworks = 'XCTest'
-    test.resources = ['ios/Tests/Fixtures/*.tflite', 'tests/fixtures/parity/adaptive.tsv', 'tests/fixtures/parity/torch.tsv',
+    test.resources = ['ios/Tests/Fixtures/*.tflite', 'example/assets/doccornernet/model.tflite', 'tests/fixtures/parity/adaptive.tsv', 'tests/fixtures/parity/torch.tsv',
                       'tests/fixtures/parity/standard-resolution.tsv', 'tests/fixtures/parity/capture-events.tsv']
   end
   install_modules_dependencies(s)

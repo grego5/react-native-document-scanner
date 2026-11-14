@@ -8,7 +8,9 @@ npm install react-native-document-scanner react-native-nitro-modules
 
 Rebuild the host app after installation. Expo requires a development build.
 
-For Expo prebuild, add `'react-native-document-scanner'` to your app's `plugins` array before `expo-build-properties` if you use it. The plugin registers the bundled OpenCV pod on iOS.
+The package ships no corner detection model. Document scanning needs a float32 TFLite model; without one the camera reports the scanner unavailable, and `mode="photo"` works without it.
+
+For Expo prebuild, add `['react-native-document-scanner', { cornerDetectionModel: './path/to/model.tflite' }]` to your app's `plugins` array before `expo-build-properties` if you use it. The plugin registers the bundled OpenCV pod on iOS and copies the model into both apps, where `Camera` and imports use it by default. Without the plugin, pass a model through the camera's `cornerDetectionModel` prop.
 
 The Expo example uses one scanning workflow on Android, iPhone, and iPad, including crop and filter editing, saving rendered pages to Photos, and sharing PDFs.
 

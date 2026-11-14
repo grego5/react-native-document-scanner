@@ -1,7 +1,6 @@
 import type { DocumentFilter, DocumentCorners } from './DocumentScannerProcessor.nitro'
 import type {
   ImportImageOptions,
-  LibraryImportResult,
   SessionPdfOptions,
   ScanSessionChange,
   ScanPageMetadata as NativePageMetadata,
@@ -53,16 +52,18 @@ export interface ScanSession {
   saveCaptureSample(pageId: string): Promise<string>
   /**
    * Appends a picked image as a page that is analyzed, cropped and filtered like a capture; resolves with its page ID
-   * once admitted. Rendering continues in the background, as for a capture.
+   * once admitted. Analysis and rendering continue in the background; while the corner model loads the page shows its
+   * full image, and an automatic crop follows once the model is ready.
    */
   importImage(uri: string, options?: ImportImageOptions): Promise<string>
   /** Imports images one at a time in order; each succeeds or fails on its own. */
   importImages(uris: readonly string[], options?: ImportImageOptions): Promise<ImportImageOutcome[]>
   /**
-   * Presents the system photo picker and imports the picked images in order, like `importImage`. Cancelling resolves
-   * with no pages. `maxCount` limits the selection; omitted, the system maximum applies.
+   * Presents the system photo picker and imports the picked images in order, like `importImage`; resolves with the
+   * admitted page IDs in picked order. Unreadable picks are skipped; cancelling, or admitting none, resolves `[]`.
+   * `maxCount` limits the selection; omitted, the system maximum applies.
    */
-  importFromLibrary(options?: LibraryImportOptions): Promise<LibraryImportResult>
+  importFromLibrary(options?: LibraryImportOptions): Promise<string[]>
   close(): Promise<void>
 }
 
@@ -320,9 +321,9 @@ class SessionStore implements ScanSession {
     return outcomes
   }
 
-  importFromLibrary = ({ maxCount = 0, ...options }: LibraryImportOptions = {}): Promise<LibraryImportResult> =>
+  importFromLibrary = ({ maxCount = 0, ...options }: LibraryImportOptions = {}): Promise<string[]> =>
     scannerOperation(() => this.native.importFromLibraryResult(options, maxCount), 'image/load-failed')
-      .then((result) => { this.synchronize(); return result })
+      .then((pageIds) => { this.synchronize(); return pageIds })
 
   close = (): Promise<void> => {
     if (this.closePromise !== undefined) return this.closePromise

@@ -19,6 +19,8 @@ public extension DocumentState {
     switch string {
       case "off":
         self = .off
+      case "loading":
+        self = .loading
       case "searching":
         self = .searching
       case "tracking":
@@ -39,6 +41,8 @@ public extension DocumentState {
     switch self {
       case .off:
         return "off"
+      case .loading:
+        return "loading"
       case .searching:
         return "searching"
       case .tracking:

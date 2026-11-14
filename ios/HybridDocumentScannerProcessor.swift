@@ -6,9 +6,29 @@ import NitroModules
 /// operations that would pick, enable or write a sample report feature/unsupported.
 class HybridDocumentScannerProcessor: HybridDocumentScannerProcessorSpec {
 
+  private let models: CornerModelLoader
+
+  init(models: CornerModelLoader = .shared) { self.models = models }
+
   func createSessionResult() throws -> Variant__any_HybridScanSessionSpec__ScannerFailure {
-    do { return .first(HybridScanSession(state: try ScanSessionRegistry.shared.createState())) }
-    catch { return .second(ScannerCodeError.failure(error, fallback: .processorUnavailable)) }
+    do {
+      let session = HybridScanSession(state: try ScanSessionRegistry.shared.createState())
+      // The shared default request outlives any session.
+      models.startDefault()
+      return .first(session)
+    } catch { return .second(ScannerCodeError.failure(error, fallback: .processorUnavailable)) }
+  }
+
+  func waitForCornerDetectionModelResult() throws -> Promise<Variant_Bool_ScannerFailure> {
+    let promise = Promise<Variant_Bool_ScannerFailure>()
+    models.startDefault()
+    models.wait { result in
+      switch result {
+      case .success(let ready): promise.resolve(withResult: .first(ready))
+      case .failure(let error): promise.resolve(withResult: .second(ScannerFailure(code: error.code)))
+      }
+    }
+    return promise
   }
 
   func pickSampleFolderResult() throws -> Promise<Variant_ScannerFailure_SampleFolder> {
@@ -29,4 +49,6 @@ class HybridDocumentScannerProcessor: HybridDocumentScannerProcessorSpec {
   func setSampleFolder(uri: String) throws {
     throw ScannerUnsupported.error
   }
+
+  /// The app bundle resource the Expo plugin installs `cornerDetectionModel` as.
 }
