@@ -25,9 +25,10 @@ namespace margelo::nitro::documentscanner { struct SampleFolder; }
 #include "JScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
 #include "JScannerErrorCode.hpp"
-#include "SampleFolder.hpp"
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
+#include "JVariant_Boolean_ScannerFailure.hpp"
+#include "SampleFolder.hpp"
 #include "JVariant_ScannerFailure_SampleFolder.hpp"
 #include "JSampleFolder.hpp"
 #include <string>
@@ -70,6 +71,22 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JVariant_HybridScanSessionSpec_ScannerFailure>()>("createSessionResult");
     auto __result = method(_javaPart);
     return __result->toCpp();
+  }
+  std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> JHybridDocumentScannerProcessorSpec::waitForCornerDetectionModelResult() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("waitForCornerDetectionModelResult");
+    auto __result = method(_javaPart);
+    return [&]() {
+      auto __promise = Promise<std::variant<bool, ScannerFailure>>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<JVariant_Boolean_ScannerFailure>(__boxedResult);
+        __promise->resolve(__result->toCpp());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
   }
   std::shared_ptr<Promise<std::variant<ScannerFailure, SampleFolder>>> JHybridDocumentScannerProcessorSpec::pickSampleFolderResult() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("pickSampleFolderResult");

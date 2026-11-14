@@ -11,6 +11,16 @@ protocol ScanSessionActions: AnyObject {
   func close()
 }
 
+/// Work tied to a session's close before it reaches the image worker, such as a gallery import. Close takes every
+/// registration in one step under the session lock, then runs each cancellation once, outside that lock.
+protocol CloseRegistration: AnyObject, Sendable {
+  /// True until close takes the registration or `tryUnregister()` removes it; for authorizing a presentation.
+  var isRegistered: Bool { get }
+  /// Claims a normal outcome: true when this removed the registration first. False once close has taken it, so the
+  /// cancellation owns the outcome even before close has invoked it.
+  func tryUnregister() -> Bool
+}
+
 /// Native admission and publication owner. Commands acknowledge settings immediately;
 /// image work is keyed FIFO metadata. Page transitions use the lock, image actions run
 /// outside it, and versioned changes are copied under it and delivered afterwards.
@@ -31,12 +41,20 @@ final class ScanSessionState: @unchecked Sendable {
   // Work that has not reached the image worker yet, such as an open gallery picker, keyed by registration.
   private var closeCancellations: [Int: @Sendable () -> NativeCompletion] = [:]
   private var nextCancellation = 0
+  /// The shared model status this session last observed. Import admission and the observer both use it under the lock.
+  private var model: CornerModelStatus = .absent
+  private var stopObservingModel: (() -> Void)?
+
+  /// Registers for the app-wide model status, current status first; returns the removal.
+  typealias ModelObservation = (@escaping (CornerModelStatus) -> Void) -> () -> Void
 
   init(resources: SessionResources, actions: ScanSessionActions,
-       dispatcher: @escaping (@escaping () -> Void) -> Void) {
+       dispatcher: @escaping (@escaping () -> Void) -> Void,
+       models: ModelObservation = { CornerModelLoader.shared.observe($0) }) {
     self.resources = resources
     self.actions = actions
     events = ScanSessionEvents(lock: lock, dispatcher: dispatcher)
+    stopObservingModel = models { [weak self] in self?.modelChanged($0) }
   }
 
   private func locked<T>(_ action: () throws -> T) rethrows -> T {
@@ -50,17 +68,25 @@ final class ScanSessionState: @unchecked Sendable {
     return try action()
   }
 
-  /// Runs `cancel` once, on the closing thread, if the session closes before the returned unregistration is called.
-  /// For operations that are not yet queued work; close completes only after the completion `cancel` returns, such
-  /// as a picker's release of its slot. Throws `processor/disposed` when already closed.
-  func onClose(_ cancel: @escaping @Sendable () -> NativeCompletion) throws -> () -> Void {
+  /// Runs `cancel` once, on the closing thread, if close takes the registration first. Close completes only after
+  /// the completion `cancel` returns, such as a picker's release of its slot; work without async cleanup returns a
+  /// completed one. Throws `processor/disposed` when already closed.
+  func registerCloseCancellation(_ cancel: @escaping @Sendable () -> NativeCompletion) throws -> CloseRegistration {
     let key: Int = try locked {
       try requireOpen()
       nextCancellation += 1
       closeCancellations[nextCancellation] = cancel
       return nextCancellation
     }
-    return { [self] in _ = locked { closeCancellations.removeValue(forKey: key) } }
+    return Registration(state: self, key: key)
+  }
+
+  private final class Registration: CloseRegistration, @unchecked Sendable {
+    private let state: ScanSessionState
+    private let key: Int
+    init(state: ScanSessionState, key: Int) { self.state = state; self.key = key }
+    var isRegistered: Bool { state.locked { state.closeCancellations[key] != nil } }
+    func tryUnregister() -> Bool { state.locked { state.closeCancellations.removeValue(forKey: key) != nil } }
   }
 
   private func changed(_ page: ScanPage) { events.updatePage(page.metadata) }
@@ -98,7 +124,27 @@ final class ScanSessionState: @unchecked Sendable {
   func admitSource(id: String, source: URL, frame: SessionResources.Resource? = nil, liveCorners: DocumentCorners? = nil,
                    options: DocumentRenderOptions? = nil,
                    selection: CornerInference.Selection? = try? CornerInference.shared.selection(),
-                   autoCrop: Bool = true, preview: CGImage? = nil, previewReleased: @escaping PreviewReleased = {}) throws {
+                   autoCrop: Bool = true, preview: CGImage? = nil,
+                   previewReleased: @escaping PreviewReleased = {}) throws {
+    try adopt(source, frame: frame) { original in
+      try admit(id: id, original: original, frame: frame, liveCorners: liveCorners.map(SessionCorners.coordinates),
+                settings: RenderSettings(options), selection: selection, autoCrop: autoCrop, imported: false,
+                preview: preview, previewReleased: previewReleased)
+    }
+  }
+
+  /// Admits an imported SourceStore-published original, which has no frame or live corners. The page follows the
+  /// shared model; a failed admission retires the source.
+  func admitImport(id: String, source: URL, settings: RenderSettings, autoCrop: Bool) throws {
+    try adopt(source, frame: nil) { original in
+      try admit(id: id, original: original, frame: nil, liveCorners: nil, settings: settings, selection: nil,
+                autoCrop: autoCrop, imported: true)
+    }
+  }
+
+  /// Adopts `source` and runs `admit` with it, retiring the source and `frame` when either fails.
+  private func adopt(_ source: URL, frame: SessionResources.Resource?,
+                     admit: (SessionResources.Resource) throws -> Void) throws {
     let original: SessionResources.Resource
     do { original = try resources.adoptSource(source) }
     catch {
@@ -110,8 +156,7 @@ final class ScanSessionState: @unchecked Sendable {
       throw error
     }
     do {
-      try admit(id: id, original: original, frame: frame, liveCorners: liveCorners.map(SessionCorners.coordinates),
-                options: options, selection: selection, autoCrop: autoCrop, preview: preview, previewReleased: previewReleased)
+      try admit(original)
     } catch {
       resources.remove(original)
       if let frame { resources.remove(frame) }
@@ -121,10 +166,13 @@ final class ScanSessionState: @unchecked Sendable {
 
   /// Takes ownership of already published session resources only on success. Without `autoCrop` the page keeps the
   /// full frame: it is still analyzed, so the editor's automatic preset and samples have the candidate, but the
-  /// candidate is never applied by itself.
-  func admit(id: String, original: SessionResources.Resource, frame: SessionResources.Resource?,
-             liveCorners: CornerCoordinates?, options: DocumentRenderOptions?, selection: CornerInference.Selection?,
-             autoCrop: Bool = true, preview: CGImage? = nil, previewReleased: @escaping PreviewReleased = {}) throws {
+  /// candidate is never applied by itself. A capture analyzes with its frozen `selection` before its first render. An
+  /// `imported` page ignores `selection` and follows the shared model: analyzed at once when it is ready, analyzed
+  /// without a model when it is absent or failed, otherwise displayed at full frame until it settles.
+  private func admit(id: String, original: SessionResources.Resource, frame: SessionResources.Resource?,
+                     liveCorners: CornerCoordinates?, settings: RenderSettings, selection: CornerInference.Selection?,
+                     autoCrop: Bool, imported: Bool, preview: CGImage? = nil,
+                     previewReleased: @escaping PreviewReleased = {}) throws {
     try transition {
       try requireOpen()
       guard !id.isEmpty, pages[id] == nil, original.owner === resources, original.kind == .original,
@@ -132,35 +180,72 @@ final class ScanSessionState: @unchecked Sendable {
             liveCorners.map(SessionCorners.renderable) ?? true,
             !pages.values.contains(where: { $0.original === original || (frame != nil && $0.frame === frame) })
       else { throw ScannerCodeError.inputInvalid }
-      let settings = try RenderSettings(options)
       try resources.lease(original).close()
       if let frame { try resources.lease(frame).close() }
-      let analysisSource = try resources.lease(original)
-      let analyze: () throws -> AnalysisValue
-      do { analyze = try actions.prepareAnalysis(analysisSource, liveCorners: liveCorners, selection: selection) }
-      catch { analysisSource.close(); throw error }
-      let page = ScanPage(id: id, original: original, frame: frame, settings: settings,
-                          selection: selection, liveCorners: liveCorners)
+      let page = ScanPage(id: id, original: original, frame: frame, settings: settings, liveCorners: liveCorners)
       page.explicitGeometry = !autoCrop
+      switch (imported, model) {
+      case (true, .loading):
+        page.awaitingModel = true
+        page.analysisGatesRender = false
+      case (true, .ready(_, let shared)): try analyze(page, selection: shared)
+      case (true, _): try analyze(page, selection: nil)
+      case (false, _): try analyze(page, selection: selection)
+      }
       pages[id] = page
       if let preview {
         if let capturePreview { releaseCapturePreview(capturePreview.id) }
         capturePreview = (id, preview, previewReleased)
       }
       changed(page)
-      queue.submit(resources.workOwner, kind: .analysis, pageId: id,
-        operation: { [self] in
-          try locked { if page.exportAnalysisPins == 0 { try requireCurrent(page) } }
-          return try analyze()
-        },
-        onSuccess: { [self] analysis in
-          analysisSource.close()
-          finishAnalysis(page, .success(analysis))
-        },
-        onFailure: { [self] error in
-          analysisSource.close()
-          finishAnalysis(page, .failure(error))
-        })
+      if page.awaitingModel { requestRender(page) }
+    }
+  }
+
+  /// Pins the original only now and submits analysis with `selection`, frozen for its result. Under the lock.
+  private func analyze(_ page: ScanPage, selection: CornerInference.Selection?) throws {
+    let source = try resources.lease(page.original)
+    let analyze: () throws -> AnalysisValue
+    do { analyze = try actions.prepareAnalysis(source, liveCorners: page.liveCorners, selection: selection) }
+    catch { source.close(); throw error }
+    page.awaitingModel = false
+    page.selection = selection
+    page.analyzing = true
+    queue.submit(resources.workOwner, kind: .analysis, pageId: page.id,
+      operation: { [self] in
+        try locked { if page.exportAnalysisPins == 0 { try requireCurrent(page) } }
+        return try analyze()
+      },
+      onSuccess: { [self] analysis in
+        source.close()
+        finishAnalysis(page, .success(analysis))
+      },
+      onFailure: { [self] error in
+        source.close()
+        finishAnalysis(page, .failure(error))
+      })
+  }
+
+  /// Ready submits every waiting import, in page order, with its selection; absent or failed analyzes them without
+  /// a model, so they keep their full frame. Loading keeps them waiting. Configuration errors never fail a page.
+  private func modelChanged(_ status: CornerModelStatus) {
+    transition {
+      guard !closed else { return }
+      model = status
+      let selection: CornerInference.Selection?
+      switch status {
+      case .loading: return
+      case .ready(_, let ready): selection = ready
+      case .absent, .failed: selection = nil
+      }
+      for page in events.pageIds.compactMap({ pages[$0] }) where page.awaitingModel {
+        do { try analyze(page, selection: selection) }
+        catch {
+          page.awaitingModel = false
+          page.analysisFailure = ScannerCodeError.code(error, fallback: .analysisFailed)
+          changed(page)
+        }
+      }
     }
   }
 
@@ -217,11 +302,9 @@ final class ScanSessionState: @unchecked Sendable {
     if page.corners == corners && page.settings == settings && page.renderFailure == nil { return }
     page.corners = corners
     page.settings = settings
-    page.requestedRevision += 1
-    page.renderFailure = nil
-    invalidate(page)
+    revise(page)
     changed(page)
-    if !page.analyzing { requestRender(page) }
+    if !page.renderWaitsForAnalysis { requestRender(page) }
   }
 
   private func finishAnalysis(_ page: ScanPage, _ result: Result<AnalysisValue, Error>) {
@@ -237,14 +320,16 @@ final class ScanSessionState: @unchecked Sendable {
         page.analysis = nil
         page.analysisFailure = ScannerCodeError.code(error, fallback: .analysisFailed)
       }
+      var cropped = false
       if !page.explicitGeometry, let candidate = page.analysis?.candidate, SessionCorners.renderable(candidate),
          page.corners != candidate {
         page.corners = candidate
-        page.requestedRevision += 1
-        invalidate(page)
+        revise(page)
+        cropped = true
       }
       changed(page)
-      requestRender(page)
+      // A page displayed while it waited already rendered its current geometry.
+      if page.analysisGatesRender || cropped { requestRender(page) }
     }
   }
 
@@ -289,7 +374,10 @@ final class ScanSessionState: @unchecked Sendable {
     a.corners == b.corners && (try? a.settings.with(filter: b.settings.filter, removeShadows: b.settings.removeShadows)) == b.settings
   }
 
-  private func invalidate(_ page: ScanPage) {
+  /// Every geometry or output change: a new revision without the old error or output it no longer matches.
+  private func revise(_ page: ScanPage) {
+    page.requestedRevision += 1
+    page.renderFailure = nil
     let key = page.key
     page.cache.removeAll { entry in
       guard !compatible(key, entry.key) else { return false }
@@ -347,7 +435,8 @@ final class ScanSessionState: @unchecked Sendable {
   // MARK: Exports
 
   /// One locked admission: validates every ID, then pins sources, matching renders and
-  /// automatic analysis in invocation order (duplicates included).
+  /// automatic analysis in invocation order (duplicates included). Automatic geometry waits only for analysis already
+  /// queued ahead of the export; an import still waiting for the model exports the geometry and settings it has now.
   func exportSnapshot(_ requested: [String]?) throws -> SessionExportSnapshot {
     try locked {
       try requireOpen()
@@ -401,10 +490,12 @@ final class ScanSessionState: @unchecked Sendable {
   /// claimed publications and physical cleanup. Idempotent.
   @discardableResult
   func close() -> NativeCompletion {
+    stopObservingModel?() // Idempotent; a late status finds the session closed.
     let (result, first, cancellations): (NativeCompletion, Bool, [@Sendable () -> NativeCompletion]) = transition {
       if let completion { return (completion, false, []) }
       closed = true
-      let pending = Array(closeCancellations.values)
+      // Registration order, so cancellations run in the order their operations started.
+      let pending = closeCancellations.sorted { $0.key < $1.key }.map(\.value)
       closeCancellations.removeAll()
       pages.removeAll()
       if let capturePreview { releaseCapturePreview(capturePreview.id) }

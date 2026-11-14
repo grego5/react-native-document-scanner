@@ -6,6 +6,7 @@ import com.margelo.nitro.documentscanner.processing.CornerInference
 import com.margelo.nitro.documentscanner.processing.DocumentRenderer
 import com.margelo.nitro.documentscanner.processing.FastCores
 import com.margelo.nitro.documentscanner.processing.PhotoAnalysis
+import com.margelo.nitro.documentscanner.processing.SourceImageLoader
 import com.margelo.nitro.documentscanner.processing.CornerModelStore
 
 /** One state owns this model lease; all image use and its close barrier share the serial image owner. */
@@ -20,8 +21,11 @@ internal class SessionPageProcessing(
     return { resources.lease(original).use { source -> preparePinnedAnalysis(source, liveCorners, selection)() } }
   }
 
-  override fun preparePinnedAnalysis(source: SessionResources.Lease, liveCorners: DocumentCorners?, selection: CornerModelStore.Selection?): () -> DocumentAnalysis = {
-    val selected = selection ?: throw ScannerException(ScannerErrorCode.MODEL_LOAD_FAILED)
+  /** Without a model the analysis finds no page. */
+  override fun preparePinnedAnalysis(source: SessionResources.Lease, liveCorners: DocumentCorners?, selection: CornerModelStore.Selection?): () -> DocumentAnalysis = analysis@{
+    val selected = selection ?: return@analysis SourceImageLoader.inspect(Uri.fromFile(source.file).toString()).let {
+      DocumentAnalysis(it.uprightWidth.toDouble(), it.uprightHeight.toDouble(), 0.0, null)
+    }
     val lease = model ?: CornerInference.acquire(context).also { model = it }
     PhotoAnalysis.analyze(Uri.fromFile(source.file).toString(), liveCorners, lease, selected)
   }

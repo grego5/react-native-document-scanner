@@ -48,8 +48,7 @@ android {
     }
   }
 
-  // Keep the runtime asset path doccornernet/model.tflite while sharing its canonical source.
-  sourceSets.main.assets.srcDir('../resources')
+  sourceSets.androidTest.assets.srcDir('../example/assets')
 
   // Share the unchanged Kotlin resize oracle between JVM and instrumentation tests only.
   sourceSets.test.java.srcDir('src/testSupport/java')
@@ -110,17 +109,17 @@ dependencies {
 }
 
 tasks.register('verifyDocCornerModelAsset') {
-  def assetFile = file('../resources/doccornernet/model.tflite')
-  def provenance = file('../resources/doccornernet/provenance.json')
+  def assetFile = file('../example/assets/doccornernet/model.tflite')
+  def provenance = file('../example/assets/doccornernet/provenance.json')
   inputs.files(assetFile, provenance)
   doLast {
-    if (!assetFile.isFile()) throw new GradleException('DocCornerNet asset is missing. See .agents/skills/docs/references/tools.md for model export instructions.')
+    if (!assetFile.isFile()) throw new GradleException('DocCornerNet test model is missing. See .agents/skills/docs/references/tools.md for model export instructions.')
     def expected = new groovy.json.JsonSlurper().parse(provenance).tfliteSha256
     def hash = java.security.MessageDigest.getInstance('SHA-256').digest(assetFile.bytes).encodeHex().toString()
     if (hash != expected) throw new GradleException('DocCornerNet model SHA-256 mismatch.')
   }
 }
 
-tasks.named('preBuild').configure {
+tasks.matching { it.name ==~ /pre\w*AndroidTestBuild/ }.configureEach {
   dependsOn tasks.named('verifyDocCornerModelAsset')
 }

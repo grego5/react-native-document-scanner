@@ -36,6 +36,10 @@ abstract class HybridDocumentScannerProcessorSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun waitForCornerDetectionModelResult(): Promise<Variant_Boolean_ScannerFailure>
+  
+  @DoNotStrip
+  @Keep
   abstract fun pickSampleFolderResult(): Promise<Variant_ScannerFailure_SampleFolder>
   
   @DoNotStrip

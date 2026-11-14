@@ -18,21 +18,14 @@ export interface SessionPdfOptions {
 /**
  * Page defaults for an imported image, frozen at admission like a capture's. The original is downscaled to the smallest
  * size that still covers `outputOptions`' paper at its dpi, or to the 4096 px render limit without a paper size.
- * Analysis uses the model the camera has prepared, or the bundled model when none is; a call freezes it for every
- * image it admits.
+ * Analysis uses the app-wide corner model: a page admitted while it loads shows its full image and is analyzed once
+ * the model is ready.
  */
 export interface ImportImageOptions {
   imageCorrection?: ImageCorrectionOptions
   outputOptions?: ImageOutputOptions
   /** Crop to the page analysis finds; defaults to true. Without a page the whole image is kept for editing. */
   autoCrop?: boolean
-}
-
-/** Pages admitted from a library pick, in picked order. Cancelling the picker admits none. */
-export interface LibraryImportResult {
-  readonly pageIds: string[]
-  /** Picked images that could not be admitted. */
-  readonly failedCount: number
 }
 
 /** Native metadata only. Image files and render caches remain outside transport. */
@@ -82,9 +75,10 @@ export interface ScanSession extends HybridObject<{ ios: 'swift'; android: 'kotl
   importImageResult(uri: string, options: ImportImageOptions): Promise<string | ScannerFailure>
   /**
    * Presents the system photo picker, without library permission, and admits each picked image in order as by
-   * `importImageResult`. `maxCount` 0 allows the system maximum. One picker may be open at a time.
+   * `importImageResult`; resolves with the admitted page IDs in picked order. Unreadable picks are skipped, and
+   * cancelling or admitting none resolves `[]`. `maxCount` 0 allows the system maximum. One picker may be open at a time.
    */
-  importFromLibraryResult(options: ImportImageOptions, maxCount: number): Promise<LibraryImportResult | ScannerFailure>
+  importFromLibraryResult(options: ImportImageOptions, maxCount: number): Promise<string[] | ScannerFailure>
   saveCaptureSampleResult(pageId: string): Promise<string | ScannerFailure>
   setDocumentCropResult(pageId: string, corners: DocumentCorners): Promise<boolean | ScannerFailure>
   setFilterResult(pageId: string, filter: DocumentFilter): Promise<boolean | ScannerFailure>

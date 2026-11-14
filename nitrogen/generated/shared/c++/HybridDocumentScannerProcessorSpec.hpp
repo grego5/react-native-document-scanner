@@ -24,8 +24,8 @@ namespace margelo::nitro::documentscanner { struct SampleFolder; }
 #include "HybridScanSessionSpec.hpp"
 #include "ScannerFailure.hpp"
 #include <variant>
-#include "SampleFolder.hpp"
 #include <NitroModules/Promise.hpp>
+#include "SampleFolder.hpp"
 #include <string>
 
 namespace margelo::nitro::documentscanner {
@@ -60,6 +60,7 @@ namespace margelo::nitro::documentscanner {
     public:
       // Methods
       virtual std::variant<std::shared_ptr<HybridScanSessionSpec>, ScannerFailure> createSessionResult() = 0;
+      virtual std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> waitForCornerDetectionModelResult() = 0;
       virtual std::shared_ptr<Promise<std::variant<ScannerFailure, SampleFolder>>> pickSampleFolderResult() = 0;
       virtual SampleFolder getSampleFolder() = 0;
       virtual void clearSampleFolder() = 0;

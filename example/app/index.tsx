@@ -21,6 +21,7 @@ import {
   type CameraCaptureState,
   type CaptureWaitReason,
   type CaptureStage,
+  type DocumentState,
   type TorchMode,
 } from 'react-native-document-scanner';
 import { DEFAULT_TUNING, OptionsPanel } from '../components/OptionsPanel';
@@ -36,8 +37,6 @@ import { loadSettings, saveSettings } from '../lib/settings';
 import { CAPTURE_PAPER, MAX_PAGES } from '../lib/scanSession';
 import { styles } from '../styles';
 import { captureWaitLabels } from '../lib/labels';
-
-const CORNER_MODEL = 'asset:///doccornernet/model.tflite';
 
 /** One headless owner. Attached camera and review views borrow it. */
 export default function App() {
@@ -113,6 +112,7 @@ export function ScanScreen({
   const [message, setMessage] = useState('');
   const [captureState, setCaptureState] = useState<CameraCaptureState>('unavailable');
   const [waitReason, setWaitReason] = useState<CaptureWaitReason>();
+  const [documentState, setDocumentState] = useState<DocumentState>('off');
   const capturing =
     captureState === 'waiting' || captureState === 'shooting' || captureState === 'saving';
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -233,11 +233,11 @@ export function ScanScreen({
     ...shared,
     lowQualityControl: { enabled: shared.lowQualityControl },
     session: session.native,
-    cornerDetectionModel: CORNER_MODEL,
     ref: cameraRef,
     torch,
     active: showing,
     onCaptureStateChange: setCaptureState,
+    onDocumentStateChange: setDocumentState,
     onCameraStateChange: (state: CameraState) => {
       if (state === 'ready') setCameraFeatures(cameraRef.current?.getCameraFeatures());
     },
@@ -286,6 +286,17 @@ export function ScanScreen({
               <Text style={styles.notice}>
                 This scan has {MAX_PAGES} pages, the most it can hold. Tap Pages.
               </Text>
+            )}
+            {/* The camera never leaves document mode by itself: the user waits or picks photo mode. */}
+            {granted && mode === 'document' && (documentState === 'loading' || documentState === 'unavailable') && (
+              <>
+                <Text style={styles.notice}>
+                  {documentState === 'loading'
+                    ? 'Preparing the document scanner…'
+                    : 'The document scanner is unavailable.'}
+                </Text>
+                <PrimaryButton label="Use photo mode" onPress={() => switchMode('photo')} />
+              </>
             )}
             {captureState === 'waiting' && waitReason && (
               <Text style={styles.notice}>{captureWaitLabels[waitReason]}</Text>

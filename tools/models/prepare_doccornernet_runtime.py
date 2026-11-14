@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--output', type=Path, default=root / '.local/doccornernet-runtime/assets')
     parser.add_argument('--checkpoint',type=Path,default=root/'.local/mobilenetv3_custom_224_081126/best_model_inference.keras')
     parser.add_argument('--layers',type=Path,default=root/'.local/models/mobilenetv3_custom_224_v1/model.py')
+    parser.add_argument('--model',type=Path,default=root/'.local/mobilenetv3_custom_224_081126/export/model.tflite')
     args = parser.parse_args()
     from export_adapted_doccornernet import load_float32_model
     import numpy as np
@@ -25,11 +26,12 @@ def main():
 
     model=load_float32_model(args.checkpoint,args.layers)
     size=int(model.input_shape[1])
-    asset = root / 'resources/doccornernet/model.tflite'
+    asset = args.model
     interpreter = tf.lite.Interpreter(model_path=str(asset), num_threads=2)
     interpreter.allocate_tensors()
     destination = args.output / 'doccornernet-runtime'
     destination.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(asset, destination / 'model.tflite')
     rows = []
     photos = sorted((p for p in args.photos.iterdir() if p.stem.isdigit() and
                      p.suffix.lower() in {'.jpg', '.jpeg'}), key=lambda p: int(p.stem))

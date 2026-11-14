@@ -87,8 +87,16 @@ export interface SampleFolder {
  * the iOS source layer accepts TIFF/JPEG/PNG with EXIF applied before pixel consumers. */
 export interface DocumentScannerProcessor
   extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
-  /** Creates an explicitly owned session; close it when its pages are no longer needed. */
+  /**
+   * Creates an explicitly owned session; close it when its pages are no longer needed. The first session starts
+   * loading the Expo plugin's model unless a source was already requested.
+   */
   createSessionResult(): ScanSession | ScannerFailure
+  /**
+   * Waits for the app-wide corner model's current request, starting the Expo plugin's model first if nothing was
+   * requested. `true` once it is active, `false` without any model; a failed or superseded request rejects.
+   */
+  waitForCornerDetectionModelResult(): Promise<boolean | ScannerFailure>
   /**
    * Opens the system folder picker for sample collection, such as a folder in Downloads or Documents, and resolves with
    * the folder now in use. Nothing is written until `saveCaptureSample` is called. The library keeps the grant across restarts and releases the previous folder's;

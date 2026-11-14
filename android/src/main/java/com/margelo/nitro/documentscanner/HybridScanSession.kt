@@ -41,34 +41,29 @@ class HybridScanSession internal constructor(internal val state: ScanSessionStat
     try {
       val context = NitroModules.applicationContext ?: throw ScannerException(ScannerErrorCode.PROCESSOR_UNAVAILABLE)
       val source = Uri.parse(uri)
-      // Validate defaults before waiting for a model, so bad options reject as input.
       val render = DocumentRenderer.effectiveOptions(renderOptions(options.imageCorrection, options.outputOptions))
-      ImageImport.model(context) { model ->
-        model.fold({ ImageImport.admit(context, state, source, render, options.autoCrop ?: true, it) { result ->
-          result.fold(promise::resolve, promise::reject)
-        } }, promise::reject)
+      ImageImport.fromFile(context, state, source, render, options.autoCrop ?: true) { result ->
+        result.fold(promise::resolve, promise::reject)
       }
     } catch (error: Throwable) { promise.reject(error) }
     return promise.scannerResult(ScannerErrorCode.IMAGE_LOAD_FAILED,
       Variant_String_ScannerFailure::create, Variant_String_ScannerFailure::create)
   }
 
-  override fun importFromLibraryResult(options: ImportImageOptions, maxCount: Double): Promise<Variant_ScannerFailure_LibraryImportResult> {
-    val promise = Promise<LibraryImportResult>()
+  override fun importFromLibraryResult(options: ImportImageOptions, maxCount: Double): Promise<Variant_Array_String__ScannerFailure> {
+    val promise = Promise<Array<String>>()
     try {
       val context = NitroModules.applicationContext ?: throw ScannerException(ScannerErrorCode.PROCESSOR_UNAVAILABLE)
       requireInput(maxCount.isFinite() && maxCount >= 0 && maxCount % 1.0 == 0.0) { "maxCount must be a whole number from 0." }
       val render = DocumentRenderer.effectiveOptions(renderOptions(options.imageCorrection, options.outputOptions))
       val autoCrop = options.autoCrop ?: true
-      // The model is frozen before presenting, so every pick of this call uses it whatever changes meanwhile.
-      ImageImport.model(context) { model ->
-        model.fold({ ImageImport.fromLibrary(context, state, maxCount.toInt(), render, autoCrop, it) { result ->
-          result.fold(promise::resolve, promise::reject)
-        } }, promise::reject)
+      // Options are validated before the picker opens.
+      ImageImport.fromLibrary(context, state, maxCount.toInt(), render, autoCrop) { result ->
+        result.fold({ promise.resolve(it.toTypedArray()) }, promise::reject)
       }
     } catch (error: Throwable) { promise.reject(error) }
     return promise.scannerResult(ScannerErrorCode.IMAGE_LOAD_FAILED,
-      Variant_ScannerFailure_LibraryImportResult::create, Variant_ScannerFailure_LibraryImportResult::create)
+      Variant_Array_String__ScannerFailure::create, Variant_Array_String__ScannerFailure::create)
   }
 
   override fun saveCaptureSampleResult(pageId: String): Promise<Variant_String_ScannerFailure> {

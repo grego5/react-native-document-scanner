@@ -17,9 +17,12 @@ final class SessionPageProcessing: ScanSessionActions {
   func prepareAnalysis(_ source: SessionResources.Lease, liveCorners: CornerCoordinates?,
                        selection: CornerInference.Selection?) throws -> () throws -> AnalysisValue {
     { [self] in
-      guard let selection else { throw ScannerCodeError(code: .modelLoadFailed) }
       let started = DispatchTime.now().uptimeNanoseconds
       let pixels = try store.acquire(source.url)
+      // Without a model the analysis finds no page.
+      guard let selection else {
+        return AnalysisValue(width: pixels.width, height: pixels.height, duration: 0, candidate: nil, score: 0)
+      }
       let lease = model ?? inference.acquire()
       model = lease
       let result = try lease.analyze(pixels, seed: liveCorners, selection: selection)

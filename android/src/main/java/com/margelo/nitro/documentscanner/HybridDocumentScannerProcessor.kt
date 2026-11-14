@@ -7,6 +7,7 @@ import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
+import com.margelo.nitro.documentscanner.processing.CornerTensorModelLoader
 import com.margelo.nitro.documentscanner.processing.SampleCollection
 
 /** Stateless session factory and independent sample-folder controls. */
@@ -15,10 +16,29 @@ import com.margelo.nitro.documentscanner.processing.SampleCollection
 class HybridDocumentScannerProcessor(
   private val contextOverride: Context? = null,
 ) : HybridDocumentScannerProcessorSpec() {
+  private val models = CornerTensorModelLoader.shared
+
   override fun createSessionResult(): Variant_HybridScanSessionSpec_ScannerFailure = try {
-    Variant_HybridScanSessionSpec_ScannerFailure.create(HybridScanSession(context("a scan session")))
+    val context = context("a scan session")
+    // The shared default request outlives any session.
+    Variant_HybridScanSessionSpec_ScannerFailure.create(HybridScanSession(context)).also { models.startDefault(context) }
   } catch (error: Throwable) {
     Variant_HybridScanSessionSpec_ScannerFailure.create(scannerFailure(error, ScannerErrorCode.PROCESSOR_UNAVAILABLE))
+  }
+
+  override fun waitForCornerDetectionModelResult(): Promise<Variant_Boolean_ScannerFailure> {
+    val promise = Promise<Variant_Boolean_ScannerFailure>()
+    try {
+      models.startDefault(context("the default model"))
+      models.await { result ->
+        result.fold({ promise.resolve(Variant_Boolean_ScannerFailure.create(it)) }, { error ->
+          promise.resolve(Variant_Boolean_ScannerFailure.create(scannerFailure(error, ScannerErrorCode.MODEL_LOAD_FAILED)))
+        })
+      }
+    } catch (error: Throwable) {
+      promise.resolve(Variant_Boolean_ScannerFailure.create(scannerFailure(error, ScannerErrorCode.PROCESSOR_UNAVAILABLE)))
+    }
+    return promise
   }
 
   override fun pickSampleFolderResult(): Promise<Variant_ScannerFailure_SampleFolder> {

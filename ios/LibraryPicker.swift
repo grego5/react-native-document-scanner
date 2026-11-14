@@ -5,20 +5,23 @@ import UniformTypeIdentifiers
 
 /// Presents the system photo picker, which needs no library permission, and stages each pick in picked order. A
 /// pick's file exists only inside its provider callback, so it is cloned into a temporary file whose ownership passes
-/// to the caller with the result. One picker is open at a time across sessions. Main thread.
+/// to the caller with the result. One picker is open at a time across sessions. Each picker owns its slot and
+/// dismissal and reports at most once, after it is gone. Main thread.
 @MainActor
-final class LibraryPicker: NSObject, PHPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
+final class LibraryPicker: NSObject, PHPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate,
+                           PickerRequest {
   private static var current: LibraryPicker?
-  private let completion: (Result<[URL?], Error>) -> Void
+  private let completion: (Result<[Result<URL, Error>], Error>) -> Void
   private weak var controller: PHPickerViewController?
   private var settled = false
   /// Completes once this picker no longer holds the one-picker slot; staged picks can still arrive after it.
-  private let released = NativeCompletion()
+  nonisolated let pickerReleased = NativeCompletion()
 
-  private init(completion: @escaping (Result<[URL?], Error>) -> Void) { self.completion = completion }
+  private init(completion: @escaping (Result<[Result<URL, Error>], Error>) -> Void) { self.completion = completion }
 
-  /// Presents the picker; `completion` runs once, on main. The returned picker's `end()` ends the request early.
-  static func pick(maxCount: Int, completion: @escaping (Result<[URL?], Error>) -> Void) throws -> LibraryPicker {
+  /// Presents the picker; `completion` runs at most once, on main. The returned picker's `end()` ends the request
+  /// early. Throws when it cannot present, and then holds no slot and never reports.
+  static func pick(maxCount: Int, completion: @escaping (Result<[Result<URL, Error>], Error>) -> Void) throws -> LibraryPicker {
     guard current == nil else { throw ScannerCodeError(code: .captureBusy) }
     guard let presenter = topPresenter() else { throw ScannerCodeError(code: .processorUnavailable) }
     // Another controller still dismissing from the presenter would make UIKit drop this presentation silently.
@@ -38,11 +41,13 @@ final class LibraryPicker: NSObject, PHPickerViewControllerDelegate, UIAdaptiveP
     return owner
   }
 
-  /// Ends a picker that is still open: it is dismissed and the call settles as disposed. Picks already being staged
-  /// are still delivered, so their owner can delete them. The completion fires once the one-picker slot is free,
-  /// after any dismissal, whatever late provider callbacks remain.
-  func end() -> NativeCompletion {
-    guard LibraryPicker.current === self else { return released }
+  /// Ends a picker that is still open: it is dismissed and reports `processor/disposed`. Picks already being staged
+  /// are still delivered, so their owner can delete them. `pickerReleased` completes once the one-picker slot is free,
+  /// after any dismissal, whatever late provider callbacks remain. Main thread.
+  nonisolated func end() { MainActor.assumeIsolated { endOnMain() } }
+
+  private func endOnMain() {
+    guard LibraryPicker.current === self else { return }
     if let controller {
       finish(controller, .failure(ScannerCodeError(code: .processorDisposed)))
     } else {
@@ -53,12 +58,11 @@ final class LibraryPicker: NSObject, PHPickerViewControllerDelegate, UIAdaptiveP
         completion(.failure(ScannerCodeError(code: .processorDisposed)))
       }
     }
-    return released
   }
 
   private func releaseSlot() {
     if LibraryPicker.current === self { LibraryPicker.current = nil }
-    released.complete()
+    pickerReleased.complete()
   }
 
   nonisolated func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
@@ -94,30 +98,39 @@ final class LibraryPicker: NSObject, PHPickerViewControllerDelegate, UIAdaptiveP
     }
   }
 
-  /// Stages providers concurrently and reports their files in picked order, nil where a pick could not be read,
-  /// once `group`'s earlier work (the dismissal) has also finished.
+  /// Stages providers concurrently and reports their files in picked order, once `group`'s earlier work (the dismissal)
+  /// has also finished. A pick the provider cannot read fails as `image/load-failed`; failing to create the staging
+  /// directory or write the staged copy fails as `storage/write-failed`.
   private static func stage(_ providers: [NSItemProvider], after group: DispatchGroup,
-                            completion: @escaping (Result<[URL?], Error>) -> Void) {
+                            completion: @escaping (Result<[Result<URL, Error>], Error>) -> Void) {
     let staged = StagedPicks(count: providers.count)
     for (index, provider) in providers.enumerated() {
       group.enter()
       provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
         defer { group.leave() }
         guard let url else { return }
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("DocumentScannerImports")
-        let copy = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension(url.pathExtension)
-        do {
-          try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-          try FileManager.default.copyItem(at: url, to: copy)
-          staged.set(index, copy)
-        } catch {
-          try? FileManager.default.removeItem(at: copy)
-        }
+        staged.set(index, stage(url, into: FileManager.default.temporaryDirectory.appendingPathComponent("DocumentScannerImports")))
       }
     }
     nonisolated(unsafe) let completion = completion
-    // An unreadable pick stays a nil slot, so the caller counts it as failed rather than dropping it.
     group.notify(queue: .main) { completion(.success(staged.snapshot)) }
+  }
+
+  /// Copies a provider file, which exists only inside its callback, into `directory`. Reading the provider file fails
+  /// as `image/load-failed`, so the pick is skipped; creating the directory or writing the copy as `storage/write-failed`.
+  nonisolated static func stage(_ source: URL, into directory: URL) -> Result<URL, Error> {
+    let data: Data
+    do { data = try Data(contentsOf: source, options: .mappedIfSafe) }
+    catch { return .failure(ScannerCodeError(code: .imageLoadFailed)) }
+    let copy = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension(source.pathExtension)
+    do {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      try data.write(to: copy)
+      return .success(copy)
+    } catch {
+      try? FileManager.default.removeItem(at: copy)
+      return .failure(ScannerCodeError(code: .storageWriteFailed))
+    }
   }
 
   private static func topPresenter() -> UIViewController? {
@@ -130,19 +143,20 @@ final class LibraryPicker: NSObject, PHPickerViewControllerDelegate, UIAdaptiveP
   }
 }
 
-/// Picked files by slot. Provider callbacks run concurrently on their own queues; the lock owns the array.
+/// Picked files by slot, unreadable until staged. Provider callbacks run concurrently on their own queues; the lock
+/// owns the array.
 final class StagedPicks: @unchecked Sendable {
   private let lock = NSLock()
-  private var urls: [URL?]
+  private var urls: [Result<URL, Error>]
 
-  init(count: Int) { urls = Array(repeating: nil, count: count) }
+  init(count: Int) { urls = Array(repeating: .failure(ScannerCodeError(code: .imageLoadFailed)), count: count) }
 
-  func set(_ index: Int, _ url: URL) {
+  func set(_ index: Int, _ pick: Result<URL, Error>) {
     lock.lock(); defer { lock.unlock() }
-    urls[index] = url
+    urls[index] = pick
   }
 
-  var snapshot: [URL?] {
+  var snapshot: [Result<URL, Error>] {
     lock.lock(); defer { lock.unlock() }
     return urls
   }

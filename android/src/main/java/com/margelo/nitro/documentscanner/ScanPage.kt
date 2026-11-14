@@ -6,7 +6,6 @@ internal class ScanPage(
   val original: SessionResources.Resource,
   val frame: SessionResources.Resource?,
   var options: DocumentRenderOptions,
-  val model: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection?,
   val liveCorners: DocumentCorners? = null,
 ) {
   data class RenderKey(val corners: DocumentCorners, val options: DocumentRenderOptions)
@@ -38,7 +37,14 @@ internal class ScanPage(
   var readyRevision: Long? = null
   var exportAnalysisPins = 0
   val analysisOutcome = java.util.concurrent.CompletableFuture<DocumentAnalysis>()
-  var analyzing = true
+  /** The selection its submitted analysis uses, kept for sample metadata. */
+  var model: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection? = null
+  /** An analysis job is submitted and unsettled. */
+  var analyzing = false
+  /** An import waiting for the shared model; no analysis is submitted yet. */
+  var awaitingModel = false
+  /** The first render follows analysis. False for an import that displays its full frame while waiting. */
+  var analysisGatesRender = true
   var analysis: DocumentAnalysis? = null
   var analysisFailure: ScannerFailure? = null
   var renderFailure: ScannerFailure? = null
@@ -46,8 +52,9 @@ internal class ScanPage(
   var displayed: Artifact? = null
 
   fun key() = RenderKey(corners, options)
-  fun metadata() = Metadata(id, requestedRevision, readyRevision, analyzing,
-    !analyzing && readyRevision != requestedRevision && renderFailure == null,
+  val renderWaitsForAnalysis get() = analyzing && analysisGatesRender
+  fun metadata() = Metadata(id, requestedRevision, readyRevision, analyzing || awaitingModel,
+    !renderWaitsForAnalysis && readyRevision != requestedRevision && renderFailure == null,
     analysis, corners, options, analysisFailure, renderFailure)
 
   companion object {

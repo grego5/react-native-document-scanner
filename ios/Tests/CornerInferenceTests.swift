@@ -97,9 +97,7 @@ final class CornerInferenceTests: XCTestCase {
   }
 
   private func model() throws -> Data {
-    let owners = [Bundle(for: HybridCameraPermission.self), Bundle.main] + Bundle.allBundles + Bundle.allFrameworks
-    let url = try XCTUnwrap(owners.compactMap { $0.url(forResource: "DocumentScannerModels", withExtension: "bundle") }.first)
-    return try Data(contentsOf: XCTUnwrap(Bundle(url: url)?.url(forResource: "model", withExtension: "tflite")))
+    try Data(contentsOf: XCTUnwrap(Bundle(for: CornerInferenceTests.self).url(forResource: "model", withExtension: "tflite")))
   }
 
   func testNativeModelFailurePreservesSelectionAndResidentReloadAgreement() throws {

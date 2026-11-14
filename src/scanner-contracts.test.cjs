@@ -55,7 +55,7 @@ test('utility facade keeps typed sample controls separate from explicit session 
   }
   const { DocumentScanner } = load('src/index.ts', {
     'react-native': { Platform: { OS: 'android' } },
-    'react-native-nitro-modules': { NitroModules: { createHybridObject: () => native } },
+    './Processor': { nativeProcessor: native },
     './ScannerError': errors, './ScanSession': sessionAdapter,
     './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
   })
@@ -68,7 +68,28 @@ test('utility facade keeps typed sample controls separate from explicit session 
   assert.deepEqual(calls, [['folder', 'file:///samples'], ['collect', true]])
   assert.deepEqual(Object.keys(DocumentScanner).sort(), [
     'clearSampleFolder', 'createSession', 'getSampleFolder', 'pickSampleFolder', 'setSampleCollection', 'setSampleFolder',
+    'waitForCornerDetectionModel',
   ].sort())
+})
+
+test('the module waits for the shared corner model with typed results', async () => {
+  let result
+  const { DocumentScanner } = load('src/index.ts', {
+    'react-native': { Platform: { OS: 'android' } },
+    './Processor': { nativeProcessor: { waitForCornerDetectionModelResult: async () => result } },
+    './ScannerError': errors, './ScanSession': sessionAdapter,
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
+  })
+  result = true
+  assert.equal(await DocumentScanner.waitForCornerDetectionModel(), true)
+  result = false
+  assert.equal(await DocumentScanner.waitForCornerDetectionModel(), false)
+  result = { code: 'model/load-failed' }
+  await assert.rejects(DocumentScanner.waitForCornerDetectionModel(),
+    (error) => error instanceof errors.ScannerError && error.code === 'model/load-failed')
+  result = { code: 'model/superseded' }
+  await assert.rejects(DocumentScanner.waitForCornerDetectionModel(),
+    (error) => error instanceof errors.ScannerCancellation && error.code === 'model/superseded')
 })
 
 test('iOS defers sample collection with stable typed failures and idempotent disable', async () => {
@@ -82,7 +103,7 @@ test('iOS defers sample collection with stable typed failures and idempotent dis
   }
   const { DocumentScanner } = load('src/index.ts', {
     'react-native': { Platform: { OS: 'ios' } },
-    'react-native-nitro-modules': { NitroModules: { createHybridObject: () => native } },
+    './Processor': { nativeProcessor: native },
     './ScannerError': errors, './ScanSession': sessionAdapter,
     './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
   })
@@ -526,6 +547,7 @@ test('camera forwards model preparation and failures to native without React loa
       useLayoutEffect: () => {},
       useMemo: (create) => create(),
       useRef: (value) => ({ current: value }),
+      useState: (value) => [value, () => {}],
       useImperativeHandle: () => {},
     },
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
@@ -549,12 +571,19 @@ test('camera forwards model preparation and failures to native without React loa
   assert.equal(received.length, 1)
   assert.equal(received[0] instanceof errors.ScannerError, true)
   assert.equal(received[0].code, failure.code)
-  assert.equal(Camera({ session }, null).props.cornerDetectionModel, '')
+  // Native reports a missing or failed model; the camera never leaves document mode by itself.
+  const modelless = Camera({ session }, null)
+  assert.equal(modelless.props.cornerDetectionModel, '', 'the plugin default stays implicit')
+  assert.equal(modelless.props.guideLiveCorners, true)
+  assert.equal(modelless.props.autoCrop, true)
+  const explicit = Camera({ session, cornerDetectionModel: 'asset:///corner-detection-model.tflite' }, null)
+  assert.equal(explicit.props.cornerDetectionModel, 'asset:///corner-detection-model.tflite')
   assert.equal(Camera({ session, active: false }, null).props.active, false)
-  const scannerSettings = { guideLiveCorners: true, autoCrop: true, inferenceThrottling: true, torch: 'on',
+  const scannerSettings = { cornerDetectionModel: '/model', guideLiveCorners: true, autoCrop: true, inferenceThrottling: true, torch: 'on',
     minCornerScore: 0.6, guideTransitionDuration: 123, guideColor: 'red', onDocumentStateChange: () => received.push('document'),
     imageCorrection: { filter: 'enhance', removeShadows: true, simpleDewarp: true }, outputOptions: { width: 21, height: 29.7, dpi: 300 } }
   const camera = Camera({ session, ...scannerSettings, mode: 'photo', active: false }, null)
+  assert.equal(camera.props.cornerDetectionModel, '', 'photo mode needs no model')
   assert.equal(camera.props.guideLiveCorners, false)
   assert.equal(camera.props.autoCrop, false)
   assert.equal(camera.props.inferenceThrottling, false)
@@ -747,16 +776,23 @@ test('library import forwards defaults and selection limit, then publishes admit
   const calls = []
   native.importFromLibraryResult = async (options, maxCount) => {
     calls.push([options, maxCount])
-    if (maxCount === 0) return { pageIds: [], failedCount: 0 }
-    f.emit(sourceSnapshot(1, { a: sessionPage('a', { analyzing: true, ready: false }) }))
-    return { pageIds: ['a'], failedCount: 1 }
+    if (maxCount === 0) return []
+    f.emit(sourceSnapshot(1, { a: sessionPage('a', { analyzing: true, ready: false }), b: sessionPage('b', { analyzing: true, ready: false }) }))
+    return ['a', 'b']
   }
   const result = await session.importFromLibrary({ autoCrop: false, maxCount: 3 })
   assert.deepEqual(calls[0], [{ autoCrop: false }, 3])
-  assert.deepEqual(result, { pageIds: ['a'], failedCount: 1 })
-  assert.deepEqual(session.getSession().pageIds, ['a'])
-  assert.deepEqual(await session.importFromLibrary(), { pageIds: [], failedCount: 0 })
+  assert.deepEqual(result, ['a', 'b'], 'the admitted IDs native returns, in picked order')
+  assert.deepEqual(session.getSession().pageIds, result, 'published before the call resolves')
+  assert.deepEqual(await session.importFromLibrary(), [], 'cancelling or admitting none resolves []')
   assert.deepEqual(calls[1], [{}, 0])
+  const imported = []
+  native.importImageResult = async (uri, options) => { imported.push(options); return 'c' }
+  await session.importFromLibrary({ maxCount: 0 })
+  await session.importImage('file:///c.jpg')
+  assert.deepEqual([calls[2][0], imported[0]], [{}, {}], 'imports never forward a model')
+  native.importFromLibraryResult = async () => ({ code: 'storage/write-failed' })
+  await assert.rejects(session.importFromLibrary(), (error) => error.code === 'storage/write-failed')
   native.importFromLibraryResult = async () => ({ code: 'capture/busy' })
   await assert.rejects(session.importFromLibrary(), (error) => error.code === 'capture/busy')
 })
@@ -1035,7 +1071,7 @@ test('the public session factory wraps admission, registration failure and stabl
   let result = fixture.native
   const { DocumentScanner } = load('src/index.ts', {
     'react-native': { Platform: { OS: 'android' } },
-    'react-native-nitro-modules': { NitroModules: { createHybridObject: () => ({ createSessionResult: () => result }) } },
+    './Processor': { nativeProcessor: ({ createSessionResult: () => result }) },
     './ScannerError': errors,
     './ScanSession': { createScanSession: (native) => sessionAdapter.createScanSession(native, fixture.frames) },
     './DocumentScanner': {}, './DocumentCropEditor': {},
@@ -1136,6 +1172,11 @@ test('camera keeps capture-state callback identity and forwards only committed h
       useLayoutEffect: (effect) => { effects.push(effect) },
       useMemo,
       useRef: (value) => { const index = cursor++; return slots[index] ?? (slots[index] = { current: value }) },
+      useState: (value) => {
+        const slot = slots[cursor] ?? (slots[cursor] = { current: value })
+        cursor++
+        return [slot.current, (next) => { slot.current = next }]
+      },
       useImperativeHandle: (target, create) => { target.current = create() },
     },
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },

@@ -486,10 +486,13 @@ open class HybridDocumentScannerCameraView(
   // Raw React props; afterUpdate resolves them into [props] once per batch.
   override var cornerDetectionModel: String? = null
   private var requestedModel: String? = null
+  /** The guide or auto-crop needs the model; toggling one while the other stays on keeps the current request. */
+  private var requestedNeedsModel = true
   private var modelChecked = false
   private var modelReady = false
   private var modelLoadPending = false
   private var modelGeneration = 0L
+  /** The loader's own error; each consumer translates it with `model/load-failed` as the fallback. */
   private var modelFailure: Throwable? = null
   override var onError: ((ScannerFailure) -> Unit)? = null
     set(value) {
@@ -601,11 +604,19 @@ open class HybridDocumentScannerCameraView(
 
 
 
-  /** Main thread: source changes invalidate only this view's completion; in-flight captures settle first. */
+  /**
+   * Main thread: source changes invalidate only this view's completion; in-flight captures settle first. The guide and
+   * auto-crop need a model: without a source they follow the packaged one, and without that the camera stays off with
+   * `input/invalid`. Meanwhile the document state reports `loading`, then `unavailable` on failure; leaving for photo
+   * mode is the app's choice.
+   */
   private fun updateModel() {
-    if (modelChecked && requestedModel == cornerDetectionModel) return
+    val needsModel = (guideLiveCorners ?: true) || (autoCrop ?: true)
+    if (modelChecked && requestedModel == cornerDetectionModel &&
+      (!cornerDetectionModel.isNullOrEmpty() || requestedNeedsModel == needsModel)) return
     modelChecked = true
     requestedModel = cornerDetectionModel
+    requestedNeedsModel = needsModel
     modelGeneration++
     modelReady = false
     modelFailure = null
@@ -616,30 +627,32 @@ open class HybridDocumentScannerCameraView(
   private fun loadRequestedModel() {
     if (!modelLoadPending || disposed) return
     modelLoadPending = false
-    stopCamera("model-loading")
     val generation = modelGeneration
     val uri = requestedModel
     fun failed(error: Throwable) {
       if (disposed || generation != modelGeneration) return
-      modelFailure = if (error is ScannerException) error else ScannerException(ScannerErrorCode.MODEL_LOAD_FAILED, error)
+      modelFailure = error
       modelReady = false
       updateCameraState()
       updateDocumentState(DocumentState.UNAVAILABLE)
       onError?.invoke(scannerFailure(error, ScannerErrorCode.MODEL_LOAD_FAILED))
       Log.e("DocumentScanner", "Could not prepare corners tensor model", error)
     }
-    if (uri.isNullOrEmpty()) {
-      failed(ScannerException(ScannerErrorCode.INPUT_INVALID))
-      return
+    fun ready() {
+      if (disposed || generation != modelGeneration) return
+      modelReady = true
+      updateDocumentState(boundDocumentState())
+      onHostViewVisible()
     }
-    CornerTensorModelLoader.load(themedContext.applicationContext, uri).then {
-      mainHandler.post {
-        if (!disposed && generation == modelGeneration) {
-          modelReady = true
-          onHostViewVisible()
-        }
-      }
-    }.catch { error -> mainHandler.post { failed(error) } }
+    // Photo mode: captures use any active shared model, else keep the full frame. Ready before the stop, which
+    // would otherwise report loading.
+    val photo = uri.isNullOrEmpty() && !requestedNeedsModel
+    modelReady = photo
+    stopCamera("model-loading")
+    if (photo) return ready()
+    CornerTensorModelLoader.shared.loadCameraSource(themedContext.applicationContext, uri.orEmpty()) { error ->
+      mainHandler.post { if (error == null) ready() else failed(error) }
+    }
   }
 
   private fun resolveProps(): ResolvedProps {
@@ -826,7 +839,11 @@ open class HybridDocumentScannerCameraView(
       return
     }
     if (!modelReady && !capture.registered) {
-      rejectPromise(promise, modelFailure ?: ScannerException(ScannerErrorCode.CAPTURE_NOT_READY))
+      // The capture promise falls back to `capture/failed`, so an untyped load failure carries its model code here.
+      rejectPromise(promise, modelFailure?.let { failure ->
+        if (failure is ScannerException || failure is InvalidInputException) failure
+        else ScannerException(ScannerErrorCode.MODEL_LOAD_FAILED, failure)
+      } ?: ScannerException(ScannerErrorCode.CAPTURE_NOT_READY))
       return
     }
     if (!props.active && !capture.registered) {
@@ -1455,7 +1472,7 @@ open class HybridDocumentScannerCameraView(
     liveOverlay.clear()
     trackedGuide = null
     latestModelScore = null
-    updateDocumentState(DocumentState.OFF)
+    updateDocumentState(modelDocumentState() ?: DocumentState.OFF)
     emitAutofocus()
     logLifecycle("camera stop reason=$reason bound=${controller != null} generation=$providerRequestGeneration")
     val observer = cameraStateObserver
@@ -1686,8 +1703,15 @@ open class HybridDocumentScannerCameraView(
     onAutofocusChange?.invoke(state)
   }
 
+  /** `loading` or `unavailable` while the camera waits for, or lost, its model; null once it has what it needs. */
+  private fun modelDocumentState(): DocumentState? = when {
+    modelFailure != null -> DocumentState.UNAVAILABLE
+    !modelReady -> DocumentState.LOADING
+    else -> null
+  }
+
   /** The document state right after binding or toggling the guide, before any detector result. */
-  private fun boundDocumentState(): DocumentState = when {
+  private fun boundDocumentState(): DocumentState = modelDocumentState() ?: when {
     cameraController == null || !props.guide -> DocumentState.OFF
     liveDetector.hasFailed() -> DocumentState.UNAVAILABLE
     else -> DocumentState.SEARCHING
@@ -1793,7 +1817,7 @@ open class HybridDocumentScannerCameraView(
       runCatching {
         // Without auto-crop the page keeps the whole photo, so its retained frame stays unstraightened too.
         val straighten = capture.liveCandidate?.corners?.takeIf { capture.config.autoCrop }
-        LatestFrameCapture.write(pending.get(FRAME_WAIT_MS, TimeUnit.MILLISECONDS), straighten, requireNotNull(capture.source.frame))
+        LatestFrameCapture.write(pending.get(FRAME_WAIT_MS, TimeUnit.MILLISECONDS), straighten, capture.source.frame)
       }.onFailure { logLifecycle("latest frame capture unavailable: ${it.javaClass.simpleName}") }.getOrNull()
     }
     return SavedCapture(width, height, orientation, frame)

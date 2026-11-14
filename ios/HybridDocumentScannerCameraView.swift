@@ -22,6 +22,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private let notifications: NotificationCenter
   private let inBackground: () -> Bool
   private let models: (String, @escaping (ScannerErrorCode?) -> Void) -> Void
+  /// Whether the app contains the plugin model.
   private let clock: () -> Int64
   let detector: LiveDocumentDetector
   let controls: CameraControls
@@ -102,8 +103,11 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   private var reportedDocument: DocumentState?
   /// The source the camera waits for; nil before the first update.
   private var requestedModel: String?
+  /// The guide or auto-crop needs the model; toggling one while the other stays on keeps the current request.
+  private var requestedNeedsModel = true
   private var modelRequestID = UUID()
   private var modelReady = false
+  private var modelFailed = false
   private var guideOn = true
   private var resolvedScore = 0.95
   private var borrowed: ScanSessionState?
@@ -128,7 +132,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     self.inBackground = inBackground ?? {
       MainActor.assumeIsolated { UIApplication.shared.applicationState == .background }
     }
-    self.models = models ?? { CornerModelLoader.shared.load($0, completion: $1) }
+    self.models = models ?? { CornerModelLoader.shared.loadCameraSource($0, completion: $1) }
     self.clock = clock ?? hostClockNs
     let detector = detector ?? LiveDocumentDetector()
     self.detector = detector
@@ -315,7 +319,7 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
     detector.stop()
     controls.unbind()
     MainActor.assumeIsolated { preview.guide.clear() }
-    setDocumentState(.off)
+    setDocumentState(modelDocumentState ?? .off)
     latestGuide = nil
     streaming = false
     configuration = nil
@@ -424,7 +428,13 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
 
   // MARK: - Live guidance
 
+  /// `loading` or `unavailable` while the camera waits for, or lost, its model; nil once it has what it needs.
+  private var modelDocumentState: DocumentState? {
+    modelFailed ? .unavailable : modelReady ? nil : .loading
+  }
+
   private var boundDocumentState: DocumentState {
+    if let modelDocumentState { return modelDocumentState }
     guard started != nil, guideOn else { return .off }
     return detector.state.hasFailed ? .unavailable : .searching
   }
@@ -494,26 +504,38 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   }
 
   /// A new source stops the camera until it is prepared; a failure keeps it suspended until the
-  /// source changes.
+  /// source changes. The guide and auto-crop need a model: without a source they follow the packaged one, and without
+  /// that the camera stays off with `input/invalid`. Meanwhile the document state reports `loading`, then `unavailable`
+  /// on failure; leaving for photo mode is the app's choice.
   private func updateModel() {
     let source = cornerDetectionModel ?? ""
-    guard source != requestedModel else { return }
+    let needsModel = (guideLiveCorners ?? true) || (autoCrop ?? true)
+    guard source != requestedModel || (source.isEmpty && needsModel != requestedNeedsModel) else { return }
     requestedModel = source
+    requestedNeedsModel = needsModel
     let id = UUID()
     modelRequestID = id
     modelReady = false
+    modelFailed = false
     failed = false
     retriedMediaReset = false
     detector.invalidate()
+    // Photo mode: captures use any active shared model, else keep the full frame.
+    if source.isEmpty, !needsModel { modelReady = true }
+    // Reported once evaluate runs, so photo mode never shows loading.
+    setDocumentState(boundDocumentState)
+    if modelReady { return }
     // Completions arrive on main.
     models(source) { [weak self] code in
       guard let self, !dropped, modelRequestID == id, code != .modelSuperseded else { return }
       if let code {
         stopCamera()
+        modelFailed = true
         setDocumentState(.unavailable)
         onError?(ScannerFailure(code: code))
       } else {
         modelReady = true
+        setDocumentState(boundDocumentState)
       }
       evaluate()
     }

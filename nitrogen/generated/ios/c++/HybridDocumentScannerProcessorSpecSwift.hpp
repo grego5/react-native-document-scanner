@@ -26,8 +26,8 @@ namespace margelo::nitro::documentscanner { struct SampleFolder; }
 #include "ScannerFailure.hpp"
 #include <variant>
 #include "ScannerErrorCode.hpp"
-#include "SampleFolder.hpp"
 #include <NitroModules/Promise.hpp>
+#include "SampleFolder.hpp"
 #include <string>
 #include <optional>
 
@@ -83,6 +83,14 @@ namespace margelo::nitro::documentscanner {
     // Methods
     inline std::variant<std::shared_ptr<HybridScanSessionSpec>, ScannerFailure> createSessionResult() override {
       auto __result = _swiftPart.createSessionResult();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<std::variant<bool, ScannerFailure>>> waitForCornerDetectionModelResult() override {
+      auto __result = _swiftPart.waitForCornerDetectionModelResult();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

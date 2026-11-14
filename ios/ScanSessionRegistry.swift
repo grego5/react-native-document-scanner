@@ -66,9 +66,10 @@ final class ScanSessionRegistry: @unchecked Sendable {
 
   /// Explicit lifetime: the state survives JS wrapper collection until close cleans up.
   func createState(dispatcher: @escaping (@escaping () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) },
+                   models: @escaping ScanSessionState.ModelObservation = { CornerModelLoader.shared.observe($0) },
                    actions: (SessionResources) -> ScanSessionActions = { SessionPageProcessing(resources: $0) }) throws -> ScanSessionState {
     let resources = try open()
-    let state = ScanSessionState(resources: resources, actions: actions(resources), dispatcher: dispatcher)
+    let state = ScanSessionState(resources: resources, actions: actions(resources), dispatcher: dispatcher, models: models)
     locked { states[resources.sessionId] = state }
     return state
   }

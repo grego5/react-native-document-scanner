@@ -1,5 +1,7 @@
 package com.margelo.nitro.documentscanner
 
+import com.margelo.nitro.documentscanner.processing.CornerModelStore
+import com.margelo.nitro.documentscanner.processing.DocumentRenderer
 import java.io.File
 import java.io.IOException
 import java.util.ArrayDeque
@@ -57,6 +59,7 @@ class ScanSessionStateTest {
   private val actions = object : ScanSessionState.Actions {
     override fun prepareAnalysis(original: SessionResources.Resource, liveCorners: DocumentCorners?, selection: com.margelo.nitro.documentscanner.processing.CornerModelStore.Selection?): () -> DocumentAnalysis {
       val model = selectedModel
+      selections += selection
       return {
         resources.lease(original).use {
           analysisCalls++
@@ -85,7 +88,10 @@ class ScanSessionStateTest {
     override fun close() { actionsClosed++ }
   }
   private val main = ManualExecutor()
-  private val state = ScanSessionState(resources, actions, dispatcher = main) { error, fallback ->
+  private val models = ModelStatusStub()
+  private val selections = mutableListOf<CornerModelStore.Selection?>()
+  private val loaded = CornerModelStore.Selection(byteArrayOf(7))
+  private val state = ScanSessionState(resources, actions, dispatcher = main, observeModel = models::observe) { error, fallback ->
     ScannerFailure((error as? ScannerException)?.code ?: fallback)
   }
   private val full = ScanPage.fullFrame()
@@ -649,4 +655,152 @@ class ScanSessionStateTest {
     synchronized(gate) { events.close() }
     events.flush()
     assertEquals(1, reported.size)
-  }}
+  }
+
+  private fun import(id: String = "import", autoCrop: Boolean = true) =
+    state.admitImport(id, source(), DocumentRenderer.effectiveOptions(null), autoCrop)
+
+  @Test fun aWaitingImportRendersItsFullFrameThenAppliesTheLateCandidateOnce() {
+    analysisResult = analysisResult.copy(candidate = candidate(crop))
+    models.loading()
+    import()
+    assertTrue("Waiting for the model reads as analysis.", meta("import").analyzing)
+    assertTrue(meta("import").rendering)
+    drain()
+    assertEquals(0, analysisCalls)
+    assertEquals(listOf(full), rendered.map { it.first.corners })
+    assertEquals(1L, meta("import").readyRevision)
+    models.loading()
+    drain()
+    assertEquals("A replacement load keeps it waiting.", 0, analysisCalls)
+    models.ready(loaded)
+    models.ready(loaded)
+    drain()
+    assertEquals(listOf<CornerModelStore.Selection?>(loaded), selections)
+    assertEquals(1, analysisCalls)
+    assertEquals(crop, meta("import").corners)
+    assertEquals(2L, meta("import").readyRevision)
+    assertFalse(meta("import").analyzing)
+    assertEquals(listOf(full, crop), rendered.map { it.first.corners })
+    models.failed()
+    drain()
+    assertEquals("Completed analyses stay final.", crop, meta("import").corners)
+    assertEquals(1, analysisCalls)
+  }
+
+  @Test fun aReadyModelAnalyzesAnImportBeforeItsFirstRender() {
+    analysisResult = analysisResult.copy(candidate = candidate(crop))
+    models.ready(loaded)
+    import()
+    assertFalse(meta("import").rendering)
+    drain()
+    assertEquals(listOf<CornerModelStore.Selection?>(loaded), selections)
+    assertEquals("No provisional full-frame render.", listOf(crop), rendered.map { it.first.corners })
+  }
+
+  @Test fun aLateCropClearsTheFailedPreviewBeforeItsReplacementRenders() {
+    analysisResult = analysisResult.copy(candidate = candidate(crop))
+    models.loading()
+    renderError = IOException("Full-frame render failed.")
+    import()
+    drain()
+    assertEquals(ScannerErrorCode.RENDER_FAILED, meta("import").renderFailure?.code)
+
+    renderError = null
+    var exportCorners: Result<DocumentCorners>? = null
+    duringRender = {
+      exportCorners = runCatching { state.exportSnapshot(null).use { it.pages.single().key().corners } }
+    }
+    models.ready(loaded)
+    drain()
+
+    assertEquals(crop, requireNotNull(exportCorners).getOrThrow())
+    assertEquals(2L, meta("import").readyRevision)
+  }
+
+  @Test fun editsWhileWaitingRenderAndOnlyAutomaticGeometryTakesTheLateCandidate() {
+    analysisResult = analysisResult.copy(candidate = candidate(crop))
+    models.loading()
+    import("manual"); import("photo", autoCrop = false); import("filtered")
+    drain()
+    state.setDocumentCrop("manual", full)
+    state.setFilter("filtered", DocumentFilter.GRAYSCALE)
+    assertTrue(meta("filtered").rendering)
+    drain()
+    assertEquals(DocumentFilter.GRAYSCALE, rendered.last().first.options.filter)
+    val waitingRenders = rendered.size
+    models.ready(loaded)
+    drain()
+    assertEquals(full, meta("manual").corners)
+    assertEquals(crop, meta("manual").analysis?.candidate?.corners)
+    assertEquals(full, meta("photo").corners)
+    assertEquals(crop, meta("photo").analysis?.candidate?.corners)
+    assertEquals("Filter edits keep the automatic crop.", crop, meta("filtered").corners)
+    assertEquals(listOf(crop), rendered.drop(waitingRenders).map { it.first.corners })
+  }
+
+  @Test fun aFailedModelCompletesWaitingAndNewImportsWithoutACandidate() {
+    models.loading()
+    import()
+    drain()
+    models.failed()
+    drain()
+    assertEquals(listOf<CornerModelStore.Selection?>(null), selections)
+    assertFalse(meta("import").analyzing)
+    assertNotNull(meta("import").analysis)
+    assertNull(meta("import").analysisFailure)
+    assertEquals(full, meta("import").corners)
+    assertEquals(1, rendered.size)
+    import("later")
+    assertFalse("Analyzed without a model at once.", meta("later").rendering)
+    drain()
+    assertEquals(listOf<CornerModelStore.Selection?>(null, null), selections)
+    assertEquals(full, meta("later").corners)
+  }
+
+  @Test fun removalAndCloseWhileWaitingDropThePendingAnalysis() {
+    models.loading()
+    import("removed"); import("closed")
+    drain()
+    state.removePage("removed")
+    state.close()
+    assertEquals(0, models.observers)
+    models.ready(loaded)
+    drain()
+    assertEquals(0, analysisCalls)
+    assertTrue(state.snapshot().pages.isEmpty())
+  }
+
+  @Test fun aLateAnalysisForARemovedPageNeverRepublishesIt() {
+    models.loading()
+    import()
+    drain()
+    models.ready(loaded)
+    state.removePage("import")
+    main.drain()
+    val changes = mutableListOf<ScanSessionChange>()
+    state.observe { changes += it }
+    drain()
+    main.drain()
+    assertEquals(0, analysisCalls)
+    assertTrue(changes.isEmpty())
+  }
+
+  @Test fun anExportBeforeTheModelIsReadyKeepsItsGeometryWhileQueuedAnalysisDecidesLaterOnes() {
+    analysisResult = analysisResult.copy(candidate = candidate(crop))
+    models.loading()
+    import()
+    val waiting = state.exportSnapshot(null)
+    models.ready(loaded)
+    val queued = state.exportSnapshot(null)
+    drain()
+    try {
+      assertEquals(full, waiting.pages.single().key().corners)
+      assertEquals(crop, queued.pages.single().key().corners)
+      assertEquals(crop, meta("import").corners)
+    } finally {
+      waiting.close()
+      queued.close()
+    }
+  }
+}

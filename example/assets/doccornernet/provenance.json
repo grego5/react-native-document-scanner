@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/mapo80/DocCornerNet-CoordClass",
+  "revision": "d877dc382c4ec56299d2b2662b979581bae9c8cd",
+  "modelName": "mobilenetv2_224_best",
+  "modelSourceSha256": "9be2646d32122360558d7037b270fd48a1b46a14aae68649602f015e3f674c72",
+  "configSha256": "1762c0f41dc775679dd5a348cf54c0b4cdb4c94c224d8f4a97d105e91bab75e5",
+  "weightsSha256": "aedcbeb67006941716260002061e9aca8109afb948275b2f245cd9ca8218ad01",
+  "python": "3.12.5",
+  "tensorflow": "2.21.0",
+  "numpy": "2.1.3",
+  "keras": "3.15.1",
+  "tfliteSha256": "9c126388e321fcd52f0c6f6bdb498dececac4cd0eede6fb72068476195a2fef6",
+  "maximumPhotoParityError": 2.115964889526367e-06,
+  "input": "float32 NHWC 1x224x224x3 ImageNet normalized RGB",
+  "output": "float32 1x9 TL.x TL.y TR.x TR.y BR.x BR.y BL.x BL.y sigmoidScore"
+}

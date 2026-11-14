@@ -116,8 +116,9 @@ final class ScanPage {
   let id: String
   let original: SessionResources.Resource
   let frame: SessionResources.Resource?
-  let selection: CornerInference.Selection?
   let liveCorners: CornerCoordinates?
+  /// The selection its submitted analysis uses.
+  var selection: CornerInference.Selection?
   var settings: RenderSettings
   var corners = SessionCorners.fullFrame
   var explicitGeometry = false
@@ -125,7 +126,12 @@ final class ScanPage {
   var readyRevision: Int?
   var exportAnalysisPins = 0
   var analysisResult: Result<AnalysisValue, Error>?
-  var analyzing = true
+  /// An analysis job is submitted and unsettled.
+  var analyzing = false
+  /// An import waiting for the shared model; no analysis is submitted yet.
+  var awaitingModel = false
+  /// The first render follows analysis. False for an import that displays its full frame while waiting.
+  var analysisGatesRender = true
   var analysis: AnalysisValue?
   var analysisFailure: ScannerErrorCode?
   var renderFailure: ScannerErrorCode?
@@ -133,18 +139,20 @@ final class ScanPage {
   var displayed: Artifact?
 
   init(id: String, original: SessionResources.Resource, frame: SessionResources.Resource?, settings: RenderSettings,
-       selection: CornerInference.Selection?, liveCorners: CornerCoordinates?) {
+       liveCorners: CornerCoordinates?) {
     self.id = id; self.original = original; self.frame = frame; self.settings = settings
-    self.selection = selection; self.liveCorners = liveCorners
+    self.liveCorners = liveCorners
   }
 
   var key: RenderKey { RenderKey(corners: corners, settings: settings) }
 
+  var renderWaitsForAnalysis: Bool { analyzing && analysisGatesRender }
+
   func cached(_ key: RenderKey) -> Artifact? { cache.first { $0.key == key }?.artifact }
 
   var metadata: PageMetadata {
-    PageMetadata(id: id, revision: requestedRevision, readyRevision: readyRevision, analyzing: analyzing,
-      rendering: !analyzing && readyRevision != requestedRevision && renderFailure == nil,
+    PageMetadata(id: id, revision: requestedRevision, readyRevision: readyRevision, analyzing: analyzing || awaitingModel,
+      rendering: !renderWaitsForAnalysis && readyRevision != requestedRevision && renderFailure == nil,
       analysis: analysis, corners: corners, settings: settings, analysisFailure: analysisFailure, renderFailure: renderFailure)
   }
 }

@@ -11,13 +11,12 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
-import com.margelo.nitro.core.Promise
-import com.margelo.nitro.documentscanner.processing.CornerModelStore
 import com.margelo.nitro.documentscanner.processing.SourceImageLoader
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.util.concurrent.Executors
+import java.io.OutputStream
+import java.util.UUID
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -57,59 +56,35 @@ internal object ImportSizePolicy {
 }
 
 /**
- * Turns a picked image into a session original and admits it through the capture path: the same reservation,
- * analysis, crop and render a camera photo gets, without a frame or live corners.
+ * Turns a picked image into a session original on the image worker and admits it as an import: the same crop and
+ * render a camera photo gets, without a frame or live corners. The page follows the shared model's status.
  */
 internal object ImageImport {
   private const val JPEG_QUALITY = 95
-
-  private const val BUNDLED_MODEL = "asset:///doccornernet/model.tflite"
-  private val modelWorker = Executors.newSingleThreadExecutor { Thread(it, "ScannerImportModel").apply { isDaemon = true } }
-  @Volatile private var bundled: CornerModelStore.Selection? = null
+  /** JPEG decoders scale by 1/8 while decoding, so the pixel check reads every scan at a fraction of the memory. */
+  private const val PROBE_SAMPLE = 8
 
   /**
-   * The model an import call freezes: the camera's active one, else the bundled model prepared once without
-   * activating it, so the camera's own model choice is never replaced. [onResult] may run on a worker.
+   * Imports one `file://` or `content://` image straight onto the session's image worker, which owns cancellation
+   * from then on. [options] must already be effective. Any thread; [onResult] runs once.
    */
-  fun model(context: Context, onResult: (Result<CornerModelStore.Selection>) -> Unit) {
-    val active = CornerModelStore.selected ?: bundled
-    if (active != null) return onResult(Result.success(active))
-    modelWorker.execute {
-      onResult(runCatching {
-        bundled ?: CornerModelStore.prepare(context.applicationContext, BUNDLED_MODEL).also { bundled = it }
-      }.recoverCatching { throw if (it is ScannerException) it else ScannerException(ScannerErrorCode.MODEL_LOAD_FAILED, it) })
-    }
-  }
-
-  /**
-   * Admits one `file://` or `content://` image; [onDone] runs once, on the image worker or the calling thread.
-   * [options] must already be effective: the import boundary validates them once per call.
-   */
-  fun admit(
+  fun fromFile(
     context: Context,
     session: ScanSessionState,
     source: Uri,
     options: DocumentRenderOptions,
     autoCrop: Boolean,
-    selection: CornerModelStore.Selection,
-    onDone: (Result<String>) -> Unit,
+    onResult: (Result<String>) -> Unit,
   ) {
-    try {
-      requireInput(source.scheme == "file" || source.scheme == "content") { "Expected a file:// or content:// image URI." }
-      val open = {
-        if (source.scheme == "file") File(requireNotNull(source.path)).inputStream()
-        else context.contentResolver.openInputStream(source)
-      }
-      admit(session, options, autoCrop, selection, { destination, effective -> writeOriginal(open, destination, effective) },
-        { onDone(Result.success(it)) }, { onDone(Result.failure(it)) })
-    } catch (error: Throwable) {
-      onDone(Result.failure(error))
-    }
+    val open = opener(context, source)
+    admit(session, options, autoCrop, { destination, effective -> writeOriginal(open, destination, effective) },
+      { onResult(Result.success(it)) }, { onResult(Result.failure(it)) })
   }
 
   /**
-   * Picks library images and admits them as one session-scoped [LibraryImport]: closing the session settles it and
-   * ends a picker that is still open. Any thread; [onResult] runs once.
+   * Picks library images and admits them as one session-scoped [LibraryImport]: closing the session settles it, ends
+   * a picker that is still open and completes only once that picker has released its slot. Any thread; [onResult]
+   * runs once.
    */
   fun fromLibrary(
     context: Context,
@@ -117,51 +92,94 @@ internal object ImageImport {
     maxCount: Int,
     options: DocumentRenderOptions,
     autoCrop: Boolean,
-    selection: CornerModelStore.Selection,
-    onResult: (Result<LibraryImportResult>) -> Unit,
+    onResult: (Result<List<String>>) -> Unit,
   ) {
     val main = LibraryPicker.main
-    val operation = LibraryImport<Uri>(maxCount, { main.post(it) },
-      { uri, done -> admit(context, session, uri, options, autoCrop, selection, done) }, onResult)
-    main.post { operation.start(session::onClose) { onPicked -> LibraryPicker.pick(maxCount, onPicked) } }
+    LibraryImport<Uri>(maxCount, { main.post(it) }, { uri, done -> admit(context, session, uri, options, autoCrop, done) }, onResult)
+      .start(session::registerCloseCancellation) { onPicked -> LibraryPicker.pick(maxCount, onPicked) }
   }
 
-  /** Writes the original on the session's image worker, then publishes it as a capture with no frame or live corners. */
+  /** One picked image; [onDone] runs once, on the image worker or the calling thread. */
+  private fun admit(
+    context: Context,
+    session: ScanSessionState,
+    source: Uri,
+    options: DocumentRenderOptions,
+    autoCrop: Boolean,
+    onDone: (Result<String>) -> Unit,
+  ) {
+    try {
+      val open = opener(context, source)
+      admit(session, options, autoCrop, { destination, effective -> writeOriginal(open, destination, effective) },
+        { onDone(Result.success(it)) }, { onDone(Result.failure(it)) })
+    } catch (error: Throwable) {
+      onDone(Result.failure(error))
+    }
+  }
+
+  private fun opener(context: Context, source: Uri): () -> InputStream? {
+    requireInput(source.scheme == "file" || source.scheme == "content") { "Expected a file:// or content:// image URI." }
+    return {
+      if (source.scheme == "file") File(requireNotNull(source.path)).inputStream()
+      else context.contentResolver.openInputStream(source)
+    }
+  }
+
+  /**
+   * Reserves, writes and commits the original on the session's image worker, then admits it through
+   * [ScanSessionState.admitImport]. [options] must already be effective. Unreadable or undecodable sources fail as
+   * `image/load-failed`; reserving, writing or committing the destination as `storage/write-failed`. Every outcome
+   * reaches [onFailure] or [onSuccess] once.
+   */
   internal fun admit(
     session: ScanSessionState,
     options: DocumentRenderOptions,
     autoCrop: Boolean,
-    selection: CornerModelStore.Selection,
     write: (File, DocumentRenderOptions) -> Unit,
     onSuccess: (String) -> Unit,
     onFailure: (Throwable) -> Unit,
   ) {
-    val capture = SessionCapture.reserve(session, options, selection, frame = false, normalized = true)
     val owner = session.resources.workOwner
-    owner.queue.submit(owner, ScannerWorkQueue.Kind.CAPTURE, capture.pageId,
+    val pageId = UUID.randomUUID().toString()
+    owner.queue.submit(owner, ScannerWorkQueue.Kind.CAPTURE, pageId,
       operation = {
-        capture.use {
-          write(capture.original.file, capture.options)
-          capture.original.commit()
-          capture.publish(null, null, autoCrop)
+        writing { session.resources.output(SessionResources.Kind.ORIGINAL) }.use { original ->
+          try {
+            write(original.file, options)
+            writing { original.commit() }
+            session.admitImport(pageId, original.resource, options, autoCrop)
+          } catch (error: Throwable) {
+            // A committed original that no page took is retired with the output.
+            original.discard()
+            throw error
+          }
         }
+        pageId
       },
       onSuccess = onSuccess,
-      onFailure = { error ->
-        capture.close()
-        onFailure(if (error is ScannerException || error is InvalidInputException) error
-          else ScannerException(ScannerErrorCode.IMAGE_LOAD_FAILED, error))
-      })
+      onFailure = { error -> onFailure(if (typed(error)) error else ScannerException(ScannerErrorCode.IMAGE_LOAD_FAILED, error)) })
+  }
+
+  private fun typed(error: Throwable) = error is ScannerException || error is InvalidInputException
+
+  /** Reading the picked image: any untyped failure is the image's. */
+  private inline fun <T> reading(action: () -> T): T = try { action() } catch (error: Exception) {
+    throw if (typed(error)) error else ScannerException(ScannerErrorCode.IMAGE_LOAD_FAILED, error)
+  }
+
+  /** Writing the session original: any untyped failure is storage's. */
+  private inline fun <T> writing(action: () -> T): T = try { action() } catch (error: Exception) {
+    throw if (typed(error)) error else ScannerException(ScannerErrorCode.STORAGE_WRITE_FAILED, error)
   }
 
   /** Copies the encoded bytes to [destination], then replaces them with an upright JPEG unless they already fit. */
   internal fun writeOriginal(open: () -> InputStream?, destination: File, options: DocumentRenderOptions) {
-    (open() ?: throw IOException("Image could not be opened.")).use { input ->
-      destination.outputStream().use { input.copyTo(it) }
-    }
+    copyOriginal(open) { destination.outputStream() }
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(destination.absolutePath, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Image is not decodable.")
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+      throw ScannerException(ScannerErrorCode.IMAGE_LOAD_FAILED, IOException("Image is not decodable."))
+    }
     val orientation = runCatching {
       ExifInterface(destination.absolutePath).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
     }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
@@ -171,15 +189,43 @@ internal object ImageImport {
     val uprightHeight = if (transposed) bounds.outWidth else bounds.outHeight
     val target = ImportSizePolicy.target(uprightWidth, uprightHeight, options)
     val fits = target.width == uprightWidth && target.height == uprightHeight
-    // The pipeline reads a JPEG's EXIF orientation itself, so a JPEG that already fits keeps its original bytes.
-    if (fits && bounds.outMimeType == "image/jpeg") return
-    val upright = decodeUpright(destination, orientation, target)
+    // The pipeline reads a JPEG's EXIF orientation itself, so a JPEG that already fits keeps its original bytes. Its
+    // header alone proves nothing about its pixels, so a reduced decode rejects pixel data the decoder cannot read. A
+    // truncated scan still decodes partially and passes; the renderer's region decoder is not consulted.
+    if (fits && bounds.outMimeType == "image/jpeg") {
+      val probe = BitmapFactory.decodeFile(destination.absolutePath, BitmapFactory.Options().apply { inSampleSize = PROBE_SAMPLE })
+        ?: throw ScannerException(ScannerErrorCode.IMAGE_LOAD_FAILED, IOException("Image pixels are not decodable."))
+      probe.recycle()
+      return
+    }
+    val upright = reading { decodeUpright(destination, orientation, target) }
     try {
-      destination.outputStream().use { stream ->
-        if (!upright.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)) throw IOException("Imported JPEG could not be encoded.")
+      writing {
+        destination.outputStream().use { stream ->
+          if (!upright.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)) throw IOException("Imported JPEG could not be encoded.")
+        }
       }
     } finally {
       upright.recycle()
+    }
+  }
+
+  /** Copies the picked bytes into [output]: opening or reading [open] fails as the image, the rest as storage. */
+  internal fun copyOriginal(open: () -> InputStream?, output: () -> OutputStream) {
+    reading { open() ?: throw IOException("Image could not be opened.") }.use { input ->
+      val stream = writing(output)
+      try {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+          val count = reading { input.read(buffer) }
+          if (count < 0) break
+          writing { stream.write(buffer, 0, count) }
+        }
+      } catch (error: Throwable) {
+        runCatching { stream.close() }
+        throw error
+      }
+      writing { stream.close() }
     }
   }
 

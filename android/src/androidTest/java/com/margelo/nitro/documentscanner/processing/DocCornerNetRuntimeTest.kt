@@ -128,8 +128,10 @@ class DocCornerNetRuntimeTest {
   fun privatePhotosMeetNativeParityBudgetAndRecordWarmTimings() {
     assumeMeasuring()
     requireFixtures()
+    assertTrue("Private fixtures have no model.tflite; regenerate them with tools/models/prepare_doccornernet_runtime.py.",
+      fixtures.list("doccornernet-runtime")?.contains("model.tflite") == true)
     val references = JSONObject(fixtures.open("doccornernet-runtime/references.json").bufferedReader().use { it.readText() })
-    val modelBytes = context.assets.open("doccornernet/model.tflite").use { it.readBytes() }
+    val modelBytes = fixtures.open("doccornernet-runtime/model.tflite").use { it.readBytes() }
     assertEquals(references.getString("modelSha256"), sha256(modelBytes))
     val model = ByteBuffer.allocateDirect(modelBytes.size).order(ByteOrder.nativeOrder()).apply { put(modelBytes); rewind() }
     val rows = JSONArray()
@@ -140,7 +142,7 @@ class DocCornerNetRuntimeTest {
       .put("abis", JSONArray(Build.SUPPORTED_ABIS.toList())).put("modelSha256", sha256(modelBytes)).put("photos", rows)
       .put("photoMaxDimension", SAMPLED_PARITY_DIMENSION)
     Interpreter(model, Interpreter.Options().setNumThreads(2)).use { tensorRuntime ->
-      DocCornerSession(context).use { session ->
+      DocCornerSession(context, modelBytes = modelBytes).use { session ->
         val photos = references.getJSONArray("photos")
         for (index in 0 until photos.length()) {
           val reference = photos.getJSONObject(index)

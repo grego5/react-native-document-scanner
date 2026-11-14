@@ -21,10 +21,15 @@ final class ScaffoldTests: XCTestCase {
     XCTAssertNoThrow(try HybridCameraPermission().getStatus())
   }
 
-  func testBundledModelMatchesCanonicalBytes() throws {
-    let model = try CornerModelLoader.url("asset:///doccornernet/model.tflite")
+  func testExampleModelMatchesProvenance() throws {
+    let model = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "model", withExtension: "tflite"))
     let digest = SHA256.hash(data: try Data(contentsOf: model)).map { String(format: "%02x", $0) }.joined()
-    XCTAssertEqual(digest, "830ece3373c3ce6ff67a9023f10f56e3576c257de22d662f985ce27b747f3b35")
+    XCTAssertEqual(digest, "9c126388e321fcd52f0c6f6bdb498dececac4cd0eede6fb72068476195a2fef6")
+  }
+
+  func testLibraryBundlesNoModel() {
+    XCTAssertThrowsError(try CornerModelLoader.url("asset:///doccornernet/model.tflite"))
+    XCTAssertThrowsError(try CornerModelLoader.url("asset:///../model.tflite"))
   }
 
   func testPinnedTensorFlowRuntimeLinks() {
