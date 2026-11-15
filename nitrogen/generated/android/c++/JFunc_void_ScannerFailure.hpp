@@ -22,7 +22,7 @@ namespace margelo::nitro::documentscanner {
   using namespace facebook;
 
   /**
-   * Represents the Java/Kotlin callback `(failure: ScannerFailure) -> Unit`.
+   * Represents the Java/Kotlin callback `(error: ScannerFailure) -> Unit`.
    * This can be passed around between C++ and Java/Kotlin.
    */
   struct JFunc_void_ScannerFailure: public jni::JavaClass<JFunc_void_ScannerFailure> {
@@ -33,9 +33,9 @@ namespace margelo::nitro::documentscanner {
     /**
      * Invokes the function this `JFunc_void_ScannerFailure` instance holds through JNI.
      */
-    void invoke(const ScannerFailure& failure) const {
-      static const auto method = javaClassStatic()->getMethod<void(jni::alias_ref<JScannerFailure> /* failure */)>("invoke");
-      method(self(), JScannerFailure::fromCpp(failure));
+    void invoke(const ScannerFailure& error) const {
+      static const auto method = javaClassStatic()->getMethod<void(jni::alias_ref<JScannerFailure> /* error */)>("invoke");
+      method(self(), JScannerFailure::fromCpp(error));
     }
   };
 
@@ -44,7 +44,7 @@ namespace margelo::nitro::documentscanner {
    */
   class JFunc_void_ScannerFailure_cxx final: public jni::HybridClass<JFunc_void_ScannerFailure_cxx, JFunc_void_ScannerFailure> {
   public:
-    static jni::local_ref<JFunc_void_ScannerFailure::javaobject> fromCpp(const std::function<void(const ScannerFailure& /* failure */)>& func) {
+    static jni::local_ref<JFunc_void_ScannerFailure::javaobject> fromCpp(const std::function<void(const ScannerFailure& /* error */)>& func) {
       return JFunc_void_ScannerFailure_cxx::newObjectCxxArgs(func);
     }
 
@@ -52,13 +52,13 @@ namespace margelo::nitro::documentscanner {
     /**
      * Invokes the C++ `std::function<...>` this `JFunc_void_ScannerFailure_cxx` instance holds.
      */
-    void invoke_cxx(jni::alias_ref<JScannerFailure> failure) {
-      _func(failure->toCpp());
+    void invoke_cxx(jni::alias_ref<JScannerFailure> error) {
+      _func(error->toCpp());
     }
 
   public:
     [[nodiscard]]
-    inline const std::function<void(const ScannerFailure& /* failure */)>& getFunction() const {
+    inline const std::function<void(const ScannerFailure& /* error */)>& getFunction() const {
       return _func;
     }
 
@@ -69,11 +69,11 @@ namespace margelo::nitro::documentscanner {
     }
 
   private:
-    explicit JFunc_void_ScannerFailure_cxx(const std::function<void(const ScannerFailure& /* failure */)>& func): _func(func) { }
+    explicit JFunc_void_ScannerFailure_cxx(const std::function<void(const ScannerFailure& /* error */)>& func): _func(func) { }
 
   private:
     friend HybridBase;
-    std::function<void(const ScannerFailure& /* failure */)> _func;
+    std::function<void(const ScannerFailure& /* error */)> _func;
   };
 
 } // namespace margelo::nitro::documentscanner

@@ -16,6 +16,7 @@
 #include "HybridImageViewerViewSpecSwift.hpp"
 #include "HybridPageThumbnailViewSpecSwift.hpp"
 #include "HybridScanSessionSpecSwift.hpp"
+#include "HybridTextCameraViewSpecSwift.hpp"
 #include "ReactNativeDocumentScanner-Swift-Cxx-Umbrella.hpp"
 #include <NitroModules/NitroDefines.hpp>
 
@@ -315,6 +316,38 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return [swiftClosure = std::move(swiftClosure)](const ScanSessionChange& change) mutable -> void {
       swiftClosure.call(change);
     };
+  }
+  
+  // pragma MARK: std::function<void(const TextReading& /* reading */)>
+  Func_void_TextReading create_Func_void_TextReading(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_TextReading::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const TextReading& reading) mutable -> void {
+      swiftClosure.call(reading);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const std::variant<ScannerFailure, TextReading>& /* result */)>
+  Func_void_std__variant_ScannerFailure__TextReading_ create_Func_void_std__variant_ScannerFailure__TextReading_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_ScannerFailure__TextReading_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::variant<ScannerFailure, TextReading>& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridTextCameraViewSpec>
+  std::shared_ptr<HybridTextCameraViewSpec> create_std__shared_ptr_HybridTextCameraViewSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    ReactNativeDocumentScanner::HybridTextCameraViewSpec_cxx swiftPart = ReactNativeDocumentScanner::HybridTextCameraViewSpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::documentscanner::HybridTextCameraViewSpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridTextCameraViewSpec_(std__shared_ptr_HybridTextCameraViewSpec_ cppType) {
+    std::shared_ptr<margelo::nitro::documentscanner::HybridTextCameraViewSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::documentscanner::HybridTextCameraViewSpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridTextCameraViewSpec\" is not implemented in Swift!");
+    }
+    #endif
+    ReactNativeDocumentScanner::HybridTextCameraViewSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
   }
 
 } // namespace margelo::nitro::documentscanner::bridge::swift

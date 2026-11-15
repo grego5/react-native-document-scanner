@@ -23,6 +23,16 @@
         "implementationClassName": "HybridDocumentScannerCameraView"
       }
     },
+    "TextCameraView": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridTextCameraView"
+      },
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridTextCameraView"
+      }
+    },
     "ScanSession": {
       "android": {
         "language": "kotlin",

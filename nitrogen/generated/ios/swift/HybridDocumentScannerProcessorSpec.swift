@@ -20,6 +20,7 @@ public protocol HybridDocumentScannerProcessorSpec_protocol: HybridObject {
   func clearSampleFolder() throws -> Void
   func setSampleCollection(on: Bool) throws -> Void
   func setSampleFolder(uri: String) throws -> Void
+  func copyText(text: String) throws -> Void
 }
 
 public extension HybridDocumentScannerProcessorSpec_protocol {

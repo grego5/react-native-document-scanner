@@ -46,6 +46,8 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridPageThumbnailViewSpec.cpp
   ../nitrogen/generated/shared/c++/views/HybridPageThumbnailViewComponent.cpp
   ../nitrogen/generated/shared/c++/HybridScanSessionSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridTextCameraViewSpec.cpp
+  ../nitrogen/generated/shared/c++/views/HybridTextCameraViewComponent.cpp
   # Android-specific Nitrogen C++ sources
   ../nitrogen/generated/android/c++/JHybridCameraPermissionSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_CameraPermissionValue_ScannerFailure.cpp
@@ -69,6 +71,9 @@ target_sources(
   ../nitrogen/generated/android/c++/JVariant_String_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_Array_String__ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_ScanSessionObservation_ScannerFailure.cpp
+  ../nitrogen/generated/android/c++/JHybridTextCameraViewSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_TextReading.cpp
+  ../nitrogen/generated/android/c++/views/JHybridTextCameraViewStateUpdater.cpp
 )
 
 # From node_modules/react-native/ReactAndroid/cmake-utils/folly-flags.cmake

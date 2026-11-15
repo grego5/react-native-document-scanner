@@ -11,6 +11,7 @@ import com.margelo.nitro.documentscanner.views.HybridDocumentScannerCameraViewMa
 import com.margelo.nitro.documentscanner.views.HybridImageViewerViewManager
 import com.margelo.nitro.documentscanner.views.HybridImagePagerViewManager
 import com.margelo.nitro.documentscanner.views.HybridPageThumbnailViewManager
+import com.margelo.nitro.documentscanner.views.HybridTextCameraViewManager
 
 class ReactNativeDocumentScannerPackage : BaseReactPackage() {
   companion object {
@@ -35,6 +36,7 @@ class ReactNativeDocumentScannerPackage : BaseReactPackage() {
       HybridImageViewerViewManager(),
       HybridImagePagerViewManager(),
       HybridPageThumbnailViewManager(),
+      HybridTextCameraViewManager(),
     )
   }
 }

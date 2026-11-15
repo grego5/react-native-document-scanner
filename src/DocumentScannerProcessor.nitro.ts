@@ -114,4 +114,6 @@ export interface DocumentScannerProcessor
   setSampleCollection(on: boolean): void
   /** Set a private file directory or persisted SAF tree; preserves collection enabled state. */
   setSampleFolder(uri: string): void
+  /** Puts plain text on the system clipboard, such as a `TextCamera` reading. */
+  copyText(text: string): void
 }

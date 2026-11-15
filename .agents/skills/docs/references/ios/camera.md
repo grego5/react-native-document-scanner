@@ -10,6 +10,10 @@
 - An AVFoundation interruption disarms the frame stream and invalidates focus, command acknowledgements and live guide evidence. The first frame after interruption end restores readiness. A resumed run reapplies settings after any submitted still settles. Auto torch keeps an established light decision on interruption and restarts partial darkness evidence. A full stop resets the decision.
 - A media-services reset retires the pipeline. An eligible view tries to rebuild it once before the next first frame, after any physical still settles. Other runtime failures suspend the camera until an eligibility or request change retries it.
 
+## Text camera
+
+`HybridTextCameraView` owns its own `AVCaptureSession` with a video data output, configured on its session queue, independent of the document camera. A rotation coordinator turns both preview and video buffers upright. `textRegionInBuffer` then maps the region through the aspect-fill crop, and Vision's region of interest is that rectangle flipped to a bottom-left origin. Recognition and voting run on the video queue, and late frames are discarded. A configuration error or a session runtime error, including a failed `startRunning()`, stops the camera and reports `camera/unavailable`. Stopping, a failed start and a session interruption share one transition: it clears the reading, fails pending reads with `camera/unavailable` and stops already queued frames from counting. While interrupted, frames are dropped; after AVFoundation ends the interruption, the first fresh frame restores `ready`. The outline is the newest box that read the agreed text, and it moves only when text is recognized: iOS has no flow tracking between recognitions yet. Main owns state and pending reads. `TextLineFilter.swift` mirrors Kotlin's rules and is covered by `TextLineFilterTests`.
+
 ## Capture
 
 - One admitted request moves through waiting, exposing and saving. Waiting cancellation releases the slot immediately. A cancelled physical capture retains the slot until its delegate and writer settle. The view borrows its session and never closes it.

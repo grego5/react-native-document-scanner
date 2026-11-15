@@ -9,6 +9,9 @@ export { ScannerError, ScannerCancellation } from './ScannerError';
 export type { ScannerErrorCode } from './ScannerFailure';
 
 export { Camera } from './DocumentScanner';
+export { TextCamera, DEFAULT_TEXT_REGION } from './TextCamera';
+export type { TextCameraProps, TextCameraRef } from './TextCamera';
+export type { TextGuide, TextReading, TextRegion, TextTorchMode } from './TextCamera.nitro';
 export { CameraPermission, useCameraPermission } from './CameraPermission';
 export type { CameraPermissionStatus } from './CameraPermission.nitro';
 export { CropEditor } from './DocumentCropEditor';
@@ -75,6 +78,9 @@ export const DocumentScanner = {
       requireSampleCollection();
       nativeProcessor.setSampleFolder(uri);
     }, 'input/invalid'),
+  /** Puts plain text on the system clipboard, such as a `TextCamera` reading. */
+  copyText: (text: string) =>
+    scannerValue(() => nativeProcessor.copyText(text), 'processor/unavailable'),
   setSampleCollection: (on: boolean) =>
     scannerValue(() => {
       if (on) requireSampleCollection();

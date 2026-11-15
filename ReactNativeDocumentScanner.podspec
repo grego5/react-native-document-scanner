@@ -16,7 +16,7 @@ Pod::Spec.new do |s|
   s.private_header_files = ['cpp/include/**/*.hpp', 'cpp/src/**/*.hpp']
   s.dependency 'DocumentScannerOpenCV', '4.12.0'
   s.dependency 'TensorFlowLiteC', '2.17.0'
-  s.frameworks = ['UIKit', 'Accelerate', 'AVFoundation', 'CoreMedia', 'CoreVideo', 'ImageIO', 'UniformTypeIdentifiers']
+  s.frameworks = ['UIKit', 'Accelerate', 'AVFoundation', 'CoreMedia', 'CoreVideo', 'ImageIO', 'UniformTypeIdentifiers', 'Vision']
   s.libraries = ['c++', 'z']
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '$(inherited) "$(PODS_TARGET_SRCROOT)/cpp/include" "$(PODS_TARGET_SRCROOT)/cpp/src"',

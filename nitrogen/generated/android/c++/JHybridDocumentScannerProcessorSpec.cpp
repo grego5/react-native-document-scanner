@@ -121,5 +121,9 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* uri */)>("setSampleFolder");
     method(_javaPart, jni::make_jstring(uri));
   }
+  void JHybridDocumentScannerProcessorSpec::copyText(const std::string& text) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */)>("copyText");
+    method(_javaPart, jni::make_jstring(text));
+  }
 
 } // namespace margelo::nitro::documentscanner

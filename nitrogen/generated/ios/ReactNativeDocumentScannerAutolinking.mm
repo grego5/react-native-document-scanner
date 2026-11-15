@@ -11,6 +11,7 @@
 #import <type_traits>
 
 #include "HybridDocumentScannerCameraViewSpecSwift.hpp"
+#include "HybridTextCameraViewSpecSwift.hpp"
 #include "HybridScanSessionSpecSwift.hpp"
 #include "HybridDocumentScannerProcessorSpecSwift.hpp"
 #include "HybridDocumentCropEditorViewSpecSwift.hpp"
@@ -32,6 +33,13 @@
     "DocumentScannerCameraView",
     []() -> std::shared_ptr<HybridObject> {
       std::shared_ptr<HybridDocumentScannerCameraViewSpec> hybridObject = ReactNativeDocumentScanner::ReactNativeDocumentScannerAutolinking::createDocumentScannerCameraView();
+      return hybridObject;
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "TextCameraView",
+    []() -> std::shared_ptr<HybridObject> {
+      std::shared_ptr<HybridTextCameraViewSpec> hybridObject = ReactNativeDocumentScanner::ReactNativeDocumentScannerAutolinking::createTextCameraView();
       return hybridObject;
     }
   );

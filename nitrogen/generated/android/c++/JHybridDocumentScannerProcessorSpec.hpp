@@ -61,6 +61,7 @@ namespace margelo::nitro::documentscanner {
     void clearSampleFolder() override;
     void setSampleCollection(bool on) override;
     void setSampleFolder(const std::string& uri) override;
+    void copyText(const std::string& text) override;
 
   private:
     jni::global_ref<JHybridDocumentScannerProcessorSpec::JavaPart> _javaPart;

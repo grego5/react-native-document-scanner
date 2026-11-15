@@ -1,0 +1,23 @@
+{
+  "uiViewClassName": "TextCameraView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "active": true,
+    "textRegion": true,
+    "textGuide": true,
+    "guideColor": true,
+    "allowedCharacters": true,
+    "textPattern": true,
+    "minLength": true,
+    "tapToFocus": true,
+    "torch": true,
+    "recognitionRate": true,
+    "analysisFrameWidth": true,
+    "onCameraStateChange": true,
+    "onTextChange": true,
+    "onError": true,
+    "hybridRef": true
+  }
+}

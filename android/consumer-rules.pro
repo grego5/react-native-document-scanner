@@ -18,3 +18,8 @@
 # Looked up by class name during JNI_OnLoad, including when only diagnostics use a bridge.
 -keep class com.margelo.nitro.documentscanner.processing.FieldKernels { *; }
 -keep class com.margelo.nitro.documentscanner.processing.FastCores { *; }
+
+# ML Kit (TextCamera) discovers its component registrars by name and constructs them by reflection. R8 full mode keeps
+# the classes through firebase-components' own rule but drops their no-arg constructors, which leaves ML Kit without
+# a text recognizer.
+-keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }

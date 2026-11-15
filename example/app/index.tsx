@@ -28,6 +28,7 @@ import { DEFAULT_TUNING, OptionsPanel } from '../components/OptionsPanel';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ReviewPanel } from '../components/ReviewPanel';
 import { SheetModal } from '../components/SheetModal';
+import { TextScanPanel } from '../components/TextScanPanel';
 import { ShutterButton } from '../components/ShutterButton';
 import { ActionButton } from '../components/ActionButton';
 import { useScanReview } from '../hooks/useScanReview';
@@ -116,6 +117,7 @@ export function ScanScreen({
   const capturing =
     captureState === 'waiting' || captureState === 'shooting' || captureState === 'saving';
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [textOpen, setTextOpen] = useState(false);
   const [torchOverride, setTorchOverride] = useState<Extract<TorchMode, 'on'>>();
   const torch = torchOverride ?? tuning.torch;
   const [sampleFolder, setSampleFolder] = useState(() =>
@@ -146,7 +148,8 @@ export function ScanScreen({
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       // An export keeps the pager and its pages in place until it ends.
       if (session.working || capturing) return true;
-      if (optionsOpen) setOptionsOpen(false);
+      if (textOpen) setTextOpen(false);
+      else if (optionsOpen) setOptionsOpen(false);
       else if (view === 'review') {
         // Crop Cancel issues no native command.
         if (review?.cropping) session.cancelCrop();
@@ -226,7 +229,8 @@ export function ScanScreen({
     });
   };
 
-  const showing = view === 'camera' && !optionsOpen;
+  // One camera at a time: the document camera releases its use while text reading is open.
+  const showing = view === 'camera' && !optionsOpen && !textOpen;
   // The saved Hi-res camera option applies only to photos; documents use their default.
   const { mode, highResolutionPhoto, ...shared } = tuning;
   const cameraProps = {
@@ -339,6 +343,12 @@ export function ScanScreen({
                   disabled={busy}
                   onPress={() => switchMode('photo')}
                 />
+                <ActionButton
+                  label="Text"
+                  accessibilityHint="Reads one line of text, such as a serial number."
+                  disabled={busy}
+                  onPress={() => setTextOpen(true)}
+                />
               </View>
               <View style={styles.shutterCenter}>
                 <ShutterButton
@@ -378,6 +388,7 @@ export function ScanScreen({
         rectangle={mode === 'photo'}
         onNewScan={() => confirmDiscard(session.reset)}
       />
+      {textOpen && <TextScanPanel granted={granted} onClose={() => setTextOpen(false)} />}
       <SheetModal visible={optionsOpen} onClose={() => setOptionsOpen(false)}>
         <OptionsPanel
           cameraFeatures={cameraFeatures}

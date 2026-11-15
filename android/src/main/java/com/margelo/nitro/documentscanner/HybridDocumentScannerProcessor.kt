@@ -1,5 +1,7 @@
 package com.margelo.nitro.documentscanner
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -64,6 +66,11 @@ class HybridDocumentScannerProcessor(
   override fun setSampleFolder(uri: String) = SampleCollection.configure(context("sample collection"), uri, null)
 
   override fun setSampleCollection(on: Boolean) = SampleCollection.configure(context("sample collection"), null, on)
+
+  override fun copyText(text: String) {
+    val clipboard = context("clipboard").getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("text", text))
+  }
 
   private fun context(purpose: String): Context = contextOverride ?: NitroModules.applicationContext?.applicationContext
     ?: throw ScannerException(ScannerErrorCode.PROCESSOR_UNAVAILABLE,

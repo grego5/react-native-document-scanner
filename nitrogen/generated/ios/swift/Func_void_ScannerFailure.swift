@@ -8,21 +8,21 @@
 import NitroModules
 
 /**
- * Wraps a Swift `(_ failure: ScannerFailure) -> Void` as a class.
+ * Wraps a Swift `(_ error: ScannerFailure) -> Void` as a class.
  * This class can be used from C++, e.g. to wrap the Swift closure as a `std::function`.
  */
 public final class Func_void_ScannerFailure {
   public typealias bridge = margelo.nitro.documentscanner.bridge.swift
 
-  private let closure: (_ failure: ScannerFailure) -> Void
+  private let closure: (_ error: ScannerFailure) -> Void
 
-  public init(_ closure: @escaping (_ failure: ScannerFailure) -> Void) {
+  public init(_ closure: @escaping (_ error: ScannerFailure) -> Void) {
     self.closure = closure
   }
 
   @inline(__always)
-  public func call(failure: ScannerFailure) -> Void {
-    self.closure(failure)
+  public func call(error: ScannerFailure) -> Void {
+    self.closure(error)
   }
 
   /**

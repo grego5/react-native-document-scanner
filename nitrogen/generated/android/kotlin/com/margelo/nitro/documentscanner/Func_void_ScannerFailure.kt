@@ -13,7 +13,7 @@ import com.facebook.proguard.annotations.DoNotStrip
 
 
 /**
- * Represents the JavaScript callback `(failure: struct) => void`.
+ * Represents the JavaScript callback `(error: struct) => void`.
  * This can be either implemented in C++ (in which case it might be a callback coming from JS),
  * or in Kotlin/Java (in which case it is a native callback).
  */
@@ -27,11 +27,11 @@ fun interface Func_void_ScannerFailure: (ScannerFailure) -> Unit {
    */
   @DoNotStrip
   @Keep
-  override fun invoke(failure: ScannerFailure): Unit
+  override fun invoke(error: ScannerFailure): Unit
 }
 
 /**
- * Represents the JavaScript callback `(failure: struct) => void`.
+ * Represents the JavaScript callback `(error: struct) => void`.
  * This is implemented in C++, via a `std::function<...>`.
  * The callback might be coming from JS.
  */
@@ -55,14 +55,14 @@ class Func_void_ScannerFailure_cxx: Func_void_ScannerFailure {
 
   @DoNotStrip
   @Keep
-  override fun invoke(failure: ScannerFailure): Unit
-    = invoke_cxx(failure)
+  override fun invoke(error: ScannerFailure): Unit
+    = invoke_cxx(error)
 
-  private external fun invoke_cxx(failure: ScannerFailure): Unit
+  private external fun invoke_cxx(error: ScannerFailure): Unit
 }
 
 /**
- * Represents the JavaScript callback `(failure: struct) => void`.
+ * Represents the JavaScript callback `(error: struct) => void`.
  * This is implemented in Java/Kotlin, via a `(ScannerFailure) -> Unit`.
  * The callback is always coming from native.
  */
@@ -72,7 +72,7 @@ class Func_void_ScannerFailure_cxx: Func_void_ScannerFailure {
 class Func_void_ScannerFailure_java(private val function: (ScannerFailure) -> Unit): Func_void_ScannerFailure {
   @DoNotStrip
   @Keep
-  override fun invoke(failure: ScannerFailure): Unit {
-    return this.function(failure)
+  override fun invoke(error: ScannerFailure): Unit {
+    return this.function(error)
   }
 }

@@ -131,6 +131,12 @@ namespace margelo::nitro::documentscanner {
         std::rethrow_exception(__result.error());
       }
     }
+    inline void copyText(const std::string& text) override {
+      auto __result = _swiftPart.copyText(text);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
 
   private:
     ReactNativeDocumentScanner::HybridDocumentScannerProcessorSpec_cxx _swiftPart;

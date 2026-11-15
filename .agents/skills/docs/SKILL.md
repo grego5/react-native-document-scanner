@@ -9,7 +9,7 @@ Read only the references relevant to the task.
 
 | Topic | Reference |
 | --- | --- |
-| Public API, host integration and example ownership | [Integration](references/integration.md) |
+| Public API, host integration, text reading and example ownership | [Integration](references/integration.md) |
 | Session lifecycle, revisions, native views and export | [Architecture](references/architecture.md) |
 | Coordinates, processing, guidance and capture parity | [Shared engine](references/engine.md) |
 | Routine checks, generation and parity fixtures | [Development](references/development.md) |

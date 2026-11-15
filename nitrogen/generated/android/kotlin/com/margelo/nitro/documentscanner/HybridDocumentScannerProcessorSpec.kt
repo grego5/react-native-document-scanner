@@ -57,6 +57,10 @@ abstract class HybridDocumentScannerProcessorSpec: HybridObject() {
   @DoNotStrip
   @Keep
   abstract fun setSampleFolder(uri: String): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun copyText(text: String): Unit
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

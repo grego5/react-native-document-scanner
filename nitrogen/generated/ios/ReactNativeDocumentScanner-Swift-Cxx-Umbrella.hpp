@@ -64,6 +64,8 @@ namespace margelo::nitro::documentscanner { class HybridImageViewerViewSpec; }
 namespace margelo::nitro::documentscanner { class HybridPageThumbnailViewSpec; }
 // Forward declaration of `HybridScanSessionSpec` to properly resolve imports.
 namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
+// Forward declaration of `HybridTextCameraViewSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridTextCameraViewSpec; }
 // Forward declaration of `ImageCorrectionOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ImageCorrectionOptions; }
 // Forward declaration of `ImageFit` to properly resolve imports.
@@ -98,6 +100,14 @@ namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 namespace margelo::nitro::documentscanner { struct SessionPdfOptions; }
 // Forward declaration of `TakePhotoOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
+// Forward declaration of `TextGuide` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextGuide; }
+// Forward declaration of `TextReading` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextReading; }
+// Forward declaration of `TextRegion` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextRegion; }
+// Forward declaration of `TextTorchMode` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
 // Forward declaration of `TorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TorchMode; }
 
@@ -130,6 +140,7 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "HybridImageViewerViewSpec.hpp"
 #include "HybridPageThumbnailViewSpec.hpp"
 #include "HybridScanSessionSpec.hpp"
+#include "HybridTextCameraViewSpec.hpp"
 #include "ImageCorrectionOptions.hpp"
 #include "ImageFit.hpp"
 #include "ImageOutputOptions.hpp"
@@ -147,6 +158,10 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "ScannerFailure.hpp"
 #include "SessionPdfOptions.hpp"
 #include "TakePhotoOptions.hpp"
+#include "TextGuide.hpp"
+#include "TextReading.hpp"
+#include "TextRegion.hpp"
+#include "TextTorchMode.hpp"
 #include "TorchMode.hpp"
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/Result.hpp>
@@ -185,6 +200,8 @@ namespace ReactNativeDocumentScanner { class HybridImageViewerViewSpec_cxx; }
 namespace ReactNativeDocumentScanner { class HybridPageThumbnailViewSpec_cxx; }
 // Forward declaration of `HybridScanSessionSpec_cxx` to properly resolve imports.
 namespace ReactNativeDocumentScanner { class HybridScanSessionSpec_cxx; }
+// Forward declaration of `HybridTextCameraViewSpec_cxx` to properly resolve imports.
+namespace ReactNativeDocumentScanner { class HybridTextCameraViewSpec_cxx; }
 
 // Include Swift defined types
 #if __has_include("ReactNativeDocumentScanner-Swift.h")

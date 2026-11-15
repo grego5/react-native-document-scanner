@@ -52,12 +52,13 @@ test('utility facade keeps typed sample controls separate from explicit session 
     setSampleFolder: (uri) => { calls.push(['folder', uri]); folder = { uri, collecting: false } },
     setSampleCollection: (on) => { calls.push(['collect', on]); folder = { ...folder, collecting: on } },
     clearSampleFolder: () => { folder = { collecting: false } },
+    copyText: (text) => { calls.push(['copy', text]) },
   }
   const { DocumentScanner } = load('src/index.ts', {
     'react-native': { Platform: { OS: 'android' } },
     './Processor': { nativeProcessor: native },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {},
   })
   DocumentScanner.setSampleFolder('file:///samples')
   DocumentScanner.setSampleCollection(true)
@@ -65,9 +66,10 @@ test('utility facade keeps typed sample controls separate from explicit session 
   await assert.rejects(DocumentScanner.pickSampleFolder(), (error) => error instanceof errors.ScannerError && error.code === 'permission/request-failed')
   DocumentScanner.clearSampleFolder()
   assert.deepEqual(DocumentScanner.getSampleFolder(), { collecting: false })
-  assert.deepEqual(calls, [['folder', 'file:///samples'], ['collect', true]])
+  DocumentScanner.copyText('SN-42')
+  assert.deepEqual(calls, [['folder', 'file:///samples'], ['collect', true], ['copy', 'SN-42']])
   assert.deepEqual(Object.keys(DocumentScanner).sort(), [
-    'clearSampleFolder', 'createSession', 'getSampleFolder', 'pickSampleFolder', 'setSampleCollection', 'setSampleFolder',
+    'clearSampleFolder', 'copyText', 'createSession', 'getSampleFolder', 'pickSampleFolder', 'setSampleCollection', 'setSampleFolder',
     'waitForCornerDetectionModel',
   ].sort())
 })
@@ -78,7 +80,7 @@ test('the module waits for the shared corner model with typed results', async ()
     'react-native': { Platform: { OS: 'android' } },
     './Processor': { nativeProcessor: { waitForCornerDetectionModelResult: async () => result } },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {},
   })
   result = true
   assert.equal(await DocumentScanner.waitForCornerDetectionModel(), true)
@@ -105,7 +107,7 @@ test('iOS defers sample collection with stable typed failures and idempotent dis
     'react-native': { Platform: { OS: 'ios' } },
     './Processor': { nativeProcessor: native },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {},
   })
   const unsupported = (error) => error instanceof errors.ScannerError && error.code === 'feature/unsupported'
   assert.throws(() => DocumentScanner.setSampleFolder('file:///samples'), unsupported)
@@ -519,7 +521,7 @@ test('scanner creates only after commit, replaces sessions on New scan and close
     } } },
     '../components/OptionsPanel': { DEFAULT_TUNING: {} }, '../components/PrimaryButton': {},
     '../components/ReviewPanel': {}, '../components/SheetModal': {}, '../components/ShutterButton': {},
-    '../components/ActionButton': {}, '../hooks/useScanReview': {}, '../lib/errorMessage': {},
+    '../components/ActionButton': {}, '../components/TextScanPanel': {}, '../hooks/useScanReview': {}, '../lib/errorMessage': {},
     '../lib/labels': load('example/lib/labels.ts'),
     '../lib/pdfExports': { removeOldPdfExports() {} }, '../lib/settings': { loadSettings: d => d, saveSettings() {} }, '../lib/scanSession': appModel, '../styles': { styles: {} },
   }).default
@@ -1075,7 +1077,7 @@ test('the public session factory wraps admission, registration failure and stabl
     './ScannerError': errors,
     './ScanSession': { createScanSession: (native) => sessionAdapter.createScanSession(native, fixture.frames) },
     './DocumentScanner': {}, './DocumentCropEditor': {},
-    './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {},
+    './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {},
   })
   const session = DocumentScanner.createSession()
   const { getSession, subscribe, setDocumentCrop } = session
@@ -1419,4 +1421,50 @@ test('superseded operations reject as cancellation, separately from scanner fail
   }
   await assert.rejects(errors.scannerOperation(async () => { throw new errors.ScannerCancellation('processor/superseded') }, 'capture/failed'),
     error => error instanceof errors.ScannerCancellation)
+})
+
+test('text camera sends concrete defaults and maps empty readings to undefined', async () => {
+  const ref = {}
+  let refreshHandlers = () => {}
+  const { TextCamera, DEFAULT_TEXT_REGION } = load('src/TextCamera.tsx', {
+    'react': {
+      forwardRef: (render) => render,
+      useLayoutEffect: (effect) => { refreshHandlers = effect },
+      useMemo: (create) => create(),
+      useRef: (value) => ({ current: value }),
+      useImperativeHandle: (target, create) => { target.current = create() },
+    },
+    'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
+    'react-native': { processColor: (value) => (value === 'red' ? 0xffff0000 : null) },
+    'react-native-nitro-modules': { callback: (fn) => fn, getHostComponent: () => 'NativeTextCamera' },
+    '../nitrogen/generated/shared/json/TextCameraViewConfig.json': {},
+    './ScannerError': errors,
+  })
+  const texts = []
+  const view = TextCamera({ guideColor: 'red', onTextChange: (reading) => texts.push(reading) }, ref)
+  refreshHandlers()
+  assert.equal(view.type, 'NativeTextCamera')
+  assert.equal(view.props.textRegion, DEFAULT_TEXT_REGION)
+  assert.equal(view.props.guideColor, 0xffff0000)
+  assert.equal(view.props.allowedCharacters, '')
+  assert.equal(view.props.textPattern, '')
+  assert.equal(view.props.minLength, 1)
+  assert.equal(view.props.analysisFrameWidth, 1280)
+  assert.equal(view.props.torch, 'off')
+  assert.equal(view.props.recognitionRate, 5)
+  const region = { x: 0, y: 0, width: 1, height: 1 }
+  view.props.onTextChange({ text: '', confidence: 0, votes: 0, region })
+  view.props.onTextChange({ text: 'AB12', confidence: 0.9, votes: 3, region })
+  assert.deepEqual(texts.map((reading) => reading?.text), [undefined, 'AB12'])
+
+  await assert.rejects(ref.current.readText(), (error) => error instanceof errors.ScannerError && error.code === 'camera/unavailable')
+  const timeouts = []
+  let next = { text: '', confidence: 0, votes: 0, region }
+  view.props.hybridRef({ readTextResult: async (timeoutMs) => { timeouts.push(timeoutMs); return next } })
+  assert.equal(await ref.current.readText(), undefined)
+  next = { text: 'SN-42', confidence: 0.8, votes: 2, region }
+  assert.equal((await ref.current.readText({ timeoutMs: 300 })).text, 'SN-42')
+  next = { code: 'camera/unavailable' }
+  await assert.rejects(ref.current.readText(), (error) => error.code === 'camera/unavailable')
+  assert.deepEqual(timeouts, [1500, 300, 1500])
 })

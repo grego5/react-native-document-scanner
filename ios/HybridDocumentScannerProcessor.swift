@@ -1,5 +1,6 @@
 import Foundation
 import NitroModules
+import UIKit
 
 /// Session factory plus sample-folder controls. Sample collection is deferred on iOS:
 /// no folder is ever collecting, clearing and disabling are idempotent no-ops, and
@@ -44,6 +45,10 @@ class HybridDocumentScannerProcessor: HybridDocumentScannerProcessorSpec {
   /// The JS facade raises the typed failure for enabling; void transport cannot carry it.
   func setSampleCollection(on: Bool) throws {
     if on { throw ScannerUnsupported.error }
+  }
+
+  func copyText(text: String) throws {
+    CameraPermissions.onMain { UIPasteboard.general.string = text }
   }
 
   func setSampleFolder(uri: String) throws {

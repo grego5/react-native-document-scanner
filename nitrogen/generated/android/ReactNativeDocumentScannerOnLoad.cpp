@@ -41,6 +41,9 @@
 #include "views/JHybridPageThumbnailViewStateUpdater.hpp"
 #include "JHybridScanSessionSpec.hpp"
 #include "JFunc_void_ScanSessionChange.hpp"
+#include "JHybridTextCameraViewSpec.hpp"
+#include "JFunc_void_TextReading.hpp"
+#include "views/JHybridTextCameraViewStateUpdater.hpp"
 #include <NitroModules/DefaultConstructableObject.hpp>
 
 namespace margelo::nitro::documentscanner {
@@ -57,6 +60,14 @@ struct JHybridDocumentScannerCameraViewSpecImpl: public jni::JavaClass<JHybridDo
     static const auto constructorFn = javaClassStatic()->getConstructor<JHybridDocumentScannerCameraViewSpecImpl::javaobject()>();
     jni::local_ref<JHybridDocumentScannerCameraViewSpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
     return javaPart->getJHybridDocumentScannerCameraViewSpec();
+  }
+};
+struct JHybridTextCameraViewSpecImpl: public jni::JavaClass<JHybridTextCameraViewSpecImpl, JHybridTextCameraViewSpec::JavaPart> {
+  static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/documentscanner/HybridTextCameraView;";
+  static std::shared_ptr<JHybridTextCameraViewSpec> create() {
+    static const auto constructorFn = javaClassStatic()->getConstructor<JHybridTextCameraViewSpecImpl::javaobject()>();
+    jni::local_ref<JHybridTextCameraViewSpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
+    return javaPart->getJHybridTextCameraViewSpec();
   }
 };
 struct JHybridScanSessionSpecImpl: public jni::JavaClass<JHybridScanSessionSpecImpl, JHybridScanSessionSpec::JavaPart> {
@@ -147,12 +158,21 @@ void registerAllNatives() {
   margelo::nitro::documentscanner::views::JHybridPageThumbnailViewStateUpdater::registerNatives();
   margelo::nitro::documentscanner::JHybridScanSessionSpec::CxxPart::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_ScanSessionChange_cxx::registerNatives();
+  margelo::nitro::documentscanner::JHybridTextCameraViewSpec::CxxPart::registerNatives();
+  margelo::nitro::documentscanner::JFunc_void_TextReading_cxx::registerNatives();
+  margelo::nitro::documentscanner::views::JHybridTextCameraViewStateUpdater::registerNatives();
 
   // Register Nitro Hybrid Objects
   HybridObjectRegistry::registerHybridObjectConstructor(
     "DocumentScannerCameraView",
     []() -> std::shared_ptr<HybridObject> {
       return JHybridDocumentScannerCameraViewSpecImpl::create();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "TextCameraView",
+    []() -> std::shared_ptr<HybridObject> {
+      return JHybridTextCameraViewSpecImpl::create();
     }
   );
   HybridObjectRegistry::registerHybridObjectConstructor(

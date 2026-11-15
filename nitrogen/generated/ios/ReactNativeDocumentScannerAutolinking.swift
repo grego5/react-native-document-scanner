@@ -24,6 +24,18 @@ public final class ReactNativeDocumentScannerAutolinking {
     return HybridDocumentScannerCameraView.self is any RecyclableView.Type
   }
   
+  public static func createTextCameraView() -> bridge.std__shared_ptr_HybridTextCameraViewSpec_ {
+    let hybridObject = HybridTextCameraView()
+    return { () -> bridge.std__shared_ptr_HybridTextCameraViewSpec_ in
+      let __cxxWrapped = hybridObject.getCxxWrapper()
+      return __cxxWrapped.getCxxPart()
+    }()
+  }
+  
+  public static func isTextCameraViewRecyclable() -> Bool {
+    return HybridTextCameraView.self is any RecyclableView.Type
+  }
+  
   public static func createScanSession() -> bridge.std__shared_ptr_HybridScanSessionSpec_ {
     let hybridObject = HybridScanSession()
     return { () -> bridge.std__shared_ptr_HybridScanSessionSpec_ in
