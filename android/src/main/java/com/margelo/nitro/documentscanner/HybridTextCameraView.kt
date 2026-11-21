@@ -221,7 +221,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       if (filter.patternInvalid) onError?.invoke(ScannerFailure(ScannerErrorCode.INPUT_INVALID))
     }
     frameIntervalMs = (1000 / (recognitionRate ?: DEFAULT_RATE.toDouble()).coerceIn(1.0, 15.0)).toLong()
-    overlay.update(region, textGuide != TextGuide.NONE, guideColor?.toLong()?.toInt() ?: DEFAULT_COLOR)
+    overlay.update(region, textGuide ?: TextGuide.NONE, guideColor?.toLong()?.toInt() ?: DEFAULT_COLOR)
     val width = requestedWidth()
     if (controller != null && width != boundWidth) stopCamera("analysis width")
     if (active == false) stopCamera("inactive") else startCamera()
@@ -686,24 +686,26 @@ private data class TrackedOutline(val text: String, val corners: DocumentCorners
 private class TextRegionOverlay(context: Context) : View(context) {
   private var region: TextRegion? = null
   private var text: DocumentCorners? = null
-  private var shown = true
+  private var guide = TextGuide.NONE
   private val density = context.resources.displayMetrics.density
-  private val dim = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x80000000.toInt() }
-  private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2 * density }
   /** A soft highlight over the text, its corners rounded by the path effect. */
   private val textFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { pathEffect = CornerPathEffect(HIGHLIGHT_RADIUS_DP * density) }
-  private val path = Path().apply { fillType = Path.FillType.EVEN_ODD }
-  private val crosshair = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1.5f * density; strokeCap = Paint.Cap.ROUND }
+  private val guideStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    style = Paint.Style.STROKE
+    strokeWidth = 1.5f * density
+    strokeCap = Paint.Cap.ROUND
+    strokeJoin = Paint.Join.ROUND
+  }
+  private val brackets = Path()
   private val textPath = Path()
   private val rect = RectF()
 
-  fun update(region: TextRegion, shown: Boolean, color: Int) {
-    if (region == this.region && shown == this.shown && color == stroke.color) return
+  fun update(region: TextRegion, guide: TextGuide, color: Int) {
+    if (region == this.region && guide == this.guide && color == guideStroke.color) return
     this.region = region
-    this.shown = shown
-    stroke.color = color
+    this.guide = guide
     textFill.color = (color and 0x00FFFFFF) or 0x59000000
-    crosshair.color = (color and 0x00FFFFFF) or 0xB3000000.toInt()
+    guideStroke.color = color
     invalidate()
   }
 
@@ -722,19 +724,37 @@ private class TextRegionOverlay(context: Context) : View(context) {
 
   override fun onDraw(canvas: Canvas) {
     val region = region ?: return
-    if (!shown || width == 0 || height == 0) return
+    if (guide == TextGuide.NONE || width == 0 || height == 0) return
     rect.set((region.x * width).toFloat(), (region.y * height).toFloat(),
       ((region.x + region.width) * width).toFloat(), ((region.y + region.height) * height).toFloat())
-    val radius = 8 * density
-    path.reset()
-    path.addRect(0f, 0f, width.toFloat(), height.toFloat(), Path.Direction.CW)
-    path.addRoundRect(rect, radius, radius, Path.Direction.CW)
-    canvas.drawPath(path, dim)
-    canvas.drawRoundRect(rect, radius, radius, stroke)
+    if (guide == TextGuide.LINE) {
+      val inset = rect.width() * .08f
+      val y = rect.centerY() + minOf(14 * density, rect.height() / 3)
+      canvas.drawLine(rect.left + inset, y, rect.right - inset, y, guideStroke)
+      return
+    }
+    if (guide == TextGuide.BRACKETS) {
+      val arm = minOf(14 * density, rect.width() / 4, rect.height() / 3)
+      brackets.reset()
+      brackets.moveTo(rect.left, rect.top + arm)
+      brackets.lineTo(rect.left, rect.top)
+      brackets.lineTo(rect.left + arm, rect.top)
+      brackets.moveTo(rect.right - arm, rect.top)
+      brackets.lineTo(rect.right, rect.top)
+      brackets.lineTo(rect.right, rect.top + arm)
+      brackets.moveTo(rect.right, rect.bottom - arm)
+      brackets.lineTo(rect.right, rect.bottom)
+      brackets.lineTo(rect.right - arm, rect.bottom)
+      brackets.moveTo(rect.left + arm, rect.bottom)
+      brackets.lineTo(rect.left, rect.bottom)
+      brackets.lineTo(rect.left, rect.bottom - arm)
+      canvas.drawPath(brackets, guideStroke)
+      return
+    }
     // The point readings are chosen nearest to.
     val arm = minOf(CROSSHAIR_ARM_DP * density, rect.height() / 3, rect.width() / 3)
-    canvas.drawLine(rect.centerX() - arm, rect.centerY(), rect.centerX() + arm, rect.centerY(), crosshair)
-    canvas.drawLine(rect.centerX(), rect.centerY() - arm, rect.centerX(), rect.centerY() + arm, crosshair)
+    canvas.drawLine(rect.centerX() - arm, rect.centerY(), rect.centerX() + arm, rect.centerY(), guideStroke)
+    canvas.drawLine(rect.centerX(), rect.centerY() - arm, rect.centerX(), rect.centerY() + arm, guideStroke)
     val text = text ?: return
     // Each corner moves out from the centre by the padding, so the highlight clears the glyphs.
     val pad = HIGHLIGHT_PAD_DP * density

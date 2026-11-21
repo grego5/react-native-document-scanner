@@ -106,7 +106,7 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     let interval = Int64(1_000 / min(max(recognitionRate ?? 5, 1), 15))
     updateShared { $0.frameIntervalMs = interval }
     MainActor.assumeIsolated {
-      preview.overlay.update(region: region, shown: textGuide != .none, color: Self.color(guideColor))
+      preview.overlay.update(region: region, guide: textGuide ?? TextGuide.none, color: Self.color(guideColor))
     }
     if running, configuredPreset != preset() { stop() }
     evaluate()
@@ -675,25 +675,19 @@ final class TextCameraPreviewView: UIView {
 
 /// Dims the preview outside the region, outlines it and the text being read.
 final class TextRegionOverlay: UIView {
-  private let dim = CAShapeLayer()
-  private let outline = CAShapeLayer()
   private let textOutline = CAShapeLayer()
   private let crosshair = CAShapeLayer()
   private var region: TextRegion?
   private var text: TextRegion?
-  private var shown = true
+  private var guide = TextGuide.none
 
   override init(frame: CGRect) {
     super.init(frame: frame)
     backgroundColor = .clear
-    dim.fillRule = .evenOdd
-    dim.fillColor = UIColor(white: 0, alpha: 0.5).cgColor
-    outline.fillColor = UIColor.clear.cgColor
-    outline.lineWidth = 2
     crosshair.lineWidth = 1.5
     crosshair.lineCap = .round
-    layer.addSublayer(dim)
-    layer.addSublayer(outline)
+    crosshair.lineJoin = .round
+    crosshair.fillColor = nil
     layer.addSublayer(crosshair)
     layer.addSublayer(textOutline)
   }
@@ -701,11 +695,10 @@ final class TextRegionOverlay: UIView {
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
-  func update(region: TextRegion, shown: Bool, color: UIColor) {
+  func update(region: TextRegion, guide: TextGuide, color: UIColor) {
     self.region = region
-    self.shown = shown
-    outline.strokeColor = color.cgColor
-    crosshair.strokeColor = color.withAlphaComponent(0.7).cgColor
+    self.guide = guide
+    crosshair.strokeColor = color.cgColor
     textOutline.fillColor = color.withAlphaComponent(0.35).cgColor
     setNeedsLayout()
   }
@@ -722,22 +715,44 @@ final class TextRegionOverlay: UIView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     defer { CATransaction.commit() }
-    guard let region, shown, bounds.width > 0 else {
-      dim.path = nil
-      outline.path = nil
+    guard let region, guide != .none, bounds.width > 0, bounds.height > 0 else {
       crosshair.path = nil
       textOutline.path = nil
       return
     }
     let rect = CGRect(x: region.x * bounds.width, y: region.y * bounds.height,
                       width: region.width * bounds.width, height: region.height * bounds.height)
-    let hole = UIBezierPath(roundedRect: rect, cornerRadius: 8)
-    let path = UIBezierPath(rect: bounds)
-    path.append(hole)
-    dim.frame = bounds
-    outline.frame = bounds
-    dim.path = path.cgPath
-    outline.path = hole.cgPath
+    if guide == .line {
+      textOutline.path = nil
+      let inset = rect.width * 0.08
+      let y = rect.midY + min(14, rect.height / 3)
+      let line = UIBezierPath()
+      line.move(to: CGPoint(x: rect.minX + inset, y: y))
+      line.addLine(to: CGPoint(x: rect.maxX - inset, y: y))
+      crosshair.frame = bounds
+      crosshair.path = line.cgPath
+      return
+    }
+    if guide == .brackets {
+      textOutline.path = nil
+      let arm = min(14, rect.width / 4, rect.height / 3)
+      let path = UIBezierPath()
+      path.move(to: CGPoint(x: rect.minX, y: rect.minY + arm))
+      path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+      path.addLine(to: CGPoint(x: rect.minX + arm, y: rect.minY))
+      path.move(to: CGPoint(x: rect.maxX - arm, y: rect.minY))
+      path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+      path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + arm))
+      path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - arm))
+      path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+      path.addLine(to: CGPoint(x: rect.maxX - arm, y: rect.maxY))
+      path.move(to: CGPoint(x: rect.minX + arm, y: rect.maxY))
+      path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+      path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - arm))
+      crosshair.frame = bounds
+      crosshair.path = path.cgPath
+      return
+    }
     // The point readings are chosen nearest to.
     let arm = min(8, rect.height / 3, rect.width / 3)
     let cross = UIBezierPath()

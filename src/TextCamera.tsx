@@ -41,7 +41,7 @@ export const TextCamera = forwardRef<TextCameraRef, TextCameraProps>(function Te
   {
     active = true,
     textRegion = DEFAULT_TEXT_REGION,
-    textGuide = 'native',
+    textGuide = 'none',
     guideColor,
     allowedCharacters = '',
     textPattern = '',

@@ -21,6 +21,10 @@ public extension TextGuide {
         self = .none
       case "native":
         self = .native
+      case "line":
+        self = .line
+      case "brackets":
+        self = .brackets
       default:
         return nil
     }
@@ -35,6 +39,10 @@ public extension TextGuide {
         return "none"
       case .native:
         return "native"
+      case .line:
+        return "line"
+      case .brackets:
+        return "brackets"
     }
   }
 }

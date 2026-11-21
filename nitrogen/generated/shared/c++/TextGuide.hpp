@@ -31,6 +31,8 @@ namespace margelo::nitro::documentscanner {
   enum class TextGuide {
     NONE      SWIFT_NAME(none) = 0,
     NATIVE      SWIFT_NAME(native) = 1,
+    LINE      SWIFT_NAME(line) = 2,
+    BRACKETS      SWIFT_NAME(brackets) = 3,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::documentscanner
@@ -45,6 +47,8 @@ namespace margelo::nitro {
       switch (hashString(unionValue.c_str(), unionValue.size())) {
         case hashString("none"): return margelo::nitro::documentscanner::TextGuide::NONE;
         case hashString("native"): return margelo::nitro::documentscanner::TextGuide::NATIVE;
+        case hashString("line"): return margelo::nitro::documentscanner::TextGuide::LINE;
+        case hashString("brackets"): return margelo::nitro::documentscanner::TextGuide::BRACKETS;
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert \"" + unionValue + "\" to enum TextGuide - invalid value!");
       }
@@ -53,6 +57,8 @@ namespace margelo::nitro {
       switch (arg) {
         case margelo::nitro::documentscanner::TextGuide::NONE: return JSIConverter<std::string>::toJSI(runtime, "none");
         case margelo::nitro::documentscanner::TextGuide::NATIVE: return JSIConverter<std::string>::toJSI(runtime, "native");
+        case margelo::nitro::documentscanner::TextGuide::LINE: return JSIConverter<std::string>::toJSI(runtime, "line");
+        case margelo::nitro::documentscanner::TextGuide::BRACKETS: return JSIConverter<std::string>::toJSI(runtime, "brackets");
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert TextGuide to JS - invalid value: "
                                     + std::to_string(static_cast<int>(arg)) + "!");
@@ -66,6 +72,8 @@ namespace margelo::nitro {
       switch (hashString(unionValue.c_str(), unionValue.size())) {
         case hashString("none"):
         case hashString("native"):
+        case hashString("line"):
+        case hashString("brackets"):
           return true;
         default:
           return false;

@@ -15,10 +15,11 @@ export interface TextRegion {
 }
 
 /**
- * `native` draws the region's frame with a crosshair at its centre, where readings are chosen, dims the preview around
- * it and highlights the text being read; `none` leaves the overlay to the host.
+ * `native` draws a crosshair at the region's centre and highlights the text being read.
+ * `line` shows a single guide below the target text. `brackets` marks the four region corners.
+ * `none` leaves the overlay to the host.
  */
-export type TextGuide = 'native' | 'none'
+export type TextGuide = 'native' | 'none' | 'line' | 'brackets'
 
 /** Back-camera torch for text reading. */
 export type TextTorchMode = 'off' | 'on'
@@ -50,9 +51,9 @@ export interface TextCameraProps extends HybridViewProps {
   active?: boolean
   /** The area read, as fractions of the view; clamped to it. Changes apply on the next frame without restarting. */
   textRegion: TextRegion
-  /** Defaults to `native`. */
+  /** Defaults to `none`. Choose `line`, `native`, or `brackets` to show a built-in guide. */
   textGuide?: TextGuide
-  /** ARGB color of the native frame; the TextCamera wrapper takes a color string. */
+  /** ARGB color of the built-in guide; the TextCamera wrapper takes a color string. */
   guideColor?: number
   /**
    * The characters a reading may contain, listed literally, e.g. `ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-`. Other

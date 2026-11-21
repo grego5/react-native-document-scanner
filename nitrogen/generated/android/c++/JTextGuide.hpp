@@ -48,6 +48,12 @@ namespace margelo::nitro::documentscanner {
         case TextGuide::NATIVE:
           static const auto fieldNATIVE = clazz->getStaticField<JTextGuide>("NATIVE");
           return clazz->getStaticFieldValue(fieldNATIVE);
+        case TextGuide::LINE:
+          static const auto fieldLINE = clazz->getStaticField<JTextGuide>("LINE");
+          return clazz->getStaticFieldValue(fieldLINE);
+        case TextGuide::BRACKETS:
+          static const auto fieldBRACKETS = clazz->getStaticField<JTextGuide>("BRACKETS");
+          return clazz->getStaticFieldValue(fieldBRACKETS);
         default:
           std::string stringValue = std::to_string(static_cast<int>(value));
           throw std::invalid_argument("Invalid enum value (" + stringValue + "!");
