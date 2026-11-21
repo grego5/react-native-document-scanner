@@ -112,6 +112,12 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
+  abstract var focusLock: Boolean?
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
   abstract var exposureCompensation: Double?
   
   @get:DoNotStrip
@@ -167,6 +173,12 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @set:DoNotStrip
   @set:Keep
   abstract var showStats: Boolean?
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var showFocusIndicator: Boolean?
   
   @get:DoNotStrip
   @get:Keep

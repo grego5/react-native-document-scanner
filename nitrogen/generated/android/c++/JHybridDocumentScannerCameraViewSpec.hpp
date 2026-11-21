@@ -74,6 +74,8 @@ namespace margelo::nitro::documentscanner {
     void setLowQualityControl(const LowQualityControl& lowQualityControl) override;
     std::optional<bool> getTapToFocus() override;
     void setTapToFocus(std::optional<bool> tapToFocus) override;
+    std::optional<bool> getFocusLock() override;
+    void setFocusLock(std::optional<bool> focusLock) override;
     std::optional<double> getExposureCompensation() override;
     void setExposureCompensation(std::optional<double> exposureCompensation) override;
     std::optional<double> getMinFrameRate() override;
@@ -94,6 +96,8 @@ namespace margelo::nitro::documentscanner {
     void setSquareAspectRatio(std::optional<bool> squareAspectRatio) override;
     std::optional<bool> getShowStats() override;
     void setShowStats(std::optional<bool> showStats) override;
+    std::optional<bool> getShowFocusIndicator() override;
+    void setShowFocusIndicator(std::optional<bool> showFocusIndicator) override;
     std::optional<double> getGuideColor() override;
     void setGuideColor(std::optional<double> guideColor) override;
     std::optional<bool> getCaptureFeedback() override;

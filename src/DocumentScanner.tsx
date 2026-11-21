@@ -106,6 +106,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
     minCornerScore = 0.95,
     lowQualityControl = DEFAULT_LOW_QUALITY_CONTROL,
     tapToFocus = true,
+    focusLock = true,
     exposureCompensation = 0,
     minFrameRate = 0,
     torch = 'off',
@@ -115,6 +116,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
     analysisFrameWidth = 640,
     squareAspectRatio = false,
     showStats = false,
+    showFocusIndicator = true,
     guideColor,
     captureFeedback = true,
     captureColor,
@@ -269,6 +271,8 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       imageCorrection={photo ? PHOTO_CORRECTION : imageCorrection}
       outputOptions={outputOptions}
       tapToFocus={tapToFocus}
+      // Focus lock follows the page, which photo mode does not detect.
+      focusLock={photo ? false : focusLock}
       exposureCompensation={exposureCompensation}
       minFrameRate={minFrameRate}
       torch={torch}
@@ -278,6 +282,7 @@ export const Camera = forwardRef<CameraRef, CameraProps>(function Camera(
       analysisFrameWidth={analysisFrameWidth}
       squareAspectRatio={squareAspectRatio}
       showStats={showStats}
+      showFocusIndicator={showFocusIndicator}
       guideColor={nativeGuideColor}
       captureFeedback={captureFeedback}
       captureColor={nativeCaptureColor}

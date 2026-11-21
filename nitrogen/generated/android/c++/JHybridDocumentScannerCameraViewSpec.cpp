@@ -281,6 +281,15 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* tapToFocus */)>("setTapToFocus");
     method(_javaPart, tapToFocus.has_value() ? jni::JBoolean::valueOf(tapToFocus.value()) : nullptr);
   }
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getFocusLock() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getFocusLock");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridDocumentScannerCameraViewSpec::setFocusLock(std::optional<bool> focusLock) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* focusLock */)>("setFocusLock");
+    method(_javaPart, focusLock.has_value() ? jni::JBoolean::valueOf(focusLock.value()) : nullptr);
+  }
   std::optional<double> JHybridDocumentScannerCameraViewSpec::getExposureCompensation() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getExposureCompensation");
     auto __result = method(_javaPart);
@@ -370,6 +379,15 @@ namespace margelo::nitro::documentscanner {
   void JHybridDocumentScannerCameraViewSpec::setShowStats(std::optional<bool> showStats) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* showStats */)>("setShowStats");
     method(_javaPart, showStats.has_value() ? jni::JBoolean::valueOf(showStats.value()) : nullptr);
+  }
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getShowFocusIndicator() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getShowFocusIndicator");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridDocumentScannerCameraViewSpec::setShowFocusIndicator(std::optional<bool> showFocusIndicator) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* showFocusIndicator */)>("setShowFocusIndicator");
+    method(_javaPart, showFocusIndicator.has_value() ? jni::JBoolean::valueOf(showFocusIndicator.value()) : nullptr);
   }
   std::optional<double> JHybridDocumentScannerCameraViewSpec::getGuideColor() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getGuideColor");

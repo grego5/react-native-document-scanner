@@ -15,11 +15,16 @@ def reactNativeArchitectures() {
 
 android {
   namespace 'com.margelo.nitro.documentscanner'
+  buildFeatures {
+    buildConfig true
+  }
   // Opt-in release instrumentation for measurements; ordinary device checks stay debug.
   testBuildType project.findProperty('documentScannerTestBuildType') ?: 'debug'
   compileSdkVersion safeExtGet('compileSdkVersion', 36)
 
   defaultConfig {
+    buildConfigField 'boolean', 'STANDALONE_CAMERA_TRACE',
+        (project.findProperty('documentScannerStandaloneTrace') == 'true').toString()
     minSdkVersion safeExtGet('minSdkVersion', 24)
     targetSdkVersion safeExtGet('targetSdkVersion', 36)
     testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'

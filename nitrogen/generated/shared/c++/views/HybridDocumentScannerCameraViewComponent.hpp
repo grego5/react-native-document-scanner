@@ -68,6 +68,7 @@ namespace margelo::nitro::documentscanner::views {
     nitro::ReactProp<std::optional<double>> minCornerScore;
     nitro::ReactProp<LowQualityControl> lowQualityControl;
     nitro::ReactProp<std::optional<bool>> tapToFocus;
+    nitro::ReactProp<std::optional<bool>> focusLock;
     nitro::ReactProp<std::optional<double>> exposureCompensation;
     nitro::ReactProp<std::optional<double>> minFrameRate;
     nitro::ReactProp<std::optional<TorchMode>> torch;
@@ -78,6 +79,7 @@ namespace margelo::nitro::documentscanner::views {
     nitro::ReactProp<std::optional<double>> analysisFrameWidth;
     nitro::ReactProp<std::optional<bool>> squareAspectRatio;
     nitro::ReactProp<std::optional<bool>> showStats;
+    nitro::ReactProp<std::optional<bool>> showFocusIndicator;
     nitro::ReactProp<std::optional<double>> guideColor;
     nitro::ReactProp<std::optional<bool>> captureFeedback;
     nitro::ReactProp<std::optional<double>> captureColor;
@@ -103,6 +105,7 @@ namespace margelo::nitro::documentscanner::views {
              minCornerScore.hasSameValue(other.minCornerScore) &&
              lowQualityControl.hasSameValue(other.lowQualityControl) &&
              tapToFocus.hasSameValue(other.tapToFocus) &&
+             focusLock.hasSameValue(other.focusLock) &&
              exposureCompensation.hasSameValue(other.exposureCompensation) &&
              minFrameRate.hasSameValue(other.minFrameRate) &&
              torch.hasSameValue(other.torch) &&
@@ -113,6 +116,7 @@ namespace margelo::nitro::documentscanner::views {
              analysisFrameWidth.hasSameValue(other.analysisFrameWidth) &&
              squareAspectRatio.hasSameValue(other.squareAspectRatio) &&
              showStats.hasSameValue(other.showStats) &&
+             showFocusIndicator.hasSameValue(other.showFocusIndicator) &&
              guideColor.hasSameValue(other.guideColor) &&
              captureFeedback.hasSameValue(other.captureFeedback) &&
              captureColor.hasSameValue(other.captureColor) &&
@@ -139,6 +143,7 @@ namespace margelo::nitro::documentscanner::views {
              minCornerScore.isProvided() ||
              lowQualityControl.isProvided() ||
              tapToFocus.isProvided() ||
+             focusLock.isProvided() ||
              exposureCompensation.isProvided() ||
              minFrameRate.isProvided() ||
              torch.isProvided() ||
@@ -149,6 +154,7 @@ namespace margelo::nitro::documentscanner::views {
              analysisFrameWidth.isProvided() ||
              squareAspectRatio.isProvided() ||
              showStats.isProvided() ||
+             showFocusIndicator.isProvided() ||
              guideColor.isProvided() ||
              captureFeedback.isProvided() ||
              captureColor.isProvided() ||

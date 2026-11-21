@@ -33,6 +33,7 @@ namespace margelo::nitro::documentscanner::views {
     minCornerScore(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "minCornerScore", rawProps, sourceProps.minCornerScore)),
     lowQualityControl(nitro::ReactProp<LowQualityControl>::fromRawValue("DocumentScannerCameraView", "lowQualityControl", rawProps, sourceProps.lowQualityControl)),
     tapToFocus(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "tapToFocus", rawProps, sourceProps.tapToFocus)),
+    focusLock(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "focusLock", rawProps, sourceProps.focusLock)),
     exposureCompensation(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "exposureCompensation", rawProps, sourceProps.exposureCompensation)),
     minFrameRate(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "minFrameRate", rawProps, sourceProps.minFrameRate)),
     torch(nitro::ReactProp<std::optional<TorchMode>>::fromRawValue("DocumentScannerCameraView", "torch", rawProps, sourceProps.torch)),
@@ -43,6 +44,7 @@ namespace margelo::nitro::documentscanner::views {
     analysisFrameWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "analysisFrameWidth", rawProps, sourceProps.analysisFrameWidth)),
     squareAspectRatio(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "squareAspectRatio", rawProps, sourceProps.squareAspectRatio)),
     showStats(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "showStats", rawProps, sourceProps.showStats)),
+    showFocusIndicator(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "showFocusIndicator", rawProps, sourceProps.showFocusIndicator)),
     guideColor(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "guideColor", rawProps, sourceProps.guideColor)),
     captureFeedback(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "captureFeedback", rawProps, sourceProps.captureFeedback)),
     captureColor(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "captureColor", rawProps, sourceProps.captureColor)),
@@ -72,6 +74,7 @@ namespace margelo::nitro::documentscanner::views {
       case hashString("minCornerScore"): return true;
       case hashString("lowQualityControl"): return true;
       case hashString("tapToFocus"): return true;
+      case hashString("focusLock"): return true;
       case hashString("exposureCompensation"): return true;
       case hashString("minFrameRate"): return true;
       case hashString("torch"): return true;
@@ -82,6 +85,7 @@ namespace margelo::nitro::documentscanner::views {
       case hashString("analysisFrameWidth"): return true;
       case hashString("squareAspectRatio"): return true;
       case hashString("showStats"): return true;
+      case hashString("showFocusIndicator"): return true;
       case hashString("guideColor"): return true;
       case hashString("captureFeedback"): return true;
       case hashString("captureColor"): return true;

@@ -27,6 +27,39 @@ class FocusPolicyTest {
     assertNull(f.tapDeadline())
   }
 
+  @Test fun aPageLockHoldsThroughShotsUntilReleasedOrTakenOver() {
+    val f = FocusPolicy()
+    val page = f.start(FocusOwner.PAGE, 0)
+    assertEquals(Long.MAX_VALUE, f.heldUntilNs)
+    assertNull(f.tapDeadline())
+    assertEquals(FocusPolicy.SCAN_TIMEOUT_NS, f.scanDeadline())
+    assertTrue(f.complete(page, true))
+    assertNull(f.scanDeadline())
+    assertFalse(f.afterCapture(60 * second))
+    assertFalse(f.expireTap(page, 60 * second, false))
+    assertEquals(FocusOwner.PAGE, f.owner)
+    assertTrue(f.releaseScannerLock())
+    assertNull(f.owner)
+    assertFalse(f.releaseScannerLock())
+    f.start(FocusOwner.PAGE, 0)
+    f.start(FocusOwner.TAP, second) // A tap takes the lens; releasing the page no longer ends it.
+    assertFalse(f.releaseScannerLock())
+    assertEquals(FocusOwner.TAP, f.owner)
+  }
+
+  @Test fun aRecoveryLockHoldsLikeATapAndEndsWhenReleased() {
+    val f = FocusPolicy()
+    val recovery = f.start(FocusOwner.RECOVERY, 0)
+    assertEquals(5 * second, f.tapDeadline())
+    assertTrue(f.complete(recovery, true))
+    assertTrue(f.expireTap(recovery, 5 * second, false))
+    f.start(FocusOwner.RECOVERY, 0)
+    assertTrue(f.releaseScannerLock())
+    assertNull(f.owner)
+    f.start(FocusOwner.TAP, 0)
+    assertFalse(f.releaseScannerLock()) // A tap is the user's, never the scanner's.
+  }
+
   @Test fun aCaptureScanHasADeadlineAndEndsWithItsShot() {
     val f = FocusPolicy()
     val shot = f.start(FocusOwner.CAPTURE, 7 * second)

@@ -78,6 +78,32 @@ class AdaptiveDetectionPolicyTest {
     assertEquals(0L, gap(4600, moving = true, searching = false, trackingGap = revalidation))
   }
 
+  @Test fun cadenceRetriesAHeldOutlineBeforeItsHoldExpires() {
+    val cadence = AdaptiveInferenceCadence()
+    val revalidation = AdaptiveDetectionPolicy.REVALIDATE_GAP_NS
+    // The outline was confirmed at 0 and holds until 400 ms; flow degrades and the hand keeps moving.
+    fun gap(ms: Long, heldUntil: Long? = 400_000_000L) = cadence.gap(ms * 1_000_000L, searching = false,
+      moving = true, measured = false, trackingGap = revalidation, heldUntil = heldUntil)
+
+    assertNull(gap(100))
+    assertNull(gap(249))
+    assertEquals(0L, gap(250))
+    assertTrue(cadence.holdRetry)
+    cadence.didAttempt(250_000_000L)
+    // One attempt per hold: frames after it wait for a new hold or the second-long retry.
+    assertNull(gap(300))
+    assertFalse(cadence.holdRetry)
+    assertNull(gap(450))
+    // The attempt confirmed the page and renewed the hold until 650 ms.
+    assertNull(gap(499, heldUntil = 650_000_000L))
+    assertEquals(0L, gap(500, heldUntil = 650_000_000L))
+    cadence.didAttempt(500_000_000L)
+    // Without a held outline only the second-long retry remains.
+    assertNull(gap(1499, heldUntil = null))
+    assertEquals(0L, gap(1500, heldUntil = null))
+    assertFalse(cadence.holdRetry)
+  }
+
   @Test fun cadenceUsesLowBlurOnlyToStartEarly() {
     val cadence = AdaptiveInferenceCadence()
     fun gap(ms: Long, blur: Double?, measured: Boolean = true, moving: Boolean = true) =

@@ -41,6 +41,17 @@ class TorchPolicyTest {
     assertFalse(policy.lit)
   }
 
+  @Test fun lightingLatchesOnceLikeADarkRoom() {
+    val policy = TorchPolicy()
+    policy.light()
+    assertTrue(policy.lit)
+    policy.light()
+    assertTrue(policy.lit)
+    assertFalse(policy.observe(0, 66_000_000, 1600))
+    policy.reset()
+    assertFalse(policy.lit)
+  }
+
   @Test fun aBrightOrUnreportedFrameRestartsTheWait() {
     val policy = TorchPolicy()
     policy.observe(0, 66_000_000, 1600)

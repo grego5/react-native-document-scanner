@@ -1,6 +1,8 @@
 package com.margelo.nitro.documentscanner.processing
 
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.margelo.nitro.documentscanner.assumeMeasuring
 import com.margelo.nitro.documentscanner.DocumentPoint
 import com.margelo.nitro.documentscanner.DocumentCorners
 import java.nio.ByteBuffer
@@ -144,6 +146,31 @@ class FlowMotionEstimatorTest {
       update(second, BASE_NS + FlowMotionEstimator.MAX_GAP_NS + 1 + FRAME_NS, rotation = 90).status) // Geometry.
     assertEquals(FlowMotionStatus.MEASURED,
       update(first, BASE_NS + FlowMotionEstimator.MAX_GAP_NS + 1 + 2 * FRAME_NS, rotation = 90).status)
+  }
+
+  /** One live-shaped update, a 640x480 RGBA frame turned 90 degrees with a page region and the transform fit, timed
+   * after a sustained warm-up; logged as `RNDocumentScannerFlowTiming` median and p90 in microseconds. */
+  @Test
+  fun measureUpdateTiming() {
+    assumeMeasuring()
+    val corners = DocumentCorners(DocumentPoint(.1, .1), DocumentPoint(.9, .1), DocumentPoint(.9, .9), DocumentPoint(.1, .9))
+    val frames = listOf(frame(), frame(dx = 6.0), frame(angleDegrees = 1.0), frame(scale = 1.02))
+    var time = BASE_NS
+    fun step(i: Int): Long {
+      val pixels = frames[i % frames.size].apply { rewind() }
+      time += FRAME_NS
+      val start = System.nanoTime()
+      update(pixels, time, rotation = 90, region = corners, fitTransform = true)
+      return System.nanoTime() - start
+    }
+    var i = 0
+    val warmUntil = System.nanoTime() + 2_000_000_000L
+    while (System.nanoTime() < warmUntil) step(i++)
+    for (round in 0 until 3) {
+      val samples = LongArray(300) { step(i++) }.sorted()
+      Log.i("RNDocumentScannerFlowTiming", "round=$round median=${samples[150] / 1000}us p90=${samples[270] / 1000}us " +
+        "min=${samples[0] / 1000}us")
+    }
   }
 
   @Test

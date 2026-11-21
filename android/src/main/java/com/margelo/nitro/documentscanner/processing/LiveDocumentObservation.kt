@@ -80,7 +80,7 @@ internal data class LiveCaptureGateSample(
   val flowSourceAgeNs: Long? = null,
 )
 
-/** Called on the live analysis executor, except [onCaptureGate] on main; must not block. Test harnesses only. */
+/** Called on the live analysis executor, except [onCaptureGate] and [onGuideExpired] on main. */
 internal fun interface LiveGuideTraceObserver {
   fun onObservation(observation: LiveDocumentObservation)
 
@@ -91,4 +91,6 @@ internal fun interface LiveGuideTraceObserver {
 
   /** The capture gate fired `takePicture` or rejected the capture. */
   fun onCaptureGate(sample: LiveCaptureGateSample) = Unit
+
+  fun onGuideExpired(acceptanceId: Long) = Unit
 }

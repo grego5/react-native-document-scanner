@@ -24,19 +24,19 @@ class CameraLightControllerTest {
       h.flash = false
       for (mode in TorchMode.entries) h.apply(mode)
       assertTrue(h.commands.isEmpty()); assertTrue(h.boosts.isEmpty()); assertTrue(h.controller.pending.not()); assertEquals(0,h.autoReads)
-      h.controller.apply(null,TorchMode.AUTO,true,false) { error("No bound camera") }
+      h.controller.apply(null,TorchMode.AUTO,true,false,false) { error("No bound camera") }
       assertTrue(h.commands.isEmpty())
     }
   }
   @Test fun modeChangesDuringCaptureDeferToTheLatestModeAfterCapture() = main {
     Harness().use { h ->
       h.apply(TorchMode.ON); h.futures.last().set(null)
-      h.capture = true
+      h.capture = true; h.shot = true
       h.apply(TorchMode.OFF)
       h.policy.reset(); h.apply(TorchMode.AUTO)
       h.apply(TorchMode.ON); h.apply(TorchMode.OFF)
       assertEquals(listOf(true),h.commands)
-      h.capture = false; h.apply(TorchMode.OFF)
+      h.capture = false; h.shot = false; h.apply(TorchMode.OFF)
       assertEquals(listOf(true,false),h.commands)
       assertTrue(h.controller.pending)
       h.futures.last().set(null)
@@ -44,14 +44,25 @@ class CameraLightControllerTest {
       assertFalse(h.controller.pending)
     }
   }
+  @Test fun autoTorchLightsForAWaitingPressWhileItsBoostWaits() = main {
+    Harness().use { h ->
+      h.boostSupported = true
+      h.capture = true
+      h.policy.light()
+      h.apply(TorchMode.AUTO, boost = true)
+      assertEquals(listOf(true),h.commands); assertTrue(h.boosts.isEmpty())
+      h.capture = false; h.apply(TorchMode.AUTO, boost = true)
+      assertEquals(1,h.boosts.size)
+    }
+  }
   @Test fun autoLatchDuringCaptureIsAppliedLaterAndReadinessUsesHardwareEvidence() = main {
     Harness().use { h ->
-      h.capture = true
+      h.capture = true; h.shot = true
       assertFalse(h.policy.observe(0,66_000_000,1600))
       assertTrue(h.policy.observe(1_000_000_000,66_000_000,1600))
       h.apply(TorchMode.AUTO)
       assertTrue(h.commands.isEmpty())
-      h.capture = false; h.apply(TorchMode.AUTO)
+      h.capture = false; h.shot = false; h.apply(TorchMode.AUTO)
       assertEquals(listOf(true),h.commands); assertTrue(h.controller.pending)
       assertFalse(h.policy.observe(2_000_000_000,1_000_000,100))
       h.apply(TorchMode.AUTO); assertEquals(1,h.commands.size)
@@ -207,6 +218,7 @@ class CameraLightControllerTest {
     var flash = true
     var boostSupported = false
     var capture = false
+    var shot = false
     var settled = 0
     var refused = 0
     var autoReads = 0
@@ -234,7 +246,7 @@ class CameraLightControllerTest {
       }
     } as CameraControl
     private val camera = BoundCamera(control, info)
-    fun apply(mode: TorchMode, boost: Boolean = false) = controller.apply(camera,mode,boost,capture) { autoReads++; policy.lit }
+    fun apply(mode: TorchMode, boost: Boolean = false) = controller.apply(camera,mode,boost,capture,shot) { autoReads++; policy.lit }
     fun completeAll() { (futures + boostFutures).forEach { if (!it.isDone) it.set(null) } }
     override fun close() { controller.unbind(); policy.reset() }
   }

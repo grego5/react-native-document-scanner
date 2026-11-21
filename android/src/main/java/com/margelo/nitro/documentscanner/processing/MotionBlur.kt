@@ -17,6 +17,8 @@ internal data class CameraFrameState(
   /** Raw CONTROL_AE_STATE and CONTROL_AWB_STATE, which zero-shutter-lag buffering requires converged. */
   val aeState: Int? = null,
   val awbState: Int? = null,
+  /** The torch lit this frame, from FLASH_STATE; null when unreported. */
+  val torchFired: Boolean? = null,
 )
 
 /** Recent capture results keyed by SENSOR_TIMESTAMP, which equals the timestamp of the frame's image buffers. */

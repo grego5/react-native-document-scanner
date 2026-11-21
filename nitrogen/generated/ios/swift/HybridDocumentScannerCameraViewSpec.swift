@@ -22,6 +22,7 @@ public protocol HybridDocumentScannerCameraViewSpec_protocol: HybridObject, Hybr
   var minCornerScore: Double? { get set }
   var lowQualityControl: LowQualityControl { get set }
   var tapToFocus: Bool? { get set }
+  var focusLock: Bool? { get set }
   var exposureCompensation: Double? { get set }
   var minFrameRate: Double? { get set }
   var torch: TorchMode? { get set }
@@ -32,6 +33,7 @@ public protocol HybridDocumentScannerCameraViewSpec_protocol: HybridObject, Hybr
   var analysisFrameWidth: Double? { get set }
   var squareAspectRatio: Bool? { get set }
   var showStats: Bool? { get set }
+  var showFocusIndicator: Bool? { get set }
   var guideColor: Double? { get set }
   var captureFeedback: Bool? { get set }
   var captureColor: Double? { get set }

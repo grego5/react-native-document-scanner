@@ -8,4 +8,6 @@
 
 ## Live guide traces
 
+For intermittent preview issues on Android 10 and later, build the example's `assembleRelease` with `-PdocumentScannerStandaloneTrace=true`. The APK runs without Metro or ADB. In Scanner mode with Camera stats visible, tap **Save last 15s trace** immediately after the issue. The trace goes to Downloads as a pixel-free TSV. Match repeating Camera2 requests and results to detector decisions by sensor timestamp. A one-shot CameraX request can fall outside that callback. App commands and guide expiry use the device's elapsed clock, and expiry includes the guide acceptance ID.
+
 `LiveGuideTraceRecordingTest` records pixel-free TSV through instrumentation with `-Measure`. Enable `liveGuideCapture` only for a human-tapped shutter. Pull the test app's `files/live-guide-traces` into ignored `.local/`. Replay through `LiveGuideTraceReplayTest` with `-Argument liveGuideTrace=<device-path>`. The trace must match the current schema; exact guide equality requires matching config. Replay reuses recorded flow and cannot validate different feature tracking or the actual paper boundary.

@@ -155,6 +155,30 @@ class CaptureGateTest {
   }
 
   @Test
+  fun theFocusCyclesHoldOutlastsTheFocusDeadlineUntilItEnds() {
+    val waiting = ready.copy(focused = false, documentFound = false, cycleHoldsUntilMs = 8_000)
+    val gate = CaptureGate(1_500)
+    gate.next(waiting)
+    // No fresh frame after the scanner's lock ended: the press still waits for the cycle rather than fail.
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 8_000), gate.next(waiting.copy(nowMs = 3_000)))
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 8_000),
+      gate.next(waiting.copy(nowMs = 6_000, documentFound = true)))
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.FOCUS),
+      gate.next(waiting.copy(nowMs = 8_000, documentFound = true, cycleHoldsUntilMs = null)))
+  }
+
+  @Test
+  fun inferenceAfterTheCyclesFinalScanWaitsOnlyWithinItsBudget() {
+    val locked = ready.copy(documentFound = false, focused = true, postFocusInferenceFinished = false,
+      cycleHoldsUntilMs = 8_000)
+    val gate = CaptureGate(1_500)
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 8_000), gate.next(locked.copy(nowMs = 6_500)))
+    // No more frames: the budget's wakeup rejects rather than wait for inference that never comes.
+    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT),
+      gate.next(locked.copy(nowMs = 8_000)))
+  }
+
+  @Test
   fun aSettledRescueScanWaitsForInferenceWithoutADeadline() {
     val missing = ready.copy(documentFound = false, focused = false, scanAvailable = true)
     val gate = CaptureGate(1_500)

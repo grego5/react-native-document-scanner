@@ -120,6 +120,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setLowQualityControl(const LowQualityControl& lowQualityControl) = 0;
       virtual std::optional<bool> getTapToFocus() = 0;
       virtual void setTapToFocus(std::optional<bool> tapToFocus) = 0;
+      virtual std::optional<bool> getFocusLock() = 0;
+      virtual void setFocusLock(std::optional<bool> focusLock) = 0;
       virtual std::optional<double> getExposureCompensation() = 0;
       virtual void setExposureCompensation(std::optional<double> exposureCompensation) = 0;
       virtual std::optional<double> getMinFrameRate() = 0;
@@ -140,6 +142,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setSquareAspectRatio(std::optional<bool> squareAspectRatio) = 0;
       virtual std::optional<bool> getShowStats() = 0;
       virtual void setShowStats(std::optional<bool> showStats) = 0;
+      virtual std::optional<bool> getShowFocusIndicator() = 0;
+      virtual void setShowFocusIndicator(std::optional<bool> showFocusIndicator) = 0;
       virtual std::optional<double> getGuideColor() = 0;
       virtual void setGuideColor(std::optional<double> guideColor) = 0;
       virtual std::optional<bool> getCaptureFeedback() = 0;

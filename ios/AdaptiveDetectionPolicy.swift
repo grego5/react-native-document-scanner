@@ -69,9 +69,13 @@ struct AdaptiveDetectionPolicy {
   }
 }
 
-/// Times model attempts independently of the policy that carries a confirmed outline.
+/// Times model attempts independently of the policy that carries a confirmed outline. A pending search or revalidation
+/// gets an attempt once `retryNs` has passed since it began or last ran, and, while a held outline waits on one,
+/// `heldRetryLeadNs` before that outline expires, so the result lands before the guide drops rather than after.
 struct AdaptiveInferenceCadence {
   private static let retryNs: Int64 = 1_000_000_000
+  /// Room for an attempt's inference and delivery before the held outline expires.
+  private static let heldRetryLeadNs: Int64 = 150_000_000
   private static let lowBlurFraction = 0.002
   private var searching = false
   private var checked = false
@@ -79,9 +83,12 @@ struct AdaptiveInferenceCadence {
   private var steadyFrames = 0
   private var waitingSince: Int64?
   private var lastAttempt: Int64?
+  private(set) var holdRetry = false
 
+  /// `heldUntil`: when the guide's held outline expires, on `now`'s clock, or nil without one.
   mutating func gap(now: Int64, searching: Bool, moving: Bool, measured: Bool, trackingGap: Int64,
-                    blurFraction: Double? = nil) -> Int64? {
+                    blurFraction: Double? = nil, heldUntil: Int64? = nil) -> Int64? {
+    holdRetry = false
     if searching && !self.searching { checked = false }
     self.searching = searching
     // A search or revalidation must make progress even if motion never settles.
@@ -92,22 +99,27 @@ struct AdaptiveInferenceCadence {
       return now - max(since, previous ?? since) >= Self.retryNs ||
         lowBlur && (previous.map { $0 < since } ?? true)
     }
-    let fallbackGap: Int64? = earlyOrDue == true ? 0 : nil
+    let holdDue = heldUntil.map { $0 - Self.heldRetryLeadNs }
+    let holdRetryDue = earlyOrDue != true && waitingSince != nil && (holdDue.map {
+      now >= $0 && (lastAttempt ?? Int64.min) < $0
+    } ?? false)
+    let fallbackGap: Int64? = earlyOrDue == true || holdRetryDue ? 0 : nil
     if moving {
       steadyFrames = 0
       let since = movingSince ?? now
       movingSince = since
       if now - since >= 100_000_000 { checked = false }
+      holdRetry = holdRetryDue
       return fallbackGap
     }
     movingSince = nil
-    if !measured {
-      steadyFrames = 0
+    if !measured { steadyFrames = 0 }
+    else if steadyFrames < 4 { steadyFrames += 1 }
+    if !measured || steadyFrames < 4 || (searching && checked) {
+      holdRetry = holdRetryDue
       return fallbackGap
     }
-    if steadyFrames < 4 { steadyFrames += 1 }
-    guard steadyFrames == 4 else { return fallbackGap }
-    if searching { return checked ? fallbackGap : 0 }
+    if searching { return 0 }
     return trackingGap == AdaptiveDetectionPolicy.paused ? nil : trackingGap
   }
 

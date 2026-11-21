@@ -114,6 +114,11 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setTapToFocus(newProps->tapToFocus.get());
   }
   if (oldProps == nullptr
+        ? newProps->focusLock.isProvided()
+        : !newProps->focusLock.hasSameValue(oldProps->focusLock)) {
+    hybridView->setFocusLock(newProps->focusLock.get());
+  }
+  if (oldProps == nullptr
         ? newProps->exposureCompensation.isProvided()
         : !newProps->exposureCompensation.hasSameValue(oldProps->exposureCompensation)) {
     hybridView->setExposureCompensation(newProps->exposureCompensation.get());
@@ -162,6 +167,11 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
         ? newProps->showStats.isProvided()
         : !newProps->showStats.hasSameValue(oldProps->showStats)) {
     hybridView->setShowStats(newProps->showStats.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->showFocusIndicator.isProvided()
+        : !newProps->showFocusIndicator.hasSameValue(oldProps->showFocusIndicator)) {
+    hybridView->setShowFocusIndicator(newProps->showFocusIndicator.get());
   }
   if (oldProps == nullptr
         ? newProps->guideColor.isProvided()

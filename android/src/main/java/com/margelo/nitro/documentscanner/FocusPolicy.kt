@@ -15,7 +15,7 @@ internal class FocusPolicy {
   /** A settled scan's result; null while it scans and after an unknown result. */
   var locked: Boolean? = null
     private set
-  /** Until when a tap holds the lens; [Long.MAX_VALUE] for a capture, 0 without an owner. */
+  /** Until when a tap holds the lens; [Long.MAX_VALUE] for a capture or page lock, 0 without an owner. */
   var heldUntilNs = 0L
     private set
   /** The owner's scan has not settled. */
@@ -29,7 +29,7 @@ internal class FocusPolicy {
     this.owner = owner
     locked = null
     pending = true
-    heldUntilNs = if (owner == FocusOwner.TAP) nowNs + TAP_HOLD_NS else Long.MAX_VALUE
+    heldUntilNs = if (owner.timed) nowNs + TAP_HOLD_NS else Long.MAX_VALUE
     scanDeadlineNs = nowNs + SCAN_TIMEOUT_NS
     return scanToken
   }
@@ -44,22 +44,29 @@ internal class FocusPolicy {
   }
 
   fun expireTap(token: Long, nowNs: Long, shot: Boolean): Boolean {
-    if (shot || owner != FocusOwner.TAP || token != scanToken || nowNs < heldUntilNs) return false
+    if (shot || owner?.timed != true || token != scanToken || nowNs < heldUntilNs) return false
     release()
     return true
   }
 
-  /** A shot finished: a tap past its hold and a capture's scan end. */
+  /** A shot finished: a tap past its hold and a capture's scan end; a page lock stays with its page. */
   fun afterCapture(nowNs: Long): Boolean = when (owner) {
-    FocusOwner.TAP -> expireTap(scanToken, nowNs, false)
+    FocusOwner.TAP, FocusOwner.RECOVERY -> expireTap(scanToken, nowNs, false)
     FocusOwner.CAPTURE -> { release(); true }
-    null -> false
+    FocusOwner.PAGE, null -> false
+  }
+
+  /** Ends the scanner's own lock, a page or recovery lock; true when one held the lens. */
+  fun releaseScannerLock(): Boolean {
+    if (owner?.scanners != true) return false
+    release()
+    return true
   }
 
   fun unbind() = release()
 
-  fun tapDeadline(): Long? = heldUntilNs.takeIf { owner == FocusOwner.TAP }
-  fun scanDeadline(): Long? = scanDeadlineNs.takeIf { owner == FocusOwner.CAPTURE && pending }
+  fun tapDeadline(): Long? = heldUntilNs.takeIf { owner?.timed == true }
+  fun scanDeadline(): Long? = scanDeadlineNs.takeIf { owner != null && owner?.timed == false && pending }
 
   private fun release() {
     owner = null

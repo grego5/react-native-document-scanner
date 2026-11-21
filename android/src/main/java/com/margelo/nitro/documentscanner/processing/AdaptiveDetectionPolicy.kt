@@ -71,7 +71,11 @@ internal class AdaptiveDetectionPolicy {
   }
 }
 
-/** Times model attempts independently of the policy that carries a confirmed outline. */
+/**
+ * Times model attempts independently of the policy that carries a confirmed outline. A pending search or revalidation
+ * gets an attempt once [RETRY_NS] has passed since it began or last ran, and, while a held outline waits on one,
+ * [HELD_RETRY_LEAD_NS] before that outline expires, so the result lands before the guide drops rather than after.
+ */
 internal class AdaptiveInferenceCadence {
   private var searching = false
   private var checked = false
@@ -79,9 +83,13 @@ internal class AdaptiveInferenceCadence {
   private var steadyFrames = 0
   private var waitingSince: Long? = null
   private var lastAttempt: Long? = null
+  var holdRetry = false
+    private set
 
+  /** [heldUntil]: when the guide's held outline expires, on [now]'s clock, or null without one. */
   fun gap(now: Long, searching: Boolean, moving: Boolean, measured: Boolean, trackingGap: Long,
-          blurFraction: Double? = null): Long? {
+          blurFraction: Double? = null, heldUntil: Long? = null): Long? {
+    holdRetry = false
     if (searching && !this.searching) checked = false
     this.searching = searching
     // A search or revalidation must make progress even if motion never settles.
@@ -92,22 +100,28 @@ internal class AdaptiveInferenceCadence {
       now - maxOf(since, previous ?: since) >= RETRY_NS ||
         lowBlur && (previous == null || previous < since)
     }
-    val fallbackGap = if (earlyOrDue == true) 0L else null
+    fun fallbackGap(): Long? {
+      if (earlyOrDue == true) return 0L
+      val deadline = heldUntil ?: return null
+      val due = deadline - HELD_RETRY_LEAD_NS
+      holdRetry = waitingSince != null && now >= due && (lastAttempt ?: Long.MIN_VALUE) < due
+      return if (holdRetry) 0L else null
+    }
     if (moving) {
       steadyFrames = 0
       val since = movingSince ?: now
       movingSince = since
       if (now - since >= 100_000_000L) checked = false
-      return fallbackGap
+      return fallbackGap()
     }
     movingSince = null
     if (!measured) {
       steadyFrames = 0
-      return fallbackGap
+      return fallbackGap()
     }
     if (steadyFrames < 4) steadyFrames++
-    if (steadyFrames < 4) return fallbackGap
-    if (searching) return if (checked) fallbackGap else 0L
+    if (steadyFrames < 4) return fallbackGap()
+    if (searching) return if (checked) fallbackGap() else 0L
     return trackingGap.takeUnless { it == Long.MAX_VALUE }
   }
 
@@ -118,6 +132,8 @@ internal class AdaptiveInferenceCadence {
 
   private companion object {
     const val RETRY_NS = 1_000_000_000L
+    /** Room for an attempt's inference and delivery before the held outline expires. */
+    const val HELD_RETRY_LEAD_NS = 150_000_000L
     const val LOW_BLUR_FRACTION = 0.002
   }
 }

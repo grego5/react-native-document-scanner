@@ -456,9 +456,13 @@ final class LiveDocumentDetector: @unchecked Sendable {
     let moving = measured && ((!adaptive && lost > 0) || (estimate?.speed?.doubleValue).map {
       $0 / Double(framing.buffer.width) > speedLimit
     } == true)
+    let heldUntil = tracking ? lastGuide.flatMap {
+      $0.framing == framing && state.isCurrent($0.generation) ? $0.deadlineNs : nil
+    } : nil
     let eligibleGap = adaptive
       ? cadence.gap(now: startedAt, searching: searching, moving: moving, measured: measured && lost == 0,
-                    trackingGap: gap, blurFraction: blur)
+                    trackingGap: gap, blurFraction: blur,
+                    heldUntil: heldUntil)
       : moving || scorePaused ? nil : gap
     let token = (forCapture ? 0 : eligibleGap).flatMap { state.acquire(nowNs: startedAt, minGapNs: $0) }
     guard let token else {
@@ -557,7 +561,9 @@ final class LiveDocumentDetector: @unchecked Sendable {
       result.acceptanceId = validated.acceptanceId
       result.deadlineNs = validated.deadlineNs
     }
-    publish(result)
+    let keepVisible = adaptive && !forCapture && cadence.holdRetry && status == 0
+      && (heldUntil.map { startedAt < $0 } ?? false)
+    publish(result, keepVisible: keepVisible)
     return state.isCurrent(token)
   }
 
@@ -637,8 +643,10 @@ final class LiveDocumentDetector: @unchecked Sendable {
   // MARK: - Publication
 
   /// Coalesces to the newest result; main receives it on its next turn.
-  private func publish(_ result: LiveGuideResult) {
+  private func publish(_ result: LiveGuideResult, keepVisible: Bool = false) {
     lastGuide = result.corners.map { ($0, result.framing, result.deadlineNs, result.generation) }
+    // Main already has an expiry scheduled for the existing outline.
+    if keepVisible { return }
     lock.lock()
     let scheduled = pending != nil
     pending = result

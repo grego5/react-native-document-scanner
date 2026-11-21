@@ -198,6 +198,9 @@ internal data class CaptureState(
   val ownScan: OwnScan = OwnScan.NONE,
   val frameSinceFocusChange: Boolean = true,
   val postFocusInferenceFinished: Boolean? = null,
+  /** Until when the scanner focus cycle still works for this press, or waits for a frame after its accepted lock; the
+   * page and focus waits hold until then rather than fail at their own deadline. Null without it or once exhausted. */
+  val cycleHoldsUntilMs: Long? = null,
 )
 
 /**
@@ -215,6 +218,9 @@ internal data class CaptureState(
  * starts a scan: it only delays the shot, or rejects it at the steady deadline. A scan in progress holds the page and focus waits past their
  * deadline. After a successful scan a missing page is judged by fresh inference. The focus check allows up to
  * [settledFrameWaitMs] for fresh frame evidence. The focus controller's own timeout bounds a scan.
+ *
+ * While the scanner focus cycle owns a press's focus, the gate starts no scan: the cycle's result arrives as [focused],
+ * and its budget as [CaptureState.cycleHoldsUntilMs], which holds the page and focus waits past their deadline.
  */
 internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLowQualityControl: Boolean = false,
   private val maxScans: Int = 2, private val settledFrameWaitMs: Long = 500) {
@@ -253,6 +259,7 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
     // capture's own scan also holds a page wait: the page may be too blurred to detect until the scan settles.
     fun focusingUntil(reason: WaitReason?): Long? {
       if (reason != WaitReason.DOCUMENT && reason != WaitReason.FOCUS) return null
+      captureState.cycleHoldsUntilMs?.takeIf { it > now }?.let { return it }
       if (ownScan == OwnScan.SCANNING) return Long.MAX_VALUE
       scanSettledMs?.let { settled ->
         val until = settled + settledFrameWaitMs
@@ -272,7 +279,12 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
     }
     if (blocker() == WaitReason.DOCUMENT && captureState.requireFocus) {
       when (captureState.postFocusInferenceFinished) {
-        false -> return CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE)
+        // The scanner focus cycle's budget bounds the wait for inference after its lock, as nothing else does.
+        false -> {
+          val until = captureState.cycleHoldsUntilMs ?: Long.MAX_VALUE
+          if (until <= now) return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT)
+          return CaptureDecision.Wait(WaitReason.DOCUMENT, until)
+        }
         true -> return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT)
         null -> Unit
       }

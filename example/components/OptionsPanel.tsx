@@ -26,6 +26,8 @@ export interface LiveTuning {
   lowLightBoost: boolean
   captureFeedback: boolean
   captureMode: CaptureMode
+  /** Locks focus while the camera holds steady: the page, or the centre and then the torch while none is found. */
+  focusLock: boolean
 }
 
 // Each switch cycles through its values; the first is the library default.
@@ -46,6 +48,7 @@ export const DEFAULT_TUNING: LiveTuning = {
   lowLightBoost: true,
   captureFeedback: true,
   captureMode: CAPTURE_MODES[0],
+  focusLock: true,
 }
 
 function nextValue<T>(values: readonly T[], current: T) {
@@ -119,7 +122,7 @@ export function OptionsPanel({
 }) {
   const set = (update: Partial<LiveTuning>) => onChange((t) => ({ ...t, ...update }))
   const flag = (label: string, key: keyof LiveTuning & ('squareAspectRatio' | 'lowQualityControl' | 'inferenceThrottling' |
-    'lowLightBoost' | 'captureFeedback' | 'highResolutionPhoto' | 'showStats')): Option =>
+    'lowLightBoost' | 'captureFeedback' | 'highResolutionPhoto' | 'showStats' | 'focusLock')): Option =>
     ({ label, on: tuning[key], toggle: () => set({ [key]: !tuning[key] }) })
   const cycle = <T,>(label: string, values: readonly T[], current: T, key: keyof LiveTuning, show: (value: T) => string): Option =>
     ({ label, value: show(current), changed: current !== values[0], next: () => set({ [key]: nextValue(values, current) }) })
@@ -131,6 +134,7 @@ export function OptionsPanel({
       tuning.captureMode, 'captureMode', (mode) =>
         mode === 'zsl' && !supportsZsl ? (cameraFeatures ? 'ZSL unavailable' : 'ZSL unverified') : mode),
     flag('Square', 'squareAspectRatio'),
+    flag('Focus lock', 'focusLock'),
     flag('Throttle detection', 'inferenceThrottling'),
     flag('Feedback', 'captureFeedback'),
     cycle('Exposure', EXPOSURE_EV, tuning.exposureCompensation, 'exposureCompensation', (ev) => `${ev} EV`),

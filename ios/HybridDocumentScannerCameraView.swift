@@ -49,6 +49,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   var minCornerScore: Double? = nil
   var lowQualityControl = LowQualityControl(enabled: true, captureBlurPercent: nil, requireFocus: nil)
   var tapToFocus: Bool? = nil
+  /// Android only for now; iOS keeps continuous autofocus.
+  var focusLock: Bool? = nil
   var exposureCompensation: Double? = nil
   var minFrameRate: Double? = nil
   var torch: TorchMode? = nil
@@ -61,6 +63,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   var analysisFrameWidth: Double? = nil
   var squareAspectRatio: Bool? = nil
   var showStats: Bool? = nil
+  /// Android only for now.
+  var showFocusIndicator: Bool? = nil
   var guideColor: Double? = nil
   var captureFeedback: Bool? = nil
   var captureColor: Double? = nil

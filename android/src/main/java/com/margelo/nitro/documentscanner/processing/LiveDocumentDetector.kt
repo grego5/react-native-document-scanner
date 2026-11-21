@@ -14,18 +14,21 @@ import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.camera.view.transform.OutputTransform
 import com.margelo.nitro.documentscanner.DocumentCandidate
 import com.margelo.nitro.documentscanner.DocumentCorners
+import com.margelo.nitro.documentscanner.DocumentPoint
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
 internal enum class LiveGuideStatus { SEARCHING, DETECTED, TRACKING, HELD, UNAVAILABLE }
 
-/** Main-thread focus hint without image ownership; the corners are upright and normalized to [source]. [confirmed]: the
- * outline is TRACKING, past the score threshold and shape check, rather than provisional. [sensorNs]: the analyzed
- * frame's sensor timestamp. */
+/**
+ * A frame's page for focus: [corners] in the upright frame of [width] by [height], with the [source] transform, at the
+ * frame's sensor timestamp. [spot] is the page's print spot in page coordinates, picked on this frame when
+ * [LiveDocumentDetector.spotRequested] asked; [sharpness] is [printSharpness] at [LiveDocumentDetector.sharpnessPoint].
+ */
 internal data class LiveFocusCandidate(
   val corners: DocumentCorners?, val source: OutputTransform, val width: Int, val height: Int, val confirmed: Boolean,
-  val sensorNs: Long,
+  val sensorNs: Long, val spot: DocumentPoint? = null, val sharpness: Double? = null,
 )
 
 /** [corners] and the [source] transform and dimensions captured at its acceptance are set for DETECTED, TRACKING and HELD; DETECTED is visible but not confirmed for focus or capture;
@@ -105,6 +108,13 @@ internal class LiveDocumentDetector(
   private var analysisRate = AnalysisRateMonitor()
   /** Independent main-thread focus owner receives document targets; focus never gates detection. */
   @Volatile internal var focusCandidateListener: ((LiveFocusCandidate) -> Unit)? = null
+  /** Main thread callback: [sharpnessPoint]'s score (sensor time, score) on a frame that posts no focus candidate, as
+   * when flow loses the page between inferences; a focus search still has a score to read. */
+  @Volatile internal var sharpnessListener: ((Long, Double) -> Unit)? = null
+  /** Where focus candidates measure [printSharpness], as a fraction of the upright crop; null measures nothing. */
+  @Volatile internal var sharpnessPoint: DocumentPoint? = null
+  /** The next focus candidate with a page picks its print spot, once; set by main, cleared here. */
+  @Volatile internal var spotRequested = false
   /** Checks for the next analyzed frame; a change starts a fresh stabilizer, dropping its history. */
   @Volatile internal var stabilizerConfig = GuideStabilizerConfig()
   /** Estimates image motion on every analysis frame, guide or not, before inference throttling and gating. */
@@ -137,6 +147,9 @@ internal class LiveDocumentDetector(
   @Volatile internal var frameAnalysisListener: (() -> Unit)? = null
   /** One waiting shutter may bypass inference pacing for frames after its focus scan. */
   @Volatile internal var captureInferenceFrame: ((sensorNs: Long, arrivalNs: Long, realtime: Boolean) -> Boolean)? = null
+  /** Set on main when a focus lock just sharpened the frame: the next frame bypasses inference pacing, since a search
+   * otherwise retries only once a second while flow on a blurred frame reads as motion. */
+  @Volatile internal var inferenceWanted = false
   private val frameResultsToken = Any()
   // Executor-confined: the confirmed in-frame outline as of the last published result, and when its hold expires on
   // the System.nanoTime() clock of frame arrival, as main expires the guide; 0 holds it.
@@ -378,8 +391,11 @@ internal class LiveDocumentDetector(
     val moving = pacingEnabled && maxInferenceSpeedFraction > 0 && estimate?.status == FlowMotionStatus.MEASURED &&
       ((!adaptive && estimate.lostRegions > 0) || estimate.speedPxPerSecond?.let { it / image.width > speedLimit } == true)
     val forCapture = captureInferenceFrame?.invoke(sensorTimestampNs, startedAt, optics != null) == true
-    val gap = if (forCapture) 0L else if (adaptive) cadence.gap(startedAt, searching, moving,
-      estimate?.status == FlowMotionStatus.MEASURED && estimate.lostRegions == 0, trackingGap, blurFraction = flowMotion)
+    val wanted = inferenceWanted
+    val heldUntil = captureGuideDeadlineNs.takeIf { tracking && matchingGeometry && state.isCurrent(lastToken) && it != 0L }
+    val gap = if (forCapture || wanted) 0L else if (adaptive) cadence.gap(startedAt, searching, moving,
+      estimate?.status == FlowMotionStatus.MEASURED && estimate.lostRegions == 0, trackingGap, blurFraction = flowMotion,
+      heldUntil = heldUntil)
       else if (moving || scorePaused) null else trackingGap
     // Provisional focus inference cannot override a tracking pause; tracked outlines drive focus instead.
     val token = synchronized(bindingLock) {
@@ -388,6 +404,7 @@ internal class LiveDocumentDetector(
         else -> state.acquire(startedAt, gap)
       }
     }
+    if (wanted && token != null) inferenceWanted = false
     var inferenceFinished = false
     try {
       received++
@@ -395,10 +412,10 @@ internal class LiveDocumentDetector(
       traceObserver?.takeIf { it.frameSamplesEnabled }?.onFrame(frameSample(sensorTimestampNs, startedAt, frame, token != null, flow).copy(
         inferenceReason = when {
           boundGeneration != binding -> "binding changed"
+          token != null -> "inference"
           moving -> "motion"
           scorePaused -> "low score: waiting for movement"
-          token == null -> "cadence or paused"
-          else -> "inference"
+          else -> "cadence or paused"
         },
         inferenceGapNs = gap ?: Long.MAX_VALUE, flowReliable = reliable,
         predictedCorners = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) },
@@ -406,6 +423,7 @@ internal class LiveDocumentDetector(
       ))
       if (token == null) {
         dropped++
+        var posted = false
         // Pacing and movement skip inference; flow's own consensus fit decides whether tracking holds.
         if (reliable && estimate?.lostRegions == 0 &&
           state.isCurrent(lastToken) && stabilizerConfig == stabilizer.config && boundGeneration == binding) {
@@ -432,12 +450,15 @@ internal class LiveDocumentDetector(
             publish(LiveDetectionResult(LiveGuideStatus.TRACKING, held.accepted, source, width, height,
               held.acceptanceId, held.holdDeadlineNs, lastToken, startedAt))
             // The tracked outline keeps the page, and so continuous autofocus, while inference is paused.
-            postFocusCandidate(lastToken, startedAt, LiveFocusCandidate(held.accepted, source, width, height, true, sensorTimestampNs))
+            postFocusCandidate(lastToken, startedAt, LiveFocusCandidate(held.accepted, source, width, height, true, sensorTimestampNs,
+              spot(image, held.accepted), sharpness(image)))
+            posted = true
           } else {
             // An expired or invalid tracked guide must wake inference instead of remaining paused forever.
             adaptivePolicy.reset()
           }
         }
+        if (!posted) postSharpness(sensorTimestampNs, startedAt, image)
         return
       }
       val sourceTransform = transformFactory.getOutputTransform(image)
@@ -499,7 +520,8 @@ internal class LiveDocumentDetector(
       }
       postFocusCandidate(token, startedAt,
         LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.corners, sourceTransform, width, height,
-          output.status == GuideTrackingStatus.TRACKING, sensorTimestampNs))
+          output.status == GuideTrackingStatus.TRACKING, sensorTimestampNs,
+          spot(image, if (flowRetained) output.accepted else candidate?.corners), sharpness(image)))
       tracking = output.status != GuideTrackingStatus.SEARCHING
       if (!flowRetained) {
         if (output.status == GuideTrackingStatus.TRACKING) {
@@ -527,6 +549,8 @@ internal class LiveDocumentDetector(
       if (optics != null) totalCameraMs += (startedRealtimeNs - sensorTimestampNs) / 1_000_000.0
       lastWidth = width
       lastHeight = height
+      val keepVisible = adaptive && !forCapture && !wanted && cadence.holdRetry &&
+        output.status == GuideTrackingStatus.SEARCHING && heldUntil?.let { startedAt < it } == true
       publish(when (output.status) {
         GuideTrackingStatus.SEARCHING -> if (candidate != null &&
           (output.decision == GuideDecision.ACQUIRING || output.decision == GuideDecision.GAP_RESTART)) {
@@ -543,7 +567,7 @@ internal class LiveDocumentDetector(
           output.acceptanceId, output.holdDeadlineNs, token, startedAt,
           score,
         )
-      })
+      }, keepVisible)
       inferenceFinished = state.isCurrent(token)
     } catch (error: Throwable) {
       if (token != null && state.fail(token)) {
@@ -579,6 +603,31 @@ internal class LiveDocumentDetector(
       gyro, optics, sensorTimestampNs - GYRO_MARGIN_NS,
       sensorTimestampNs + frame.rollingShutterSkewNs + frame.exposureNs + GYRO_MARGIN_NS, frame.exposureNs,
     )
+
+  private fun spot(image: ImageProxy, corners: DocumentCorners?): DocumentPoint? {
+    if (corners == null || !spotRequested) return null
+    spotRequested = false
+    val plane = image.planes[0]
+    val crop = image.cropRect
+    return pickPrintSpot(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
+      image.imageInfo.rotationDegrees, corners)
+  }
+
+  private fun sharpness(image: ImageProxy): Double? {
+    val point = sharpnessPoint ?: return null
+    val plane = image.planes[0]
+    val crop = image.cropRect
+    return printSharpness(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
+      image.imageInfo.rotationDegrees, point, SHARPNESS_SIDE)
+  }
+
+  private fun postSharpness(sensorNs: Long, startedAt: Long, image: ImageProxy) {
+    val listener = sharpnessListener ?: return
+    val score = sharpness(image) ?: return
+    handler.post {
+      if (System.nanoTime() - startedAt < 250_000_000L && sharpnessListener === listener) listener(sensorNs, score)
+    }
+  }
 
   private fun postFocusCandidate(token: Long, startedAt: Long, hint: LiveFocusCandidate) {
     val focusListener = focusCandidateListener
@@ -665,12 +714,14 @@ internal class LiveDocumentDetector(
     session = null
   }
 
-  private fun publish(result: LiveDetectionResult) {
+  private fun publish(result: LiveDetectionResult, keepVisible: Boolean = false) {
     // Capture's page is the guide main shows: a confirmed outline with every corner inside the frame.
     captureGuide = result.corners?.takeIf {
       result.status == LiveGuideStatus.TRACKING && NativeCornerGeometry.prediction(NativeCornerGeometry.coordinates(it))
     }
-    captureGuideDeadlineNs = result.holdDeadlineNs
+    captureGuideDeadlineNs = if (keepVisible) 0L else result.holdDeadlineNs
+    // Main already has an expiry scheduled for the existing outline.
+    if (keepVisible) return
     handler.removeCallbacksAndMessages(callbackToken)
     handler.postAtTime({ deliver(result) }, callbackToken, SystemClock.uptimeMillis())
   }
@@ -684,6 +735,7 @@ internal class LiveDocumentDetector(
       handler.removeCallbacksAndMessages(expiryToken)
       handler.postAtTime({
         if (state.isCurrent(result.generation) && deliveredAcceptanceId == 0L) {
+          traceObserver?.onGuideExpired(0L)
           onResult?.invoke(LiveDetectionResult(LiveGuideStatus.SEARCHING, generation = result.generation))
         }
       }, expiryToken, SystemClock.uptimeMillis() + (remainingNs + 999_999) / 1_000_000)
@@ -725,6 +777,7 @@ internal class LiveDocumentDetector(
   private fun expire(acceptanceId: Long, generation: Long) {
     handler.removeCallbacksAndMessages(expiryToken)
     expiredAcceptanceId = maxOf(expiredAcceptanceId, acceptanceId)
+    traceObserver?.onGuideExpired(acceptanceId)
     onResult?.invoke(LiveDetectionResult(LiveGuideStatus.SEARCHING, generation = generation))
   }
 

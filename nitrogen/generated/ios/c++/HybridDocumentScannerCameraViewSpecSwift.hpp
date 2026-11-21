@@ -230,6 +230,13 @@ namespace margelo::nitro::documentscanner {
     inline void setTapToFocus(std::optional<bool> tapToFocus) noexcept override {
       _swiftPart.setTapToFocus(tapToFocus);
     }
+    inline std::optional<bool> getFocusLock() noexcept override {
+      auto __result = _swiftPart.getFocusLock();
+      return __result;
+    }
+    inline void setFocusLock(std::optional<bool> focusLock) noexcept override {
+      _swiftPart.setFocusLock(focusLock);
+    }
     inline std::optional<double> getExposureCompensation() noexcept override {
       auto __result = _swiftPart.getExposureCompensation();
       return __result;
@@ -299,6 +306,13 @@ namespace margelo::nitro::documentscanner {
     }
     inline void setShowStats(std::optional<bool> showStats) noexcept override {
       _swiftPart.setShowStats(showStats);
+    }
+    inline std::optional<bool> getShowFocusIndicator() noexcept override {
+      auto __result = _swiftPart.getShowFocusIndicator();
+      return __result;
+    }
+    inline void setShowFocusIndicator(std::optional<bool> showFocusIndicator) noexcept override {
+      _swiftPart.setShowFocusIndicator(showFocusIndicator);
     }
     inline std::optional<double> getGuideColor() noexcept override {
       auto __result = _swiftPart.getGuideColor();

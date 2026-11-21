@@ -69,6 +69,8 @@ export interface LowQualityControl {
   captureBlurPercent?: number
   /**
    * Wait for autofocus and require focus; defaults to true. A scan in progress can extend the four-second wait.
+   * With `focusLock` and live corners on, the scanner's focus cycle owns the wait instead, for up to eight seconds from
+   * the press, including the torch step and one final autofocus scan, whether or not a scan is running.
    * With live guidance, capture also waits for a page. When false, focus is not required and capture may proceed
    * without a page after the wait. ZSL can still wait for an acceptable buffered frame.
    */
@@ -147,6 +149,22 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   tapToFocus?: boolean
   /**
+   * Locks focus while the camera holds steady, cycling once per steady hold; the gyroscope showing the phone turning
+   * ends the lock and starts the cycle over. A detected page gets a lock held until it is out of view for a second.
+   * With no page found once the phone is steady, as when it is too blurred to detect, the frame's centre is locked
+   * for 5 seconds, and a page found meanwhile takes the lock over;
+   * if still no page is found, or a lock fails, the torch lights when `torch` is `auto` (it then stays lit like the auto
+   * torch) for one more lock at the page or the centre; then the cycle gives up until the phone turns, moves and holds
+   * steady again, or a page arrives anew. Between locks the lens stays where the last one put it; a page lock focuses
+   * by scoring the print at nearby lens distances, starting from where this camera's last lock was sharp, which is
+   * remembered across launches. A `zsl` capture mode binds as `latency` meanwhile, since the zero-shutter-lag buffer
+   * takes only frames reporting autofocus focused. A tap takes over meanwhile. A gated photo that requires focus waits
+   * for the cycle's lock rather than continuous autofocus, within the budget `requireFocus` describes; when the cycle
+   * gives up, the photo runs one final autofocus scan. Android only; the native view defaults to false,
+   * and `Camera` turns it on in document mode.
+   */
+  focusLock?: boolean
+  /**
    * Auto-exposure bias in EV stops, rounded to the camera's step and clamped to its range; negative values keep white
    * paper from clipping. Defaults to 0, and cameras without compensation ignore it. A change made while a capture
    * is pending waits for it to end, so the shot keeps its exposure; only the latest value then applies.
@@ -201,6 +219,12 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
   squareAspectRatio?: boolean
   /** Shows native camera diagnostics in fixed rows. Defaults to false. */
   showStats?: boolean
+  /**
+   * Shows a small dot where focus is held: the page area continuous autofocus aims at, or a tap's, capture's or lock's
+   * focus region, colored by its state (green focused, yellow searching, red failed). Hidden while autofocus aims at
+   * the center with no page. Android only; defaults to true.
+   */
+  showFocusIndicator?: boolean
   /** ARGB color of the guide and the searching viewfinder; the Camera wrapper takes a color string. Defaults to teal. */
   guideColor?: number
   /**

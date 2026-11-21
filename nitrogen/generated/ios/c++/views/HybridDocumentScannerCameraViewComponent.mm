@@ -170,6 +170,12 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.tapToFocus.hasSameValue(oldViewProps->tapToFocus)) {
       swiftPart.setTapToFocus(newViewProps.tapToFocus.get());
     }
+    // focusLock: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.focusLock.isProvided()
+          : !newViewProps.focusLock.hasSameValue(oldViewProps->focusLock)) {
+      swiftPart.setFocusLock(newViewProps.focusLock.get());
+    }
     // exposureCompensation: optional
     if (oldViewProps == nullptr
           ? newViewProps.exposureCompensation.isProvided()
@@ -229,6 +235,12 @@ using namespace margelo::nitro::documentscanner::views;
           ? newViewProps.showStats.isProvided()
           : !newViewProps.showStats.hasSameValue(oldViewProps->showStats)) {
       swiftPart.setShowStats(newViewProps.showStats.get());
+    }
+    // showFocusIndicator: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.showFocusIndicator.isProvided()
+          : !newViewProps.showFocusIndicator.hasSameValue(oldViewProps->showFocusIndicator)) {
+      swiftPart.setShowFocusIndicator(newViewProps.showFocusIndicator.get());
     }
     // guideColor: optional
     if (oldViewProps == nullptr

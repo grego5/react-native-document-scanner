@@ -4,8 +4,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executor
 
 /** Why `zsl` bound `latency`: a lit torch, white balance that keeps searching, a gated shot the zero-shutter-lag buffer
- * starved, or a sustained dark scene with nothing lighting it. */
-internal enum class LightFallback { TORCH, WHITE_BALANCE, STARVED_BUFFER, DARK }
+ * starved, a sustained dark scene with nothing lighting it, or `focusLock` holding the lens with autofocus off. */
+internal enum class LightFallback { TORCH, WHITE_BALANCE, STARVED_BUFFER, DARK, HELD_LENS }
 
 /**
  * Main-thread owner of the camera's light: the torch and low-light boost commands, their CameraX acknowledgements, their
@@ -44,13 +44,20 @@ internal class CameraLightController(private val executor: Executor, private val
     requestedBoost = null
   }
 
-  /** Applies both settings when capture is idle. CameraX owns their interaction. */
-  fun apply(camera: BoundCamera?, mode: TorchMode, lowLightBoost: Boolean, capturePending: Boolean, autoLit: () -> Boolean) {
-    if (camera == null || capturePending) return
-    if (camera.info.isLowLightBoostSupported) setBoost(camera, lowLightBoost)
-    if (camera.info.hasFlashUnit()) {
-      setTorch(camera, when (mode) { TorchMode.ON -> true; TorchMode.AUTO -> autoLit(); TorchMode.OFF -> false })
-    }
+  /**
+   * Applies both settings; CameraX owns their interaction. The boost and the user's own torch mode wait while a capture
+   * is pending ([capturePending]), so a press keeps the light it was admitted with. The auto torch's lit state, from a
+   * dark room or the focus cycle's torch step alike, waits only while [autoHeld]: the view holds it for a shot being
+   * taken, and for a whole pending capture only with zero shutter lag, whose buffer refuses frames while white balance
+   * settles under a new light. A press waiting for focus in the dark otherwise gets that light.
+   */
+  fun apply(camera: BoundCamera?, mode: TorchMode, lowLightBoost: Boolean, capturePending: Boolean, autoHeld: Boolean,
+    autoLit: () -> Boolean) {
+    if (camera == null) return
+    if (!capturePending && camera.info.isLowLightBoostSupported) setBoost(camera, lowLightBoost)
+    if (!camera.info.hasFlashUnit()) return
+    if (if (mode == TorchMode.AUTO) autoHeld else capturePending) return
+    setTorch(camera, when (mode) { TorchMode.ON -> true; TorchMode.AUTO -> autoLit(); TorchMode.OFF -> false })
   }
 
   /**
@@ -97,6 +104,7 @@ internal class CameraLightController(private val executor: Executor, private val
     log("torch lit=$lit")
     send(torch, lit, camera.control.enableTorch(lit)) { ok ->
       torchLit = if (ok) lit else null
+      if (ok) log("torch confirmed lit=$lit")
     }
   }
 

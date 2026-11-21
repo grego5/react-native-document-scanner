@@ -14,6 +14,11 @@ internal class TorchPolicy {
     lit = false
   }
 
+  /** Lights the torch as a dark room would; once lit, it stays lit. */
+  fun light() {
+    lit = true
+  }
+
   /** Returns true on the frame that lights the torch. [iso] is the frame's sensitivity, null when unreported. */
   fun observe(observationNs: Long, exposureNs: Long, iso: Int?): Boolean {
     if (lit) return false

@@ -32,18 +32,48 @@ internal class GyroHistory(private val capacity: Int = 512) {
 
   @Synchronized fun peakRate(fromNs: Long, toNs: Long): Double? = query(fromNs, toNs, 1)?.first()
 
+  /** Whether samples reach both ends of [fromNs]..[toNs] within [MAX_EXTRAPOLATION_NS], so a peak over it saw it all. */
+  @Synchronized fun covers(fromNs: Long, toNs: Long): Boolean =
+    count > 0 && times[index(0)] <= fromNs + MAX_EXTRAPOLATION_NS && times[index(count - 1)] >= toNs - MAX_EXTRAPOLATION_NS
+
   @Synchronized fun blur(fromNs: Long, toNs: Long, exposureNs: Long, optics: LiveCameraOptics): Double? =
     query(fromNs, toNs, 2, optics.focalLengthPx, optics.activeWidth, exposureNs)?.first()
 
+  /**
+   * Only the samples a span reads cross to native: the last at or before its start, which holds its rate into it, through
+   * the first after its end, which bounds the last held rate; without either end the oldest or newest sample stands in,
+   * so coverage checks see what the whole history would show them.
+   */
   private fun query(fromNs: Long, toNs: Long, operation: Int, focal: Double = 1.0, width: Int = 1,
     exposureNs: Long = 0): DoubleArray? {
-    val timestamps = LongArray(count) { times[index(it)] }
-    val snapshot = DoubleArray(count * 3) { rates[index(it / 3) * 3 + it % 3] }
+    val first = (lastAtOrBefore(minOf(fromNs, toNs))).coerceAtLeast(0)
+    val last = (lastAtOrBefore(maxOf(fromNs, toNs)) + 1).coerceAtMost(count - 1)
+    val size = (last - first + 1).coerceAtLeast(0)
+    val timestamps = LongArray(size) { times[index(first + it)] }
+    val snapshot = DoubleArray(size * 3)
+    for (i in 0 until size) {
+      val at = index(first + i) * 3
+      snapshot[i * 3] = rates[at]
+      snapshot[i * 3 + 1] = rates[at + 1]
+      snapshot[i * 3 + 2] = rates[at + 2]
+    }
     // These methods take the history's sensor clock. Camera callers are enabled only for REALTIME timestamps.
     return NativeMotion.gyroNative(timestamps, snapshot, fromNs, toNs, longArrayOf(0L), operation, focal, width, exposureNs)
   }
 
   private fun index(i: Int): Int = (next - count + i + capacity) % capacity
+
+  /** The logical index of the newest sample at or before [timeNs], or -1; samples are in rising time order. */
+  private fun lastAtOrBefore(timeNs: Long): Int {
+    var low = 0
+    var high = count - 1
+    var found = -1
+    while (low <= high) {
+      val middle = (low + high) ushr 1
+      if (times[index(middle)] <= timeNs) { found = middle; low = middle + 1 } else high = middle - 1
+    }
+    return found
+  }
 
   companion object {
     const val MAX_EXTRAPOLATION_NS = 50_000_000L

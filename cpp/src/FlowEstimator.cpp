@@ -9,11 +9,18 @@
 #include <vector>
 
 namespace document_scanner::motion {
+namespace {
+const cv::Size LK_WINDOW{15, 15};
+constexpr int LK_LEVELS = 3;
+} // namespace
 struct FlowEstimator::State {
   int maxEdge, maxFeatures;
   int64_t maxGap;
   // Raw luma selects features; its light-normalised copy is tracked.
-  cv::Mat previous, current, previousTracked, currentTracked, mask, level, mean, spread;
+  cv::Mat previous, current, previousTracked, currentTracked, mask, level, mean, spread, full;
+  // Each tracked frame's LK pyramid with its derivatives, built once: it is the forward pass's next and the backward
+  // pass's previous for its own frame, and the forward pass's previous for the frame after.
+  std::vector<cv::Mat> previousPyramid, currentPyramid;
   bool hasPrevious = false;
   int64_t previousNs = 0;
   std::array<int64_t, 7> geometry{};
@@ -31,8 +38,10 @@ struct FlowEstimator::State {
       cy /= 4;
       std::vector<cv::Point> polygon;
       double left = INFINITY, top = INFINITY, right = -INFINITY, bottom = -INFINITY;
+      // The mask reaches just past the outline: the page's own corners and edges are its strongest features, and
+      // a mostly blank page has too few others to fit its motion.
       for (auto p : *region) {
-        const double x = cx + (p.x - cx) * .9, y = cy + (p.y - cy) * .9;
+        const double x = cx + (p.x - cx) * 1.05, y = cy + (p.y - cy) * 1.05;
         const double bx = (rotation == 90 ? y : rotation == 180 ? 1 - x : rotation == 270 ? 1 - y : x) * width;
         const double by = (rotation == 90 ? 1 - x : rotation == 180 ? 1 - y : rotation == 270 ? x : y) * height;
         // MatOfPoint stores integer points by narrowing to int, not cvRound.
@@ -69,8 +78,9 @@ struct FlowEstimator::State {
     std::vector<unsigned char> ok, backOk;
     std::vector<float> error, backError;
     const cv::TermCriteria criteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 20, .03);
-    cv::calcOpticalFlowPyrLK(previousTracked, currentTracked, from, to, ok, error, {15, 15}, 3, criteria);
-    cv::calcOpticalFlowPyrLK(currentTracked, previousTracked, to, back, backOk, backError, {15, 15}, 3, criteria);
+    cv::calcOpticalFlowPyrLK(previousPyramid, currentPyramid, from, to, ok, error, LK_WINDOW, LK_LEVELS, criteria);
+    cv::calcOpticalFlowPyrLK(currentPyramid, previousPyramid, to, back, backOk, backError, LK_WINDOW, LK_LEVELS,
+                             criteria);
     const double sx = double(cropWidth) / width, sy = double(cropHeight) / height, seconds = gap / 1e9;
     std::vector<double> speeds;
     std::array<int, 9> detectedIn{};
@@ -166,23 +176,25 @@ Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const st
   const bool tracking = hadPrevious && geometry == s.geometry && sensor > s.previousNs &&
                         uint64_t(sensor) - uint64_t(s.previousNs) <= uint64_t(s.maxGap);
   s.geometry = geometry;
-  cv::Mat full(crop.height, crop.width, CV_8UC1);
   const auto bytes = view.bytes();
   // The same luma weights for either channel order.
   const int red = l.format == PixelFormat::bgra8 ? 2 : 0, blue = 2 - red;
-  for (uint32_t y = 0; y < crop.height; ++y)
-    for (uint32_t x = 0; x < crop.width; ++x) {
-      const auto offset = (crop.top + y) * l.rowStride + (crop.left + x) * l.pixelStride;
-      const auto *p = reinterpret_cast<const uint8_t *>(bytes.data() + offset);
-      full.at<uint8_t>(y, x) = static_cast<uint8_t>((77 * p[red] + 150 * p[1] + 29 * p[blue]) >> 8);
-    }
+  // Row pointers into a reused image: per-pixel Mat::at and its offset arithmetic cost more than the conversion.
+  s.full.create(int(crop.height), int(crop.width), CV_8UC1);
+  for (uint32_t y = 0; y < crop.height; ++y) {
+    const auto *p = reinterpret_cast<const uint8_t *>(bytes.data()) + (crop.top + y) * l.rowStride +
+                    size_t(crop.left) * l.pixelStride;
+    auto *out = s.full.ptr<uint8_t>(int(y));
+    for (uint32_t x = 0; x < crop.width; ++x, p += l.pixelStride)
+      out[x] = static_cast<uint8_t>((77 * p[red] + 150 * p[1] + 29 * p[blue]) >> 8);
+  }
   const double scale = std::min(1.0, double(s.maxEdge) / std::max(crop.width, crop.height));
   const int w = std::max(1, int(std::floor(crop.width * scale + .5))),
             h = std::max(1, int(std::floor(crop.height * scale + .5)));
-  if (w == crop.width && h == crop.height)
-    full.copyTo(s.current);
+  if (w == int(crop.width) && h == int(crop.height))
+    s.full.copyTo(s.current);
   else
-    cv::resize(full, s.current, {w, h}, 0, 0, cv::INTER_AREA);
+    cv::resize(s.full, s.current, {w, h}, 0, 0, cv::INTER_AREA);
   // Track texture, not light: removing each neighbourhood's mean and spread cancels moving shadows, flicker and
   // exposure changes, which LK would read as motion. Features are still chosen on raw luma, so flat or noisy areas do
   // not gain features; the spread offset bounds the gain there.
@@ -195,11 +207,13 @@ Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const st
   cv::add(s.spread, cv::Scalar(8), s.spread);
   cv::divide(s.level, s.spread, s.level, 40);
   s.level.convertTo(s.currentTracked, CV_8U, 1, 128);
+  cv::buildOpticalFlowPyramid(s.currentTracked, s.currentPyramid, LK_WINDOW, LK_LEVELS, true);
   auto result = tracking ? s.track(l.size.width, crop.width, crop.height, rotation, sensor - s.previousNs, sensor,
                                    region, fitTransform)
                          : Estimate{Status::noReference, {}, int(l.size.width), sensor, sensor};
   std::swap(s.previous, s.current);
   std::swap(s.previousTracked, s.currentTracked);
+  std::swap(s.previousPyramid, s.currentPyramid);
   s.previousNs = sensor;
   s.hasPrevious = true;
   return result;

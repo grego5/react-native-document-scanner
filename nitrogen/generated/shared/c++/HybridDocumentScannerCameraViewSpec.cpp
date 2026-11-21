@@ -38,6 +38,8 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridSetter("lowQualityControl", &HybridDocumentScannerCameraViewSpec::setLowQualityControl);
       prototype.registerHybridGetter("tapToFocus", &HybridDocumentScannerCameraViewSpec::getTapToFocus);
       prototype.registerHybridSetter("tapToFocus", &HybridDocumentScannerCameraViewSpec::setTapToFocus);
+      prototype.registerHybridGetter("focusLock", &HybridDocumentScannerCameraViewSpec::getFocusLock);
+      prototype.registerHybridSetter("focusLock", &HybridDocumentScannerCameraViewSpec::setFocusLock);
       prototype.registerHybridGetter("exposureCompensation", &HybridDocumentScannerCameraViewSpec::getExposureCompensation);
       prototype.registerHybridSetter("exposureCompensation", &HybridDocumentScannerCameraViewSpec::setExposureCompensation);
       prototype.registerHybridGetter("minFrameRate", &HybridDocumentScannerCameraViewSpec::getMinFrameRate);
@@ -58,6 +60,8 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridSetter("squareAspectRatio", &HybridDocumentScannerCameraViewSpec::setSquareAspectRatio);
       prototype.registerHybridGetter("showStats", &HybridDocumentScannerCameraViewSpec::getShowStats);
       prototype.registerHybridSetter("showStats", &HybridDocumentScannerCameraViewSpec::setShowStats);
+      prototype.registerHybridGetter("showFocusIndicator", &HybridDocumentScannerCameraViewSpec::getShowFocusIndicator);
+      prototype.registerHybridSetter("showFocusIndicator", &HybridDocumentScannerCameraViewSpec::setShowFocusIndicator);
       prototype.registerHybridGetter("guideColor", &HybridDocumentScannerCameraViewSpec::getGuideColor);
       prototype.registerHybridSetter("guideColor", &HybridDocumentScannerCameraViewSpec::setGuideColor);
       prototype.registerHybridGetter("captureFeedback", &HybridDocumentScannerCameraViewSpec::getCaptureFeedback);
