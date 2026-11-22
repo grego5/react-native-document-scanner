@@ -2,7 +2,7 @@
 
 ## Owners
 
-- `CameraRef.getCameraFeatures()` reads support from the bound configuration without opening a camera. It returns undefined before configuration. AVFoundation decides when automatic low-light boost engages. Auto torch uses exposure × ISO and latches once lit. `onLowLightBoostActiveChange` reports observed engagement separately from support. Changes wait for capture settlement.
+- `CameraRef.getCameraFeatures()` reads support from the bound configuration without opening a camera. It returns undefined before configuration. AVFoundation decides when automatic low-light boost engages. Auto torch uses exposure Ã— ISO and latches once lit. `onLowLightBoostActiveChange` reports observed engagement separately from support. Changes wait for capture settlement.
 
 - The camera view owns admission and the capture phase. `AVCameraSession` owns device commands, focus observations and acknowledgements on its session queue. Frames arrive on a separate serial queue with late-frame discard. UIKit publication runs on main. Run IDs retire stale callbacks.
 - Camera use requires an active, visible and sized view, foreground and permission. First-frame readiness is armed after the previous run drains. Square framing uses delivered buffer dimensions and can change without restarting. Overlay placement maps detection corners through raw frame space into the preview's framing.
@@ -12,7 +12,10 @@
 
 ## Text camera
 
-`HybridTextCameraView` owns its own `AVCaptureSession` with a video data output, configured on its session queue, independent of the document camera. A rotation coordinator turns both preview and video buffers upright. `textRegionInBuffer` then maps the region through the aspect-fill crop, and Vision's region of interest is that rectangle flipped to a bottom-left origin. Recognition and voting run on the video queue, and late frames are discarded. A configuration error or a session runtime error, including a failed `startRunning()`, stops the camera and reports `camera/unavailable`. Stopping, a failed start and a session interruption share one transition: it clears the reading, fails pending reads with `camera/unavailable` and stops already queued frames from counting. While interrupted, frames are dropped; after AVFoundation ends the interruption, the first fresh frame restores `ready`. The outline is the newest box that read the agreed text, and it moves only when text is recognized: iOS has no flow tracking between recognitions yet. Main owns state and pending reads. `TextLineFilter.swift` mirrors Kotlin's rules and is covered by `TextLineFilterTests`.
+- A dedicated `AVCaptureSession` owns preview and video output. The video queue maps the visible region through the upright aspect-fill crop into Vision coordinates and owns recognition and voting. Main owns publication and pending reads.
+- The newest agreed recognition supplies the highlight bounds. The highlight updates on recognition. Rotation and crop mapping follow the delivered preview geometry.
+- Stop, interruption and startup failure invalidate queued readings and reject pending reads with `camera/unavailable`. Runtime or configuration failure stops the camera. A fresh frame after interruption restores readiness.
+- [Host integration](../integration.md#text-reading) owns text options and reading semantics.
 
 ## Capture
 

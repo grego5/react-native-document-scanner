@@ -17,7 +17,7 @@ import com.facebook.proguard.annotations.DoNotStrip
 @Keep
 enum class TextGuide(@DoNotStrip @Keep val value: Int) {
   NONE(0),
-  NATIVE(1),
+  CROSSHAIR(1),
   LINE(2),
   BRACKETS(3);
 

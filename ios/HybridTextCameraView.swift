@@ -29,15 +29,22 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
   var active: Bool? = nil
   var textRegion = TextRegion(x: 0.1, y: 0.44, width: 0.8, height: 0.12)
   var textGuide: TextGuide? = nil
+  var textHighlight: Bool? = nil
   var guideColor: Double? = nil
   var allowedCharacters: String? = nil
   var textPattern: String? = nil
   var minLength: Double? = nil
   var tapToFocus: Bool? = nil
+  /// Android only.
+  var focusLock: Bool? = nil
+  /// Android only.
+  var zoom: Double? = nil
   var torch: TextTorchMode? = nil
   var recognitionRate: Double? = nil
   var analysisFrameWidth: Double? = nil
   var onCameraStateChange: ((_ state: CameraState) -> Void)? = nil { didSet { reportedState = nil; reportState() } }
+  /// Android only: iOS has no lens hold and reports `inactive` once set.
+  var onAutofocusChange: ((_ state: AutofocusState) -> Void)? = nil { didSet { onAutofocusChange?(.inactive) } }
   var onTextChange: ((_ reading: TextReading) -> Void)? = nil { didSet { reportedReading = nil; reportReading() } }
   var onError: ((_ error: ScannerFailure) -> Void)? = nil
 
@@ -106,7 +113,8 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     let interval = Int64(1_000 / min(max(recognitionRate ?? 5, 1), 15))
     updateShared { $0.frameIntervalMs = interval }
     MainActor.assumeIsolated {
-      preview.overlay.update(region: region, guide: textGuide ?? TextGuide.none, color: Self.color(guideColor))
+      preview.overlay.update(region: region, guide: textGuide ?? TextGuide.none, highlight: textHighlight == true,
+                             color: Self.color(guideColor))
     }
     if running, configuredPreset != preset() { stop() }
     evaluate()
@@ -673,13 +681,14 @@ final class TextCameraPreviewView: UIView {
   }
 }
 
-/// Dims the preview outside the region, outlines it and the text being read.
+/// Draws the region's guide and highlights the text being read, each when asked; nothing otherwise.
 final class TextRegionOverlay: UIView {
   private let textOutline = CAShapeLayer()
   private let crosshair = CAShapeLayer()
   private var region: TextRegion?
   private var text: TextRegion?
   private var guide = TextGuide.none
+  private var highlight = false
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -695,9 +704,10 @@ final class TextRegionOverlay: UIView {
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
-  func update(region: TextRegion, guide: TextGuide, color: UIColor) {
+  func update(region: TextRegion, guide: TextGuide, highlight: Bool, color: UIColor) {
     self.region = region
     self.guide = guide
+    self.highlight = highlight
     crosshair.strokeColor = color.cgColor
     textOutline.fillColor = color.withAlphaComponent(0.35).cgColor
     setNeedsLayout()
@@ -715,15 +725,30 @@ final class TextRegionOverlay: UIView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     defer { CATransaction.commit() }
-    guard let region, guide != .none, bounds.width > 0, bounds.height > 0 else {
+    guard bounds.width > 0, bounds.height > 0 else {
       crosshair.path = nil
       textOutline.path = nil
+      return
+    }
+    textOutline.frame = bounds
+    // Text whose centre has left the region is no longer what is read; the reading outlives it by its votes, but the
+    // highlight goes with it.
+    if highlight, let text, let region,
+       (region.x...(region.x + region.width)).contains(text.x + text.width / 2),
+       (region.y...(region.y + region.height)).contains(text.y + text.height / 2) {
+      let box = CGRect(x: text.x * bounds.width, y: text.y * bounds.height,
+                       width: text.width * bounds.width, height: text.height * bounds.height).insetBy(dx: -3, dy: -3)
+      textOutline.path = UIBezierPath(roundedRect: box, cornerRadius: 4).cgPath
+    } else {
+      textOutline.path = nil
+    }
+    guard let region, guide != .none else {
+      crosshair.path = nil
       return
     }
     let rect = CGRect(x: region.x * bounds.width, y: region.y * bounds.height,
                       width: region.width * bounds.width, height: region.height * bounds.height)
     if guide == .line {
-      textOutline.path = nil
       let inset = rect.width * 0.08
       let y = rect.midY + min(14, rect.height / 3)
       let line = UIBezierPath()
@@ -734,7 +759,6 @@ final class TextRegionOverlay: UIView {
       return
     }
     if guide == .brackets {
-      textOutline.path = nil
       let arm = min(14, rect.width / 4, rect.height / 3)
       let path = UIBezierPath()
       path.move(to: CGPoint(x: rect.minX, y: rect.minY + arm))
@@ -762,11 +786,5 @@ final class TextRegionOverlay: UIView {
     cross.addLine(to: CGPoint(x: rect.midX, y: rect.midY + arm))
     crosshair.frame = bounds
     crosshair.path = cross.cgPath
-    textOutline.frame = bounds
-    textOutline.path = text.map {
-      let box = CGRect(x: $0.x * bounds.width, y: $0.y * bounds.height,
-                       width: $0.width * bounds.width, height: $0.height * bounds.height).insetBy(dx: -3, dy: -3)
-      return UIBezierPath(roundedRect: box, cornerRadius: 4).cgPath
-    }
   }
 }

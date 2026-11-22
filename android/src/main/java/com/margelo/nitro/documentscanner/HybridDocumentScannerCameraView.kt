@@ -337,6 +337,8 @@ open class HybridDocumentScannerCameraView(
           },
           focusDiopters,
           manualFocus = manualFocus,
+          requestedDiopters = if (manualFocus) request.get(CaptureRequest.LENS_FOCUS_DISTANCE) else null,
+          lensStateReported = result.get(CaptureResult.LENS_STATE) != null,
           focusReachedSensorNs = focusReachedSensorNs,
           aeState = result.get(CaptureResult.CONTROL_AE_STATE),
           awbState = result.get(CaptureResult.CONTROL_AWB_STATE),
@@ -629,10 +631,12 @@ open class HybridDocumentScannerCameraView(
   private fun startLensSearch(camera: BoundCamera, scan: ScanRequest) {
     val nearest = nearestDiopters(camera) ?: return sendCameraScan(camera, scan)
     val start = liveDetector.frameHistory.latest()?.frame?.focusDiopters ?: heldDiopters
-    val search = LensSearch(start, nearest)
+    // Depth of field in diopters hardly changes with distance, so a page's sharp zone is as thin against a step as
+    // close-up text's, and the refined peak usually lies between scored positions.
+    val search = LensSearch(start, nearest, refinePeak = true)
     if (!moveLens(camera, search.target)) return sendCameraScan(camera, scan)
     lockExposure(camera, true)
-    lensSearch = ActiveLensSearch(scan, search, liveDetector.frameHistory.latest()?.frame?.focusDiopters)
+    lensSearch = ActiveLensSearch(scan, search, liveDetector.frameHistory.latest()?.frame?.focusDiopters, SystemClock.uptimeMillis())
     // Bare scores only while a search reads them; a new listener per search retires samples queued for an older one.
     liveDetector.sharpnessListener = ::onSharpnessSample
     logLifecycle("lens search from %.2f diopters".format(search.target))
@@ -690,14 +694,9 @@ open class HybridDocumentScannerCameraView(
       return sendCameraScan(camera, active.scan)
     }
     if (state == null || !state.manualFocus || state.outOfFocus) return
-    val reading = state.focusDiopters
-    val previous = active.lastReading
-    active.lastReading = reading
     val target = active.search.target
-    // A lens whose reading never matches the request counts as arrived once its reading has changed and holds.
-    val arrived = reading == null || abs(reading - target) <= LENS_ARRIVED_DIOPTERS ||
-      reading != active.requestReading && reading == previous
-    if (!arrived) return
+    val reading = state.focusDiopters
+    if (!active.arrival.arrived(target, state.requestedDiopters, reading, state.lensStateReported)) return
     if (active.search.done) return finishLensSearch(camera, active, sensorNs, reading)
     val score = sharpness
     val exposureHeld = state.aeState == CaptureResult.CONTROL_AE_STATE_LOCKED ||
@@ -707,6 +706,8 @@ open class HybridDocumentScannerCameraView(
     if (active.scores.size < LENS_SEARCH_SCORES) return
     val average = active.scores.sum() / active.scores.size
     active.trail.append(" %.2f:%.0f".format(target, average))
+    active.low = minOf(active.low, average)
+    active.high = maxOf(active.high, average)
     active.search.observe(average)
     active.scores.clear()
     active.idleFrames = 0
@@ -720,7 +721,7 @@ open class HybridDocumentScannerCameraView(
       }
       search.target == heldDiopters -> if (search.done) finishLensSearch(camera, active, sensorNs, reading)
       else -> {
-        active.requestReading = reading
+        active.arrival.moved(reading)
         if (moveLens(camera, search.target)) focusBoxOverlay.pulse()
         else {
           endLensSearch(camera)
@@ -734,8 +735,9 @@ open class HybridDocumentScannerCameraView(
     endLensSearch(camera)
     // The judge's verdict counts frames exposed from here on, as after an autofocus lock.
     synchronized(metadataLock) { focusReachedSensorNs = sensorNs }
-    logLifecycle("lens search settled at %.2f diopters (reads %.2f) after %d positions:%s"
-      .format(heldDiopters, reading ?: Float.NaN, active.positions, active.trail))
+    logLifecycle("lens search settled at %.2f diopters (reads %.2f) after %d positions, %d ms, peak %.2fx:%s".format(
+      heldDiopters, reading ?: Float.NaN, active.positions, SystemClock.uptimeMillis() - active.startMs,
+      if (active.low > 0 && active.low.isFinite()) active.high / active.low else 0.0, active.trail))
     if (boundCamera === camera) active.scan.settle(true)
   }
 
@@ -1064,11 +1066,11 @@ open class HybridDocumentScannerCameraView(
     val config = lowQualityControl
     val gated = config.enabled ?: true
     val maxCaptureBlur = if (!gated) 0.0
-      else (config?.captureBlurPercent ?: DEFAULT_CAPTURE_BLUR_PERCENT).coerceAtLeast(0.0) / 100
+      else (config.captureBlurPercent ?: DEFAULT_CAPTURE_BLUR_PERCENT).coerceAtLeast(0.0) / 100
     val detection = guideLiveCorners ?: true
     return ResolvedProps(
       active = active ?: true,
-      requireFocus = gated && (config?.requireFocus ?: true),
+      requireFocus = gated && (config.requireFocus ?: true),
       guide = detection,
       inferenceThrottling = inferenceThrottling ?: false,
       minCornerScore = minimumScore,
@@ -1349,7 +1351,7 @@ open class HybridDocumentScannerCameraView(
     val pageArrived = pageArrivedSensorNs
     val pageFocusApplies = documentRequired && hasAutofocus && snapshot.owner == null && pageArrived != null
     fun predatesPage(state: CameraFrameState) =
-      pageFocusApplies && (state.focusReachedSensorNs ?: Long.MIN_VALUE) < pageArrived!!
+      pageFocusApplies && (state.focusReachedSensorNs ?: Long.MIN_VALUE) < pageArrived
     val (frames, missed) = liveDetector.frameHistory.since(capture.frameCursor)
     // Whether this evaluation read a record analysis just published, for the log: shooting on one an earlier evaluation
     // read, after a focus or torch change, means analysis had not produced a newer frame.
@@ -1381,7 +1383,7 @@ open class HybridDocumentScannerCameraView(
     // scan only at a page whose focus is stale and not scanning already; continuous autofocus may never rescan a page
     // it was already focused on.
     val qualityScan = binding?.captureMode == CaptureMode.QUALITY && (!documentRequired || latest != null)
-    val staleScan = staleFocus && !scanningFrame && (!documentRequired || latest?.guide != null)
+    val staleScan = staleFocus && !scanningFrame && (!documentRequired || latest.guide != null)
     // In a dark scene with no lit torch and no active low-light boost, zero shutter lag and latency scan too, at the page
     // or the preview's centre: there continuous autofocus held blurred pages while reporting focus on the SM-G998U, and
     // the blur hid the page from detection. The shot then waits for frames exposed after the lock, four steady ones
@@ -2276,9 +2278,11 @@ open class HybridDocumentScannerCameraView(
   private fun emitAutofocus() {
     if (disposed) return
     // The scanner's own lens search scans as autofocus would, with the camera's autofocus off.
-    val state = if (lensSearch != null) AutofocusState.SCAN else autofocusState
+    // A lock the scanner holds with the camera's autofocus off reports `locked`, not the camera's `inactive`.
+    val camera = if (lensSearch != null) AutofocusState.SCAN else autofocusState
     val held = focus.snapshot.let { it.owner != null && it.locked == true }
-    focusBoxOverlay.state(if (held && state == AutofocusState.INACTIVE) AutofocusState.LOCKED else state)
+    val state = if (held && camera == AutofocusState.INACTIVE) AutofocusState.LOCKED else camera
+    focusBoxOverlay.state(state)
     if (state == emittedAutofocus) return
     emittedAutofocus = state
     renderStatus()
@@ -2486,7 +2490,7 @@ open class HybridDocumentScannerCameraView(
       state.awbState == CaptureResult.CONTROL_AWB_STATE_CONVERGED &&
       state.afState != CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN &&
       state.afState != CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN && (!lockJudge.pending || afterLock)
-    if (!counted || score == null) {
+    if (!counted) {
       // A lock whose print cannot be scored, as under flickering exposure, is accepted unjudged rather than held.
       if (lockJudge.pending && afterLock && ++unscoredLockFrames >= LockSharpnessJudge.FRAMES * 4) {
         lockJudge.cancel()
@@ -2897,17 +2901,15 @@ open class HybridDocumentScannerCameraView(
     const val FRESH_FOCUS_FRAME_NS = 500_000_000L
     /** A page unseen this long arrives anew, so a focus reached before it no longer counts. */
     const val PAGE_LOST_NS = 1_000_000_000L
-    /** A turn of the phone over [PAGE_LOCK_TURN_NS] that confirms the page really left or moved: about 2 degrees, past
-     * hand tremor. */
-    const val PAGE_LOCK_TURN = .035
+    /** A turn of the phone over [PAGE_LOCK_TURN_NS] that confirms the page really left or moved: about 4 degrees, twice
+     * the drift of a hand holding steady, which reaches 2 degrees in that time. */
+    const val PAGE_LOCK_TURN = .07
     const val PAGE_LOCK_TURN_NS = 500_000_000L
     /** `focusLock` tries recovering focus after analysis has found no page for this long. */
     const val RECOVERY_NS = 1_000_000_000L
     /** `focusLock`'s lens distance before a camera's first lock, in the SM-G998U's units: a page at about 14 cm. */
     const val DEFAULT_LENS_DIOPTERS = 4f
     const val LENS_PREFERENCES = "com.margelo.nitro.documentscanner.lens"
-    /** The lens counts as at a requested distance when it reads within this of it. */
-    const val LENS_ARRIVED_DIOPTERS = .08f
     /** The lens search's print scores averaged per position, against noise in a dim room. */
     const val LENS_SEARCH_SCORES = 2
     /** Steady frames the lens search goes without a position's score before handing over to the camera's autofocus. */
@@ -2984,9 +2986,12 @@ private data class ResolvedProps(
 private enum class LensStage { NONE, FIXED, SWITCHING, SINGLE_SHOT }
 
 /** A page lock's [LensSearch] and its scan, with the frames and scores at the current position. */
-private class ActiveLensSearch(val scan: ScanRequest, val search: LensSearch, var requestReading: Float?) {
+private class ActiveLensSearch(val scan: ScanRequest, val search: LensSearch, startReading: Float?, val startMs: Long) {
+  val arrival = LensArrival(startReading)
   val scores = ArrayList<Double>(2)
-  var lastReading: Float? = null
+  /** The lowest and highest position scores, for the trace's peak ratio. */
+  var low = Double.MAX_VALUE
+  var high = 0.0
   var idleFrames = 0
   var positions = 0
   /** Each scored position and its score, for the trace. */

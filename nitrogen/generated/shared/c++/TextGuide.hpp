@@ -30,7 +30,7 @@ namespace margelo::nitro::documentscanner {
    */
   enum class TextGuide {
     NONE      SWIFT_NAME(none) = 0,
-    NATIVE      SWIFT_NAME(native) = 1,
+    CROSSHAIR      SWIFT_NAME(crosshair) = 1,
     LINE      SWIFT_NAME(line) = 2,
     BRACKETS      SWIFT_NAME(brackets) = 3,
   } CLOSED_ENUM;
@@ -46,7 +46,7 @@ namespace margelo::nitro {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, arg);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
         case hashString("none"): return margelo::nitro::documentscanner::TextGuide::NONE;
-        case hashString("native"): return margelo::nitro::documentscanner::TextGuide::NATIVE;
+        case hashString("crosshair"): return margelo::nitro::documentscanner::TextGuide::CROSSHAIR;
         case hashString("line"): return margelo::nitro::documentscanner::TextGuide::LINE;
         case hashString("brackets"): return margelo::nitro::documentscanner::TextGuide::BRACKETS;
         default: [[unlikely]]
@@ -56,7 +56,7 @@ namespace margelo::nitro {
     static inline jsi::Value toJSI(jsi::Runtime& runtime, margelo::nitro::documentscanner::TextGuide arg) {
       switch (arg) {
         case margelo::nitro::documentscanner::TextGuide::NONE: return JSIConverter<std::string>::toJSI(runtime, "none");
-        case margelo::nitro::documentscanner::TextGuide::NATIVE: return JSIConverter<std::string>::toJSI(runtime, "native");
+        case margelo::nitro::documentscanner::TextGuide::CROSSHAIR: return JSIConverter<std::string>::toJSI(runtime, "crosshair");
         case margelo::nitro::documentscanner::TextGuide::LINE: return JSIConverter<std::string>::toJSI(runtime, "line");
         case margelo::nitro::documentscanner::TextGuide::BRACKETS: return JSIConverter<std::string>::toJSI(runtime, "brackets");
         default: [[unlikely]]
@@ -71,7 +71,7 @@ namespace margelo::nitro {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, value);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
         case hashString("none"):
-        case hashString("native"):
+        case hashString("crosshair"):
         case hashString("line"):
         case hashString("brackets"):
           return true;

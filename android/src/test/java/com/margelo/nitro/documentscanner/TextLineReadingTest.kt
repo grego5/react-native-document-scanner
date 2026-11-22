@@ -2,6 +2,7 @@ package com.margelo.nitro.documentscanner
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -171,6 +172,20 @@ class TextLineReadingTest {
     assertNull(votes.add(null, 0f, 30))
     votes.add("CD34", 0.9f, 40)
     assertNull(votes.add(null, 0f, 2_000))
+  }
+
+  @Test
+  fun votesAgeOutWithoutNewRecognitions() {
+    val votes = TextVotes(window = 8, maxAgeMs = 1_000)
+    votes.add("AB12", 0.9f, 0)
+    votes.add("AB12", 0.9f, 300)
+    assertFalse(votes.expire(900))
+    assertEquals("AB12", votes.winner()?.text)
+    assertTrue(votes.expire(1_100))
+    assertEquals("AB12", votes.winner()?.text)
+    assertTrue(votes.expire(1_400))
+    assertNull(votes.winner())
+    assertFalse(votes.expire(5_000))
   }
 
   @Test

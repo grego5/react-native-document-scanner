@@ -69,6 +69,11 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
     hybridView->setTextGuide(newProps->textGuide.get());
   }
   if (oldProps == nullptr
+        ? newProps->textHighlight.isProvided()
+        : !newProps->textHighlight.hasSameValue(oldProps->textHighlight)) {
+    hybridView->setTextHighlight(newProps->textHighlight.get());
+  }
+  if (oldProps == nullptr
         ? newProps->guideColor.isProvided()
         : !newProps->guideColor.hasSameValue(oldProps->guideColor)) {
     hybridView->setGuideColor(newProps->guideColor.get());
@@ -94,6 +99,16 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
     hybridView->setTapToFocus(newProps->tapToFocus.get());
   }
   if (oldProps == nullptr
+        ? newProps->focusLock.isProvided()
+        : !newProps->focusLock.hasSameValue(oldProps->focusLock)) {
+    hybridView->setFocusLock(newProps->focusLock.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->zoom.isProvided()
+        : !newProps->zoom.hasSameValue(oldProps->zoom)) {
+    hybridView->setZoom(newProps->zoom.get());
+  }
+  if (oldProps == nullptr
         ? newProps->torch.isProvided()
         : !newProps->torch.hasSameValue(oldProps->torch)) {
     hybridView->setTorch(newProps->torch.get());
@@ -112,6 +127,11 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
         ? newProps->onCameraStateChange.isProvided()
         : !newProps->onCameraStateChange.hasSameValue(oldProps->onCameraStateChange)) {
     hybridView->setOnCameraStateChange(newProps->onCameraStateChange.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->onAutofocusChange.isProvided()
+        : !newProps->onAutofocusChange.hasSameValue(oldProps->onAutofocusChange)) {
+    hybridView->setOnAutofocusChange(newProps->onAutofocusChange.get());
   }
   if (oldProps == nullptr
         ? newProps->onTextChange.isProvided()

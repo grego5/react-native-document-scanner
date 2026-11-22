@@ -162,6 +162,16 @@ internal class TextVotes(private val window: Int = 8, private val maxAgeMs: Long
 
   fun clear() = votes.clear()
 
+  /** Drops votes older than the age at [nowMs], as [add] does; true when any went, which can change the winner. */
+  fun expire(nowMs: Long): Boolean {
+    var dropped = false
+    while (votes.isNotEmpty() && nowMs - votes.first().atMs > maxAgeMs) {
+      votes.removeFirst()
+      dropped = true
+    }
+    return dropped
+  }
+
   fun winner(): Winner? {
     var best: Winner? = null
     val counted = HashSet<String>()

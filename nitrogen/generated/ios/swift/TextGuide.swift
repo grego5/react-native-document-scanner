@@ -19,8 +19,8 @@ public extension TextGuide {
     switch string {
       case "none":
         self = .none
-      case "native":
-        self = .native
+      case "crosshair":
+        self = .crosshair
       case "line":
         self = .line
       case "brackets":
@@ -37,8 +37,8 @@ public extension TextGuide {
     switch self {
       case .none:
         return "none"
-      case .native:
-        return "native"
+      case .crosshair:
+        return "crosshair"
       case .line:
         return "line"
       case .brackets:

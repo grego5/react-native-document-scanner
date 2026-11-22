@@ -16,7 +16,8 @@ export type CameraState = 'suspended' | 'starting' | 'ready' | 'capturing'
 
 /**
  * Camera2 autofocus state: `scan` covers passive and active scans, `unfocused` covers a passive scan that failed and
- * a lock that did not focus, and `locked` is a tap-to-focus lock that focused.
+ * a lock that did not focus, and `locked` is a lock that focused: a tap's, a focus scan's, or on Android a lens the
+ * scanner's or `TextCamera`'s own focus search settled and holds. iOS reports only `scan` and `inactive`.
  */
 export type AutofocusState = 'inactive' | 'scan' | 'focused' | 'unfocused' | 'locked'
 

@@ -7,6 +7,39 @@ import org.junit.Test
 import kotlin.math.abs
 
 class LensSearchTest {
+  @Test
+  fun refinesABracketedTextPeakBetweenSampledPositions() {
+    val search = LensSearch(7.25f, 10f, refinePeak = true)
+    assertEquals(7.25f, search.target, 0f)
+    search.observe(839.0)
+    assertEquals(7.50f, search.target, 0f)
+    search.observe(836.0)
+    assertEquals(7.00f, search.target, 0f)
+    search.observe(63.0)
+    assertEquals(7.37f, search.peak!!, 0.01f)
+  }
+
+  @Test
+  fun aNeighbourWithinTheMarginPullsTheEstimateWithoutLeading() {
+    val search = LensSearch(7.25f, 10f, refinePeak = true)
+    search.observe(800.0)
+    // 7.50 scores higher, but not by the margin, so 7.25 still leads; the peak lies between them.
+    search.observe(820.0)
+    search.observe(300.0)
+    val peak = search.peak!!
+    assertTrue(peak > 7.25f && peak <= 7.38f)
+  }
+
+  @Test
+  fun refinementFindsTheNeighboursOfAnOffGridStart() {
+    // A remembered, refined lock opens off the step grid; its neighbours are still found.
+    val search = LensSearch(7.37f, 10f, refinePeak = true)
+    search.observe(900.0)
+    search.observe(500.0)
+    search.observe(700.0)
+    assertTrue(search.peak!! < 7.37f)
+  }
+
   /** A print sharpest at [peak] diopters, falling off linearly. */
   private fun run(start: Float, peak: Float, nearest: Float = 10f): Pair<LensSearch, Int> {
     val search = LensSearch(start, nearest)

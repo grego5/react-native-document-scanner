@@ -45,9 +45,9 @@ namespace margelo::nitro::documentscanner {
         case TextGuide::NONE:
           static const auto fieldNONE = clazz->getStaticField<JTextGuide>("NONE");
           return clazz->getStaticFieldValue(fieldNONE);
-        case TextGuide::NATIVE:
-          static const auto fieldNATIVE = clazz->getStaticField<JTextGuide>("NATIVE");
-          return clazz->getStaticFieldValue(fieldNATIVE);
+        case TextGuide::CROSSHAIR:
+          static const auto fieldCROSSHAIR = clazz->getStaticField<JTextGuide>("CROSSHAIR");
+          return clazz->getStaticFieldValue(fieldCROSSHAIR);
         case TextGuide::LINE:
           static const auto fieldLINE = clazz->getStaticField<JTextGuide>("LINE");
           return clazz->getStaticFieldValue(fieldLINE);

@@ -50,6 +50,12 @@ abstract class HybridTextCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
+  abstract var textHighlight: Boolean?
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
   abstract var guideColor: Double?
   
   @get:DoNotStrip
@@ -75,6 +81,18 @@ abstract class HybridTextCameraViewSpec: HybridView() {
   @set:DoNotStrip
   @set:Keep
   abstract var tapToFocus: Boolean?
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var focusLock: Boolean?
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var zoom: Double?
   
   @get:DoNotStrip
   @get:Keep
@@ -106,6 +124,20 @@ abstract class HybridTextCameraViewSpec: HybridView() {
     @DoNotStrip
     set(value) {
       onCameraStateChange = value?.let { it }
+    }
+  
+  abstract var onAutofocusChange: ((state: AutofocusState) -> Unit)?
+  
+  private var onAutofocusChange_cxx: Func_void_AutofocusState?
+    @Keep
+    @DoNotStrip
+    get() {
+      return onAutofocusChange?.let { Func_void_AutofocusState_java(it) }
+    }
+    @Keep
+    @DoNotStrip
+    set(value) {
+      onAutofocusChange = value?.let { it }
     }
   
   abstract var onTextChange: ((reading: TextReading) -> Unit)?

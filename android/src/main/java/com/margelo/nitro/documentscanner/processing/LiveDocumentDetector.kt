@@ -425,7 +425,7 @@ internal class LiveDocumentDetector(
         dropped++
         var posted = false
         // Pacing and movement skip inference; flow's own consensus fit decides whether tracking holds.
-        if (reliable && estimate?.lostRegions == 0 &&
+        if (reliable && estimate.lostRegions == 0 &&
           state.isCurrent(lastToken) && stabilizerConfig == stabilizer.config && boundGeneration == binding) {
           val predicted = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) }
           val rotation = image.imageInfo.rotationDegrees
@@ -497,7 +497,7 @@ internal class LiveDocumentDetector(
         tracking = false
       }
       val stabilizerStartedNs = System.nanoTime()
-      val flowHeld = if (!scoreRejected && reliable && estimate?.lostRegions == 0) {
+      val flowHeld = if (!scoreRejected && reliable && estimate.lostRegions == 0) {
         val predicted = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) }
         stabilizer.retainTracked(GuideInput(predicted, width, height, sensorTimestampNs, startedAt))
       } else null

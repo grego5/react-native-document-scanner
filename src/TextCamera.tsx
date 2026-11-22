@@ -1,7 +1,7 @@
 import { callback, getHostComponent } from 'react-native-nitro-modules';
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react';
 import { processColor, type ViewProps } from 'react-native';
-import type { CameraState } from './DocumentScannerCamera.nitro';
+import type { AutofocusState, CameraState } from './DocumentScannerCamera.nitro';
 import type { TextCameraMethods, TextCameraProps as NativeTextCameraProps, TextReading, TextRegion } from './TextCamera.nitro';
 import TextCameraViewConfig from '../nitrogen/generated/shared/json/TextCameraViewConfig.json';
 import { ScannerError, scannerOperation } from './ScannerError';
@@ -42,31 +42,40 @@ export const TextCamera = forwardRef<TextCameraRef, TextCameraProps>(function Te
     active = true,
     textRegion = DEFAULT_TEXT_REGION,
     textGuide = 'none',
+    textHighlight = false,
     guideColor,
     allowedCharacters = '',
     textPattern = '',
     minLength = 1,
     tapToFocus = true,
+    focusLock = true,
+    zoom = 1,
     torch = 'off',
     recognitionRate = 5,
     analysisFrameWidth = 1280,
     onCameraStateChange,
+    onAutofocusChange,
     onTextChange,
     onError,
     ...props
   },
   forwardedRef,
 ) {
-  const handlers = useRef({ onCameraStateChange, onTextChange, onError });
+  const handlers = useRef({ onCameraStateChange, onAutofocusChange, onTextChange, onError });
   useLayoutEffect(() => {
-    handlers.current = { onCameraStateChange, onTextChange, onError };
+    handlers.current = { onCameraStateChange, onAutofocusChange, onTextChange, onError };
   });
   const hasCameraState = onCameraStateChange != null;
+  const hasAutofocus = onAutofocusChange != null;
   const hasText = onTextChange != null;
   const hasError = onError != null;
   const nativeCameraState = useMemo(
     () => (hasCameraState ? callback((state: CameraState) => handlers.current.onCameraStateChange?.(state)) : noop),
     [hasCameraState],
+  );
+  const nativeAutofocus = useMemo(
+    () => (hasAutofocus ? callback((state: AutofocusState) => handlers.current.onAutofocusChange?.(state)) : noop),
+    [hasAutofocus],
   );
   const nativeText = useMemo(
     () =>
@@ -112,15 +121,19 @@ export const TextCamera = forwardRef<TextCameraRef, TextCameraProps>(function Te
       active={active}
       textRegion={textRegion}
       textGuide={textGuide}
+      textHighlight={textHighlight}
       guideColor={nativeGuideColor}
       allowedCharacters={allowedCharacters}
       textPattern={textPattern}
       minLength={minLength}
       tapToFocus={tapToFocus}
+      focusLock={focusLock}
+      zoom={zoom}
       torch={torch}
       recognitionRate={recognitionRate}
       analysisFrameWidth={analysisFrameWidth}
       onCameraStateChange={nativeCameraState}
+      onAutofocusChange={nativeAutofocus}
       onTextChange={nativeText}
       onError={nativeError}
       hybridRef={setNativeRef}

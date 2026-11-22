@@ -29,6 +29,8 @@ internal class GyroscopeSource(
   }
 
   val isRunning: Boolean get() = thread != null
+  /** Whether the phone has the linear-acceleration sensor that feeds [acceleration]. */
+  val hasAcceleration: Boolean get() = accelerometer != null
 
   fun start() {
     if (thread != null || gyroscope == null) return

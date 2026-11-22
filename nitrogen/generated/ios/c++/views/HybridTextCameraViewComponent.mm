@@ -116,6 +116,12 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.textGuide.hasSameValue(oldViewProps->textGuide)) {
       swiftPart.setTextGuide(newViewProps.textGuide.get());
     }
+    // textHighlight: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.textHighlight.isProvided()
+          : !newViewProps.textHighlight.hasSameValue(oldViewProps->textHighlight)) {
+      swiftPart.setTextHighlight(newViewProps.textHighlight.get());
+    }
     // guideColor: optional
     if (oldViewProps == nullptr
           ? newViewProps.guideColor.isProvided()
@@ -146,6 +152,18 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.tapToFocus.hasSameValue(oldViewProps->tapToFocus)) {
       swiftPart.setTapToFocus(newViewProps.tapToFocus.get());
     }
+    // focusLock: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.focusLock.isProvided()
+          : !newViewProps.focusLock.hasSameValue(oldViewProps->focusLock)) {
+      swiftPart.setFocusLock(newViewProps.focusLock.get());
+    }
+    // zoom: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.zoom.isProvided()
+          : !newViewProps.zoom.hasSameValue(oldViewProps->zoom)) {
+      swiftPart.setZoom(newViewProps.zoom.get());
+    }
     // torch: optional
     if (oldViewProps == nullptr
           ? newViewProps.torch.isProvided()
@@ -169,6 +187,12 @@ using namespace margelo::nitro::documentscanner::views;
           ? newViewProps.onCameraStateChange.isProvided()
           : !newViewProps.onCameraStateChange.hasSameValue(oldViewProps->onCameraStateChange)) {
       swiftPart.setOnCameraStateChange(newViewProps.onCameraStateChange.get());
+    }
+    // onAutofocusChange: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.onAutofocusChange.isProvided()
+          : !newViewProps.onAutofocusChange.hasSameValue(oldViewProps->onAutofocusChange)) {
+      swiftPart.setOnAutofocusChange(newViewProps.onAutofocusChange.get());
     }
     // onTextChange: optional
     if (oldViewProps == nullptr

@@ -21,6 +21,8 @@ namespace margelo::nitro::documentscanner { enum class TextGuide; }
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
 // Forward declaration of `CameraState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraState; }
+// Forward declaration of `AutofocusState` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class AutofocusState; }
 // Forward declaration of `TextReading` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextReading; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
@@ -33,6 +35,7 @@ namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 #include "TextTorchMode.hpp"
 #include "CameraState.hpp"
 #include <functional>
+#include "AutofocusState.hpp"
 #include "TextReading.hpp"
 #include "ScannerFailure.hpp"
 #include <variant>
@@ -71,6 +74,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setTextRegion(const TextRegion& textRegion) = 0;
       virtual std::optional<TextGuide> getTextGuide() = 0;
       virtual void setTextGuide(std::optional<TextGuide> textGuide) = 0;
+      virtual std::optional<bool> getTextHighlight() = 0;
+      virtual void setTextHighlight(std::optional<bool> textHighlight) = 0;
       virtual std::optional<double> getGuideColor() = 0;
       virtual void setGuideColor(std::optional<double> guideColor) = 0;
       virtual std::optional<std::string> getAllowedCharacters() = 0;
@@ -81,6 +86,10 @@ namespace margelo::nitro::documentscanner {
       virtual void setMinLength(std::optional<double> minLength) = 0;
       virtual std::optional<bool> getTapToFocus() = 0;
       virtual void setTapToFocus(std::optional<bool> tapToFocus) = 0;
+      virtual std::optional<bool> getFocusLock() = 0;
+      virtual void setFocusLock(std::optional<bool> focusLock) = 0;
+      virtual std::optional<double> getZoom() = 0;
+      virtual void setZoom(std::optional<double> zoom) = 0;
       virtual std::optional<TextTorchMode> getTorch() = 0;
       virtual void setTorch(std::optional<TextTorchMode> torch) = 0;
       virtual std::optional<double> getRecognitionRate() = 0;
@@ -89,6 +98,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) = 0;
       virtual std::optional<std::function<void(CameraState /* state */)>> getOnCameraStateChange() = 0;
       virtual void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) = 0;
+      virtual std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() = 0;
+      virtual void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) = 0;
       virtual std::optional<std::function<void(const TextReading& /* reading */)>> getOnTextChange() = 0;
       virtual void setOnTextChange(const std::optional<std::function<void(const TextReading& /* reading */)>>& onTextChange) = 0;
       virtual std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() = 0;

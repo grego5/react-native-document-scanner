@@ -28,6 +28,57 @@ class PrintSharpnessTest {
   private fun score(buffer: ByteBuffer, rotation: Int, point: DocumentPoint) =
     printSharpness(buffer, width, 1, 0, 0, width, height, rotation, point, .3)
 
+  /** The per-pixel score the bulk row reads replaced: luma read channel by channel, double sums. */
+  private fun referenceSharpness(buffer: ByteBuffer, rowStride: Int, pixelStride: Int, x0: Int, y0: Int, x1: Int, y1: Int): Double {
+    fun luma(x: Int, y: Int): Int {
+      val at = y * rowStride + x * pixelStride
+      val r = buffer.get(at).toInt() and 0xFF
+      if (pixelStride < 3) return r
+      return (77 * r + 150 * (buffer.get(at + 1).toInt() and 0xFF) + 29 * (buffer.get(at + 2).toInt() and 0xFF)) shr 8
+    }
+    var sum = 0.0
+    var squares = 0.0
+    var count = 0
+    for (y in y0 until y1) for (x in x0 until x1) {
+      val l = (4 * luma(x, y) - luma(x - 1, y) - luma(x + 1, y) - luma(x, y - 1) - luma(x, y + 1)).toDouble()
+      sum += l
+      squares += l * l
+      count++
+    }
+    val mean = sum / count
+    return squares / count - mean * mean
+  }
+
+  @Test fun regionScoresMatchThePerPixelScoreExactly() {
+    val random = java.util.Random(7)
+    for ((pixelStride, direct) in listOf(4 to false, 4 to true, 1 to false, 1 to true)) {
+      val w = 211
+      val h = 97
+      val rowStride = w * pixelStride + 12
+      val bytes = ByteArray(rowStride * h).also(random::nextBytes)
+      val buffer = if (direct) ByteBuffer.allocateDirect(bytes.size).put(bytes).also { it.rewind() } else ByteBuffer.wrap(bytes)
+      repeat(20) {
+        val left = 1 + random.nextInt(w / 2)
+        val top = 1 + random.nextInt(h / 2)
+        val right = left + 8 + random.nextInt(w - 1 - left - 8)
+        val bottom = top + 8 + random.nextInt(h - 1 - top - 8)
+        val expected = referenceSharpness(buffer, rowStride, pixelStride, left, top, right, bottom)
+        assertEquals(expected, regionSharpness(buffer, rowStride, pixelStride, w, h, left, top, right, bottom)!!, 0.0)
+        assertEquals(0, buffer.position())
+      }
+    }
+  }
+
+  @Test fun blurLowersTheFocusRatioWhileTheFineScoreStaysTheRegionScore() {
+    val sharp = frame(8, 8, 56, 40, blur = false)
+    val soft = frame(8, 8, 56, 40, blur = true)
+    val sharpDetail = regionDetail(sharp, width, 1, width, height, 4, 4, 60, 44)!!
+    val softDetail = regionDetail(soft, width, 1, width, height, 4, 4, 60, 44)!!
+    assertEquals(regionSharpness(sharp, width, 1, width, height, 4, 4, 60, 44)!!, sharpDetail.fine, 0.0)
+    assertTrue(sharpDetail.coarse > 0)
+    assertTrue(softDetail.focus!! < sharpDetail.focus!!)
+  }
+
   @Test fun printScoresHigherSharpThanBlurred() {
     val sharp = score(frame(16, 12, 48, 36, false), 0, DocumentPoint(.5, .5))!!
     val blurred = score(frame(16, 12, 48, 36, true), 0, DocumentPoint(.5, .5))!!

@@ -2,9 +2,11 @@ import { useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  type AutofocusState,
   DocumentScanner,
   TextCamera,
   type TextCameraRef,
+  type TextGuide,
   type TextReading,
   type TextRegion,
 } from 'react-native-document-scanner';
@@ -20,6 +22,12 @@ const REGIONS: Record<'line' | 'code', TextRegion> = {
   line: { x: 0.08, y: 0.42, width: 0.84, height: 0.12 },
   code: { x: 0.25, y: 0.4, width: 0.5, height: 0.16 },
 };
+/** Zoom steps: more lets close-up text fill the frame from farther away, inside the lens's focus range. */
+const ZOOMS = [1, 1.5, 2];
+/** The built-in guides, in the order the guide button steps through them. */
+const GUIDES: TextGuide[] = ['crosshair', 'line', 'brackets', 'none'];
+/** Zoom and the focus report are Android only. */
+const ANDROID = Platform.OS === 'android';
 
 /** Reads one serial-like line; the user edits the result and applies it. */
 export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose: () => void }) {
@@ -28,6 +36,10 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
   const [region, setRegion] = useState<keyof typeof REGIONS>('line');
   const [serialOnly, setSerialOnly] = useState(true);
   const [torch, setTorch] = useState<'off' | 'on'>('off');
+  const [zoom, setZoom] = useState(1);
+  const [guide, setGuide] = useState<TextGuide>('crosshair');
+  const [highlight, setHighlight] = useState(true);
+  const [focus, setFocus] = useState<AutofocusState>('inactive');
   const [live, setLive] = useState<TextReading>();
   const [value, setValue] = useState<string>();
   const [message, setMessage] = useState('');
@@ -54,6 +66,10 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
           allowedCharacters={serialOnly ? SERIAL_CHARACTERS : ''}
           minLength={serialOnly ? 4 : 1}
           torch={torch}
+          zoom={zoom}
+          textGuide={guide}
+          textHighlight={highlight}
+          onAutofocusChange={setFocus}
           onTextChange={setLive}
           onError={(error) => setMessage(errorMessage(error, 'Could not start the text camera.'))}
         />
@@ -62,6 +78,7 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
           {value === undefined && (
             <Text style={styles.notice}>
               {live ? `${live.text} · ${live.votes}×` : 'Point the frame at one line of text.'}
+              {ANDROID ? ` · focus ${focus}` : ''}
             </Text>
           )}
           {!!message && <Text style={styles.notice}>{message}</Text>}
@@ -72,6 +89,12 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
           <View style={styles.shutterSide}>
             <ActionButton label="Close" onPress={onClose} />
             <ActionButton label={`Torch ${torch}`} onPress={() => setTorch(torch === 'on' ? 'off' : 'on')} />
+            {ANDROID && (
+              <ActionButton
+                label={`Zoom ${zoom}×`}
+                onPress={() => setZoom(ZOOMS[(ZOOMS.indexOf(zoom) + 1) % ZOOMS.length])}
+              />
+            )}
           </View>
           <View style={styles.shutterCenter}>
             <ShutterButton disabled={!granted} onPress={read} />
@@ -85,6 +108,11 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
               label={serialOnly ? 'Serial A-Z 0-9' : 'Any text'}
               onPress={() => setSerialOnly(!serialOnly)}
             />
+            <ActionButton
+              label={`Guide ${guide}`}
+              onPress={() => setGuide(GUIDES[(GUIDES.indexOf(guide) + 1) % GUIDES.length])}
+            />
+            <ActionButton label={`Highlight ${highlight ? 'on' : 'off'}`} onPress={() => setHighlight(!highlight)} />
           </View>
         </View>
       </View>

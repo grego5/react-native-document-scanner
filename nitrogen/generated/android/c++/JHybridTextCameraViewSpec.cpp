@@ -15,6 +15,8 @@ namespace margelo::nitro::documentscanner { enum class TextGuide; }
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
 // Forward declaration of `CameraState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraState; }
+// Forward declaration of `AutofocusState` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class AutofocusState; }
 // Forward declaration of `TextReading` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextReading; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
@@ -35,6 +37,9 @@ namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
 #include "JFunc_void_CameraState.hpp"
 #include <NitroModules/JNICallable.hpp>
 #include "JCameraState.hpp"
+#include "AutofocusState.hpp"
+#include "JFunc_void_AutofocusState.hpp"
+#include "JAutofocusState.hpp"
 #include "TextReading.hpp"
 #include "JFunc_void_TextReading.hpp"
 #include "JTextReading.hpp"
@@ -105,6 +110,15 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextGuide> /* textGuide */)>("setTextGuide");
     method(_javaPart, textGuide.has_value() ? JTextGuide::fromCpp(textGuide.value()) : nullptr);
   }
+  std::optional<bool> JHybridTextCameraViewSpec::getTextHighlight() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getTextHighlight");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridTextCameraViewSpec::setTextHighlight(std::optional<bool> textHighlight) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* textHighlight */)>("setTextHighlight");
+    method(_javaPart, textHighlight.has_value() ? jni::JBoolean::valueOf(textHighlight.value()) : nullptr);
+  }
   std::optional<double> JHybridTextCameraViewSpec::getGuideColor() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getGuideColor");
     auto __result = method(_javaPart);
@@ -150,6 +164,24 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* tapToFocus */)>("setTapToFocus");
     method(_javaPart, tapToFocus.has_value() ? jni::JBoolean::valueOf(tapToFocus.value()) : nullptr);
   }
+  std::optional<bool> JHybridTextCameraViewSpec::getFocusLock() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getFocusLock");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridTextCameraViewSpec::setFocusLock(std::optional<bool> focusLock) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* focusLock */)>("setFocusLock");
+    method(_javaPart, focusLock.has_value() ? jni::JBoolean::valueOf(focusLock.value()) : nullptr);
+  }
+  std::optional<double> JHybridTextCameraViewSpec::getZoom() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getZoom");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(__result->value()) : std::nullopt;
+  }
+  void JHybridTextCameraViewSpec::setZoom(std::optional<double> zoom) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* zoom */)>("setZoom");
+    method(_javaPart, zoom.has_value() ? jni::JDouble::valueOf(zoom.value()) : nullptr);
+  }
   std::optional<TextTorchMode> JHybridTextCameraViewSpec::getTorch() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JTextTorchMode>()>("getTorch");
     auto __result = method(_javaPart);
@@ -193,6 +225,23 @@ namespace margelo::nitro::documentscanner {
   void JHybridTextCameraViewSpec::setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_CameraState::javaobject> /* onCameraStateChange */)>("setOnCameraStateChange_cxx");
     method(_javaPart, onCameraStateChange.has_value() ? JFunc_void_CameraState_cxx::fromCpp(onCameraStateChange.value()) : nullptr);
+  }
+  std::optional<std::function<void(AutofocusState /* state */)>> JHybridTextCameraViewSpec::getOnAutofocusChange() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_AutofocusState::javaobject>()>("getOnAutofocusChange_cxx");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(AutofocusState /* state */)> {
+      if (__result->isInstanceOf(JFunc_void_AutofocusState_cxx::javaClassStatic())) [[likely]] {
+        auto downcast = jni::static_ref_cast<JFunc_void_AutofocusState_cxx::javaobject>(__result);
+        return downcast->cthis()->getFunction();
+      } else {
+        auto __resultRef = jni::make_global(__result);
+        return JNICallable<JFunc_void_AutofocusState, void(AutofocusState)>(std::move(__resultRef));
+      }
+    }()) : std::nullopt;
+  }
+  void JHybridTextCameraViewSpec::setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_AutofocusState::javaobject> /* onAutofocusChange */)>("setOnAutofocusChange_cxx");
+    method(_javaPart, onAutofocusChange.has_value() ? JFunc_void_AutofocusState_cxx::fromCpp(onAutofocusChange.value()) : nullptr);
   }
   std::optional<std::function<void(const TextReading& /* reading */)>> JHybridTextCameraViewSpec::getOnTextChange() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_TextReading::javaobject>()>("getOnTextChange_cxx");

@@ -20,6 +20,8 @@ namespace margelo::nitro::documentscanner { enum class TextGuide; }
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
 // Forward declaration of `CameraState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraState; }
+// Forward declaration of `AutofocusState` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class AutofocusState; }
 // Forward declaration of `TextReading` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextReading; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
@@ -34,6 +36,7 @@ namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
 #include "TextTorchMode.hpp"
 #include "CameraState.hpp"
 #include <functional>
+#include "AutofocusState.hpp"
 #include "TextReading.hpp"
 #include "ScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
@@ -106,6 +109,13 @@ namespace margelo::nitro::documentscanner {
     inline void setTextGuide(std::optional<TextGuide> textGuide) noexcept override {
       _swiftPart.setTextGuide(textGuide);
     }
+    inline std::optional<bool> getTextHighlight() noexcept override {
+      auto __result = _swiftPart.getTextHighlight();
+      return __result;
+    }
+    inline void setTextHighlight(std::optional<bool> textHighlight) noexcept override {
+      _swiftPart.setTextHighlight(textHighlight);
+    }
     inline std::optional<double> getGuideColor() noexcept override {
       auto __result = _swiftPart.getGuideColor();
       return __result;
@@ -141,6 +151,20 @@ namespace margelo::nitro::documentscanner {
     inline void setTapToFocus(std::optional<bool> tapToFocus) noexcept override {
       _swiftPart.setTapToFocus(tapToFocus);
     }
+    inline std::optional<bool> getFocusLock() noexcept override {
+      auto __result = _swiftPart.getFocusLock();
+      return __result;
+    }
+    inline void setFocusLock(std::optional<bool> focusLock) noexcept override {
+      _swiftPart.setFocusLock(focusLock);
+    }
+    inline std::optional<double> getZoom() noexcept override {
+      auto __result = _swiftPart.getZoom();
+      return __result;
+    }
+    inline void setZoom(std::optional<double> zoom) noexcept override {
+      _swiftPart.setZoom(zoom);
+    }
     inline std::optional<TextTorchMode> getTorch() noexcept override {
       auto __result = _swiftPart.getTorch();
       return __result;
@@ -168,6 +192,13 @@ namespace margelo::nitro::documentscanner {
     }
     inline void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) noexcept override {
       _swiftPart.setOnCameraStateChange(onCameraStateChange);
+    }
+    inline std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() noexcept override {
+      auto __result = _swiftPart.getOnAutofocusChange();
+      return __result;
+    }
+    inline void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) noexcept override {
+      _swiftPart.setOnAutofocusChange(onAutofocusChange);
     }
     inline std::optional<std::function<void(const TextReading& /* reading */)>> getOnTextChange() noexcept override {
       auto __result = _swiftPart.getOnTextChange();

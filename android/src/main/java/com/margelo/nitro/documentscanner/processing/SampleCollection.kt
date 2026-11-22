@@ -214,7 +214,7 @@ internal object SampleCollection {
     analysis: DocumentAnalysis? = null, model: CornerModelStore.Selection? = null, liveCorners: DocumentCorners? = null): Promise<String> =
     try {
       requireInput(analysis != null && model != null) { "Photo analysis is not available for this sample." }
-      val provenance = SamplePhotoAnalysis(analysis!!.duration, analysis.candidate, model!!)
+      val provenance = SamplePhotoAnalysis(analysis.duration, analysis.candidate, model)
       val capture = synchronized(pending) { pending[lease.file.name] }
       val id = capture?.shutterMs ?: System.currentTimeMillis()
       submit(context, Closeable { lease.close() }, worker) { folder ->
@@ -241,7 +241,7 @@ internal object SampleCollection {
           region.width, region.height, mappedPrediction, analysis.model)
           .put("source", "photo-input")
           .put("prediction", if (mappedPrediction != null) JSONObject().put("quad", corners(mappedPrediction))
-            .put("score", prediction!!.score) else JSONObject.NULL)
+            .put("score", prediction.score) else JSONObject.NULL)
           .put("analysisMs", analysis.durationMs)
         writeJson(folder, "$stem.json", info, saved)
         "$stem.png"

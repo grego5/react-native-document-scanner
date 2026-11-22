@@ -173,6 +173,30 @@ open class HybridTextCameraViewSpec_cxx {
     }
   }
   
+  public final var textHighlight: bridge.std__optional_bool_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_bool_ in
+        if let __unwrappedValue = self.__implementation.textHighlight {
+          return bridge.create_std__optional_bool_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.textHighlight = { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(newValue) {
+          let __unwrapped = bridge.get_std__optional_bool_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
   public final var guideColor: bridge.std__optional_double_ {
     @inline(__always)
     get {
@@ -293,6 +317,54 @@ open class HybridTextCameraViewSpec_cxx {
     }
   }
   
+  public final var focusLock: bridge.std__optional_bool_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_bool_ in
+        if let __unwrappedValue = self.__implementation.focusLock {
+          return bridge.create_std__optional_bool_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.focusLock = { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(newValue) {
+          let __unwrapped = bridge.get_std__optional_bool_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var zoom: bridge.std__optional_double_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_double_ in
+        if let __unwrappedValue = self.__implementation.zoom {
+          return bridge.create_std__optional_double_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.zoom = { () -> Double? in
+        if bridge.has_value_std__optional_double_(newValue) {
+          let __unwrapped = bridge.get_std__optional_double_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
   public final var torch: bridge.std__optional_TextTorchMode_ {
     @inline(__always)
     get {
@@ -380,6 +452,38 @@ open class HybridTextCameraViewSpec_cxx {
           return { () -> (CameraState) -> Void in
             let __wrappedFunction = bridge.wrap_Func_void_CameraState(__unwrapped)
             return { (__state: CameraState) -> Void in
+              __wrappedFunction.call(__state.rawValue)
+            }
+          }()
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var onAutofocusChange: bridge.std__optional_std__function_void_AutofocusState____state______ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__function_void_AutofocusState____state______ in
+        if let __unwrappedValue = self.__implementation.onAutofocusChange {
+          return bridge.create_std__optional_std__function_void_AutofocusState____state______({ () -> bridge.Func_void_AutofocusState in
+            let __closureWrapper = Func_void_AutofocusState(__unwrappedValue)
+            return bridge.create_Func_void_AutofocusState(__closureWrapper.toUnsafe())
+          }())
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.onAutofocusChange = { () -> ((_ state: AutofocusState) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_AutofocusState____state______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_AutofocusState____state______(newValue)
+          return { () -> (AutofocusState) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_AutofocusState(__unwrapped)
+            return { (__state: AutofocusState) -> Void in
               __wrappedFunction.call(__state.rawValue)
             }
           }()

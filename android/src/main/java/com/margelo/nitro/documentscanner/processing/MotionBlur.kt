@@ -12,6 +12,10 @@ internal data class CameraFrameState(
   val focusDiopters: Float? = null,
   /** Autofocus was off: the lens is fixed rather than unknown once [outOfFocus] says it stopped. */
   val manualFocus: Boolean = false,
+  /** The lens distance the frame's capture request asked for with autofocus off, or null. */
+  val requestedDiopters: Float? = null,
+  /** The result reported LENS_STATE; without it, [outOfFocus] cannot say the lens is moving. */
+  val lensStateReported: Boolean = false,
   /** As of this frame, the sensor time of the frame on which autofocus last reached focus or a lock, or null. */
   val focusReachedSensorNs: Long? = null,
   /** Raw CONTROL_AE_STATE and CONTROL_AWB_STATE, which zero-shutter-lag buffering requires converged. */

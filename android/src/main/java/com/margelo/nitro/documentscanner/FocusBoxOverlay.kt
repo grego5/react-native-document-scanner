@@ -50,10 +50,10 @@ internal class FocusBoxOverlay(context: Context) : View(context) {
     val visible = box != null && !centred
     // A dot fading in appears where it is going, rather than gliding from its last place.
     if (visible && opacity == 0f) {
-      dotX = box!![0]
+      dotX = box[0]
       dotY = box[1]
     }
-    animateTo(if (visible) box!![0] else dotX, if (visible) box!![1] else dotY, if (visible) 1f else 0f)
+    animateTo(if (visible) box[0] else dotX, if (visible) box[1] else dotY, if (visible) 1f else 0f)
   }
 
   fun state(state: AutofocusState) {

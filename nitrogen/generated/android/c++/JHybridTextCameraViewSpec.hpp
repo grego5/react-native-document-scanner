@@ -56,6 +56,8 @@ namespace margelo::nitro::documentscanner {
     void setTextRegion(const TextRegion& textRegion) override;
     std::optional<TextGuide> getTextGuide() override;
     void setTextGuide(std::optional<TextGuide> textGuide) override;
+    std::optional<bool> getTextHighlight() override;
+    void setTextHighlight(std::optional<bool> textHighlight) override;
     std::optional<double> getGuideColor() override;
     void setGuideColor(std::optional<double> guideColor) override;
     std::optional<std::string> getAllowedCharacters() override;
@@ -66,6 +68,10 @@ namespace margelo::nitro::documentscanner {
     void setMinLength(std::optional<double> minLength) override;
     std::optional<bool> getTapToFocus() override;
     void setTapToFocus(std::optional<bool> tapToFocus) override;
+    std::optional<bool> getFocusLock() override;
+    void setFocusLock(std::optional<bool> focusLock) override;
+    std::optional<double> getZoom() override;
+    void setZoom(std::optional<double> zoom) override;
     std::optional<TextTorchMode> getTorch() override;
     void setTorch(std::optional<TextTorchMode> torch) override;
     std::optional<double> getRecognitionRate() override;
@@ -74,6 +80,8 @@ namespace margelo::nitro::documentscanner {
     void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) override;
     std::optional<std::function<void(CameraState /* state */)>> getOnCameraStateChange() override;
     void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) override;
+    std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() override;
+    void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) override;
     std::optional<std::function<void(const TextReading& /* reading */)>> getOnTextChange() override;
     void setOnTextChange(const std::optional<std::function<void(const TextReading& /* reading */)>>& onTextChange) override;
     std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() override;

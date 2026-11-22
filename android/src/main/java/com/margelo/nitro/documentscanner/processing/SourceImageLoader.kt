@@ -92,7 +92,6 @@ internal object SourceImageLoader {
   fun loadRegion(header: SourceImageHeader, region: PhotoInferenceCrop, sampleSize: Int = 1): Bitmap {
     val encoded = encodedRect(header, region)
     val decoder = BitmapRegionDecoder.newInstance(header.file.absolutePath, false)
-      ?: throw IOException("Captured JPEG could not be opened for region decoding.")
     val decoded = try {
       decoder.decodeRegion(encoded, BitmapFactory.Options().apply {
         inPreferredConfig = Bitmap.Config.ARGB_8888
