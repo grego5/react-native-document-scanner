@@ -222,6 +222,14 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     };
   }
   
+  // pragma MARK: std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>
+  Func_void_std__variant_std__string__ScannerFailure_ create_Func_void_std__variant_std__string__ScannerFailure_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_std__string__ScannerFailure_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::variant<std::string, ScannerFailure>& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
   // pragma MARK: std::shared_ptr<HybridDocumentScannerProcessorSpec>
   std::shared_ptr<HybridDocumentScannerProcessorSpec> create_std__shared_ptr_HybridDocumentScannerProcessorSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
     ReactNativeDocumentScanner::HybridDocumentScannerProcessorSpec_cxx swiftPart = ReactNativeDocumentScanner::HybridDocumentScannerProcessorSpec_cxx::fromUnsafe(swiftUnsafePointer);
@@ -292,14 +300,6 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     #endif
     ReactNativeDocumentScanner::HybridPageThumbnailViewSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
     return swiftPart.toUnsafe();
-  }
-  
-  // pragma MARK: std::function<void(const std::variant<std::string, ScannerFailure>& /* result */)>
-  Func_void_std__variant_std__string__ScannerFailure_ create_Func_void_std__variant_std__string__ScannerFailure_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_std__string__ScannerFailure_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::variant<std::string, ScannerFailure>& result) mutable -> void {
-      swiftClosure.call(result);
-    };
   }
   
   // pragma MARK: std::function<void(const std::variant<std::vector<std::string>, ScannerFailure>& /* result */)>

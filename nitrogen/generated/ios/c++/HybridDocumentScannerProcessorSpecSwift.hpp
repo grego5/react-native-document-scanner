@@ -137,6 +137,20 @@ namespace margelo::nitro::documentscanner {
         std::rethrow_exception(__result.error());
       }
     }
+    inline void setDiagnosticsEnabled(bool on) override {
+      auto __result = _swiftPart.setDiagnosticsEnabled(std::forward<decltype(on)>(on));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> exportDiagnosticsResult() override {
+      auto __result = _swiftPart.exportDiagnosticsResult();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
 
   private:
     ReactNativeDocumentScanner::HybridDocumentScannerProcessorSpec_cxx _swiftPart;

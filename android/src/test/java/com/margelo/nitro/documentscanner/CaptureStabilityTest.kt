@@ -70,15 +70,15 @@ class CaptureStabilityTest {
   }
 
   @Test
-  fun brokenOrMissingFlowRestarts() {
-    val broken = listOf(frame(2, flowLost = 1), frame(2, status = FlowMotionStatus.TRACKING_FAILED),
-      frame(2, status = FlowMotionStatus.NO_REFERENCE), frame(2).copy(flow = null))
-    for (next in broken) {
+  fun flowDoesNotJudgeMotion() {
+    // Flow over a soft or dark frame reads motion a still hand does not make; the gyroscope decides.
+    val noisy = listOf(frame(2, flowLost = 1), frame(2, status = FlowMotionStatus.TRACKING_FAILED),
+      frame(2, status = FlowMotionStatus.NO_REFERENCE), frame(2).copy(flow = null), frame(2, flowSpeed = .2))
+    for (next in noisy) {
       val stability = CaptureStability()
       stability.observe(frame(1), requireDocument = true, BLUR_LIMIT)
-      assertFalse(stability.observe(next, requireDocument = true, BLUR_LIMIT))
-      assertEquals(0, stability.count)
-      assertEquals(StabilityBreak.TRACKING_LOST, stability.lastBreak)
+      stability.observe(next, requireDocument = true, BLUR_LIMIT)
+      assertEquals(2, stability.count)
     }
   }
 
@@ -104,15 +104,29 @@ class CaptureStabilityTest {
   }
 
   @Test
-  fun texturelessFlowFallsBackToTheGyroscope() {
+  fun aMoveTheGyroscopeCannotSeeBreaksTheRun() {
+    // Sliding along or toward the page turns the phone little; the accelerometer reads it.
     val stability = CaptureStability()
-    val blank = { i: Int, gyro: Double? -> frame(i, status = FlowMotionStatus.TOO_FEW_FEATURES, gyroSpeed = gyro) }
-    stability.observe(blank(1, .01), requireDocument = true, BLUR_LIMIT)
-    assertEquals(1, stability.count)
-    stability.observe(blank(2, .2), requireDocument = true, BLUR_LIMIT)
+    for (i in 1..3) stability.observe(frame(i), requireDocument = true, BLUR_LIMIT, motionSensors = true)
+    assertFalse(stability.observe(frame(4, acceleration = 1.2), requireDocument = true, BLUR_LIMIT, motionSensors = true))
     assertEquals(StabilityBreak.MOVING, stability.lastBreak)
-    stability.observe(blank(3, null), requireDocument = true, BLUR_LIMIT)
-    assertEquals(StabilityBreak.TRACKING_LOST, stability.lastBreak)
+  }
+
+  @Test
+  fun aMissingReadingOfARunningSensorIsUnknownMotion() {
+    for (missing in listOf(frame(2, acceleration = null), frame(2, speedFraction = null))) {
+      val stability = CaptureStability()
+      stability.observe(frame(1), requireDocument = true, BLUR_LIMIT, motionSensors = true)
+      assertFalse(stability.observe(missing, requireDocument = true, BLUR_LIMIT, motionSensors = true))
+      assertEquals(StabilityBreak.TRACKING_LOST, stability.lastBreak)
+    }
+  }
+
+  @Test
+  fun withoutTheGyroscopeFramingIsNotJudged() {
+    val stability = CaptureStability()
+    for (i in 1..3) stability.observe(frame(i, speedFraction = null), requireDocument = true, BLUR_LIMIT)
+    assertTrue(stability.observe(frame(4, speedFraction = null), requireDocument = true, BLUR_LIMIT))
   }
 
   @Test
@@ -145,15 +159,16 @@ class CaptureStabilityTest {
   }
 
   private fun frame(
-    index: Int, speedFraction: Double = .01, status: FlowMotionStatus = FlowMotionStatus.MEASURED, flowLost: Int = 0,
-    blur: Double? = .001, gyroSpeed: Double? = null, guide: DocumentCorners? = page, result: Boolean = true,
+    index: Int, speedFraction: Double? = .01, status: FlowMotionStatus = FlowMotionStatus.MEASURED, flowLost: Int = 0,
+    blur: Double? = .001, flowSpeed: Double = .01, guide: DocumentCorners? = page, result: Boolean = true,
+    acceleration: Double? = .1,
   ) = FrameRecord(
     index.toLong(), index * FRAME_NS, index * FRAME_NS, index * FRAME_NS,
     CameraFrameState(30_000_000, 0, false).takeIf { result },
-    FlowMotionEstimate(status, if (status == FlowMotionStatus.MEASURED) speedFraction * WIDTH else null, WIDTH,
+    FlowMotionEstimate(status, if (status == FlowMotionStatus.MEASURED) flowSpeed * WIDTH else null, WIDTH,
       (index - 1) * FRAME_NS, index * FRAME_NS, 1.0, 40, flowLost),
-    blur?.let { GateMotion(it, if (status == FlowMotionStatus.MEASURED) MotionSource.FLOW else MotionSource.GYRO, flowLost) },
-    gyroSpeed, guide,
+    blur?.let { GateMotion(it, MotionSource.GYRO) },
+    speedFraction, acceleration, guide,
   )
 
   private fun rect(l: Double, t: Double, r: Double, b: Double) = DocumentCorners(

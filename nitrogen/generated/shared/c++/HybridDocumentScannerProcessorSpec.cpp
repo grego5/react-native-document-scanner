@@ -22,6 +22,8 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridMethod("setSampleCollection", &HybridDocumentScannerProcessorSpec::setSampleCollection);
       prototype.registerHybridMethod("setSampleFolder", &HybridDocumentScannerProcessorSpec::setSampleFolder);
       prototype.registerHybridMethod("copyText", &HybridDocumentScannerProcessorSpec::copyText);
+      prototype.registerHybridMethod("setDiagnosticsEnabled", &HybridDocumentScannerProcessorSpec::setDiagnosticsEnabled);
+      prototype.registerHybridMethod("exportDiagnosticsResult", &HybridDocumentScannerProcessorSpec::exportDiagnosticsResult);
     });
   }
 

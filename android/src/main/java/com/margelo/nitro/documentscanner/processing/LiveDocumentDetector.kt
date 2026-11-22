@@ -1,13 +1,13 @@
 package com.margelo.nitro.documentscanner.processing
 
 import com.margelo.nitro.documentscanner.NativeCornerGeometry
+import com.margelo.nitro.documentscanner.ScannerLog
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.view.transform.ImageProxyTransformFactory
@@ -24,11 +24,11 @@ internal enum class LiveGuideStatus { SEARCHING, DETECTED, TRACKING, HELD, UNAVA
 /**
  * A frame's page for focus: [corners] in the upright frame of [width] by [height], with the [source] transform, at the
  * frame's sensor timestamp. [spot] is the page's print spot in page coordinates, picked on this frame when
- * [LiveDocumentDetector.spotRequested] asked; [sharpness] is [printSharpness] at [LiveDocumentDetector.sharpnessPoint].
+ * [LiveDocumentDetector.spotRequested] asked.
  */
 internal data class LiveFocusCandidate(
   val corners: DocumentCorners?, val source: OutputTransform, val width: Int, val height: Int, val confirmed: Boolean,
-  val sensorNs: Long, val spot: DocumentPoint? = null, val sharpness: Double? = null,
+  val sensorNs: Long, val spot: DocumentPoint? = null,
 )
 
 /** [corners] and the [source] transform and dimensions captured at its acceptance are set for DETECTED, TRACKING and HELD; DETECTED is visible but not confirmed for focus or capture;
@@ -85,6 +85,8 @@ internal class LiveDocumentDetector(
   private val debugLogging: Boolean,
   private val modelFactory: ((Context) -> LiveCornerModel)? = null,
   private val gyro: GyroHistory? = null,
+  /** Linear acceleration, attached only on phones with the sensor. */
+  private val acceleration: AccelerationHistory? = null,
   onResult: (LiveDetectionResult) -> Unit,
 ) : ImageAnalysis.Analyzer, AutoCloseable {
   private val context = context.applicationContext
@@ -108,11 +110,6 @@ internal class LiveDocumentDetector(
   private var analysisRate = AnalysisRateMonitor()
   /** Independent main-thread focus owner receives document targets; focus never gates detection. */
   @Volatile internal var focusCandidateListener: ((LiveFocusCandidate) -> Unit)? = null
-  /** Main thread callback: [sharpnessPoint]'s score (sensor time, score) on a frame that posts no focus candidate, as
-   * when flow loses the page between inferences; a focus search still has a score to read. */
-  @Volatile internal var sharpnessListener: ((Long, Double) -> Unit)? = null
-  /** Where focus candidates measure [printSharpness], as a fraction of the upright crop; null measures nothing. */
-  @Volatile internal var sharpnessPoint: DocumentPoint? = null
   /** The next focus candidate with a page picks its print spot, once; set by main, cleared here. */
   @Volatile internal var spotRequested = false
   /** Checks for the next analyzed frame; a change starts a fresh stabilizer, dropping its history. */
@@ -120,7 +117,6 @@ internal class LiveDocumentDetector(
   /** Estimates image motion on every analysis frame, guide or not, before inference throttling and gating. */
   @Volatile internal var flowMotionEnabled = false
   /** Use image flow for capture motion records, with the gyroscope as fallback. */
-  @Volatile internal var flowGate = false
   @Volatile internal var inferenceThrottling = false
   /** Raw predictions remain available for samples; this threshold only gates live acceptance. */
   @Volatile internal var minCornerScore = 0.95
@@ -282,7 +278,7 @@ internal class LiveDocumentDetector(
   /** Stores this frame's analysis result for its binding, then notifies main that new results are available. */
   private fun recordFrameAnalysis(
     boundGeneration: Long, frameGeneration: Long, sensorTimestampNs: Long, arrivalNs: Long, realtime: Boolean, frame: CameraFrameState?,
-    flow: FlowMotionEstimate?, motion: GateMotion?, gyroSpeed: Double?, inferenceFinished: Boolean,
+    flow: FlowMotionEstimate?, motion: GateMotion?, gyroSpeed: Double?, acceleration: Double?, inferenceFinished: Boolean,
   ) {
     synchronized(bindingLock) {
       if (boundGeneration != binding || frameGeneration != flowGeneration || !flowActive) return
@@ -292,7 +288,7 @@ internal class LiveDocumentDetector(
       }
       frameHistory.append { sequence ->
         FrameRecord(sequence, sensorTimestampNs, sensorTimestampNs.takeIf { realtime }, arrivalNs, frame, flow,
-          motion, gyroSpeed,
+          motion, gyroSpeed, acceleration,
           captureGuide?.takeIf {
             state.guidanceEnabled() && (captureGuideDeadlineNs == 0L || arrivalNs < captureGuideDeadlineNs)
           }, inferenceFinished)
@@ -348,11 +344,12 @@ internal class LiveDocumentDetector(
     val flow = if (flowMotionEnabled) updateFlow(image, boundGeneration, sensorTimestampNs, optics != null)
       else { pageMotion.clear(); null }
     totalChecksNs += flow?.processingNs ?: 0L
-    // This frame's own flow estimate is current by construction; the gyroscope is read only when flow has no blur.
+    // Flow's blur only paces the guide's inference. A frame's smear for capture is the gyroscope's: flow over soft or
+    // noisy frames, out of focus or in the dark, reads motion a still hand does not make.
     val flowMotion = frame?.let { state -> flow?.estimate?.let { flowBlur(it, state.exposureNs) } }
-    val gyroBlur = if (frame == null || flowGate && flowMotion != null) null else gyroBlur(optics, sensorTimestampNs, frame)
-    val motion = frame?.let { gateMotion(flow?.estimate, it.exposureNs, gyroBlur) }
-    val blur = if (flowGate) motion?.blur else gyroBlur
+    val gyroBlur = frame?.let { gyroBlur(optics, sensorTimestampNs, it) }
+    val motion = gyroBlur?.let { GateMotion(it, MotionSource.GYRO) }
+    val blur = gyroBlur
     if (blur != null) peakBlur = maxOf(peakBlur ?: 0.0, blur)
     val adaptive = inferenceThrottling && pacingEnabled
     if (adaptive != adaptiveWasEnabled) {
@@ -423,7 +420,6 @@ internal class LiveDocumentDetector(
       ))
       if (token == null) {
         dropped++
-        var posted = false
         // Pacing and movement skip inference; flow's own consensus fit decides whether tracking holds.
         if (reliable && estimate.lostRegions == 0 &&
           state.isCurrent(lastToken) && stabilizerConfig == stabilizer.config && boundGeneration == binding) {
@@ -451,14 +447,12 @@ internal class LiveDocumentDetector(
               held.acceptanceId, held.holdDeadlineNs, lastToken, startedAt))
             // The tracked outline keeps the page, and so continuous autofocus, while inference is paused.
             postFocusCandidate(lastToken, startedAt, LiveFocusCandidate(held.accepted, source, width, height, true, sensorTimestampNs,
-              spot(image, held.accepted), sharpness(image)))
-            posted = true
+              spot(image, held.accepted)))
           } else {
             // An expired or invalid tracked guide must wake inference instead of remaining paused forever.
             adaptivePolicy.reset()
           }
         }
-        if (!posted) postSharpness(sensorTimestampNs, startedAt, image)
         return
       }
       val sourceTransform = transformFactory.getOutputTransform(image)
@@ -521,7 +515,7 @@ internal class LiveDocumentDetector(
       postFocusCandidate(token, startedAt,
         LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.corners, sourceTransform, width, height,
           output.status == GuideTrackingStatus.TRACKING, sensorTimestampNs,
-          spot(image, if (flowRetained) output.accepted else candidate?.corners), sharpness(image)))
+          spot(image, if (flowRetained) output.accepted else candidate?.corners)))
       tracking = output.status != GuideTrackingStatus.SEARCHING
       if (!flowRetained) {
         if (output.status == GuideTrackingStatus.TRACKING) {
@@ -572,25 +566,24 @@ internal class LiveDocumentDetector(
     } catch (error: Throwable) {
       if (token != null && state.fail(token)) {
         releaseSession()
-        Log.e("RNDocumentScannerLive", "Live detection unavailable; manual capture remains available", error)
+        ScannerLog.e("RNDocumentScannerLive", "Live detection unavailable; manual capture remains available", error)
         publish(LiveDetectionResult(LiveGuideStatus.UNAVAILABLE, generation = token))
       }
     } finally {
       image.close()
-      val gyroSpeed = flow?.estimate?.takeIf {
-        it.status == FlowMotionStatus.TOO_FEW_FEATURES || it.status == FlowMotionStatus.POOR_COVERAGE
-      }?.let { estimate ->
-        if (gyro == null || optics == null) null
-        else gyro.peakRate(estimate.fromSensorNs - GYRO_MARGIN_NS, estimate.toSensorNs)
+      // The framing speed is the gyroscope's peak rate over the frame interval before this frame, as frame widths per
+      // second.
+      val gyroSpeed = if (gyro == null || optics == null) null
+        else gyro.peakRate(sensorTimestampNs - SPEED_SPAN_NS - GYRO_MARGIN_NS, sensorTimestampNs)
           ?.let { it * optics.focalLengthPx / optics.activeWidth }
-      }
+      // The accelerometer's peak over the same span: the gyroscope sees rotation, not a move along or toward the page.
+      val peakAcceleration = acceleration?.peak(sensorTimestampNs - SPEED_SPAN_NS - GYRO_MARGIN_NS, sensorTimestampNs)
       // The result often lands while the frame is analyzed; look again so the record carries it.
       val recorded = frame ?: frames.at(sensorTimestampNs)
       val recordedMotion = if (frame != null || recorded == null) motion
-        else gateMotion(flow?.estimate, recorded.exposureNs,
-          if (flow?.estimate?.let { flowBlur(it, recorded.exposureNs) } != null) null else gyroBlur(optics, sensorTimestampNs, recorded))
+        else gyroBlur(optics, sensorTimestampNs, recorded)?.let { GateMotion(it, MotionSource.GYRO) }
       recordFrameAnalysis(boundGeneration, frameGeneration, sensorTimestampNs, startedAt, optics != null, recorded,
-        flow?.estimate, recordedMotion, gyroSpeed, inferenceFinished)
+        flow?.estimate, recordedMotion, gyroSpeed, peakAcceleration, inferenceFinished)
       logWindow(System.nanoTime())
     }
   }
@@ -611,22 +604,6 @@ internal class LiveDocumentDetector(
     val crop = image.cropRect
     return pickPrintSpot(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
       image.imageInfo.rotationDegrees, corners)
-  }
-
-  private fun sharpness(image: ImageProxy): Double? {
-    val point = sharpnessPoint ?: return null
-    val plane = image.planes[0]
-    val crop = image.cropRect
-    return printSharpness(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
-      image.imageInfo.rotationDegrees, point, SHARPNESS_SIDE)
-  }
-
-  private fun postSharpness(sensorNs: Long, startedAt: Long, image: ImageProxy) {
-    val listener = sharpnessListener ?: return
-    val score = sharpness(image) ?: return
-    handler.post {
-      if (System.nanoTime() - startedAt < 250_000_000L && sharpnessListener === listener) listener(sensorNs, score)
-    }
   }
 
   private fun postFocusCandidate(token: Long, startedAt: Long, hint: LiveFocusCandidate) {
@@ -680,7 +657,7 @@ internal class LiveDocumentDetector(
       synchronized(bindingLock) { if (generation == flowGeneration) clearFlowLocked() }
       releaseFlow()
       flowFailed = true
-      Log.e("RNDocumentScannerLive", "Image motion estimation unavailable", error)
+      ScannerLog.e("RNDocumentScannerLive", "Image motion estimation unavailable", error)
       null
     }
   }
@@ -758,7 +735,7 @@ internal class LiveDocumentDetector(
     onResult?.invoke(result)
     val now = System.nanoTime()
     if (debugLogging && result.analysisStartedNs > 0 && now - lastDeliveryLogNs >= 5_000_000_000L) {
-      Log.d("RNDocumentScannerLive", "analysisToOverlayMs=${(now - result.analysisStartedNs) / 1_000_000.0}")
+      ScannerLog.d("RNDocumentScannerLive", "analysisToOverlayMs=${(now - result.analysisStartedNs) / 1_000_000.0}")
       lastDeliveryLogNs = now
     }
   }
@@ -795,7 +772,7 @@ internal class LiveDocumentDetector(
     if (seconds < (if (listener != null) 1.0 else 5.0)) return
     val frames = inferred.coerceAtLeast(1)
     if (debugLogging) {
-      Log.d("RNDocumentScannerLive", "rate=${inferred / seconds}Hz received=$received inferred=$inferred skipped=$dropped meanAnalysisMs=${totalLatencyMs / frames} " +
+      ScannerLog.d("RNDocumentScannerLive", "rate=${inferred / seconds}Hz received=$received inferred=$inferred skipped=$dropped meanAnalysisMs=${totalLatencyMs / frames} " +
         "maxRecordGapMs=${maxRecordGapNs / 1_000_000}")
       maxRecordGapNs = 0L
     }

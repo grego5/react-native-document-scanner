@@ -12,7 +12,7 @@ import com.margelo.nitro.core.Promise
 import com.margelo.nitro.documentscanner.processing.CornerTensorModelLoader
 import com.margelo.nitro.documentscanner.processing.SampleCollection
 
-/** Stateless session factory and independent sample-folder controls. */
+/** Stateless session factory, independent sample-folder controls and app-wide diagnostics. */
 @DoNotStrip
 @Keep
 class HybridDocumentScannerProcessor(
@@ -66,6 +66,27 @@ class HybridDocumentScannerProcessor(
   override fun setSampleFolder(uri: String) = SampleCollection.configure(context("sample collection"), uri, null)
 
   override fun setSampleCollection(on: Boolean) = SampleCollection.configure(context("sample collection"), null, on)
+
+  override fun setDiagnosticsEnabled(on: Boolean) {
+    ScannerDiagnostics.enabled = on
+  }
+
+  override fun exportDiagnosticsResult(): Promise<Variant_String_ScannerFailure> {
+    val promise = Promise<Variant_String_ScannerFailure>()
+    val context = try { context("diagnostics") } catch (error: Throwable) {
+      promise.resolve(Variant_String_ScannerFailure.create(scannerFailure(error, ScannerErrorCode.PROCESSOR_UNAVAILABLE)))
+      return promise
+    }
+    // Writing a few megabytes is disk work, kept off the JS and main threads.
+    kotlin.concurrent.thread(name = "scanner-diagnostics-export") {
+      try {
+        promise.resolve(Variant_String_ScannerFailure.create(android.net.Uri.fromFile(ScannerDiagnostics.export(context)).toString()))
+      } catch (error: Throwable) {
+        promise.resolve(Variant_String_ScannerFailure.create(scannerFailure(error, ScannerErrorCode.PROCESSOR_UNAVAILABLE)))
+      }
+    }
+    return promise
+  }
 
   override fun copyText(text: String) {
     val clipboard = context("clipboard").getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

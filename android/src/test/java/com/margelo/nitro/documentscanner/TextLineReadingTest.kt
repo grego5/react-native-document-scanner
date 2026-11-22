@@ -78,12 +78,41 @@ class TextLineReadingTest {
   }
 
   @Test
-  fun flowAreaHoldsSceneAroundAThinRegion() {
-    val area = flowArea(TextRegion(0.1, 0.45, 0.8, 0.1)).boundingRegion()
-    assertEquals(0.05, area.x, 1e-6)
-    assertEquals(0.3, area.y, 1e-6)
-    assertEquals(0.9, area.width, 1e-6)
-    assertEquals(0.4, area.height, 1e-6)
+  fun overlapIsIntersectionOverUnion() {
+    val a = TextRegion(0.0, 0.0, 0.2, 0.1)
+    assertEquals(1.0, overlap(a, a), 1e-9)
+    assertEquals(1.0 / 3, overlap(a, TextRegion(0.1, 0.0, 0.2, 0.1)), 1e-9)
+    assertEquals(0.0, overlap(a, TextRegion(0.3, 0.0, 0.2, 0.1)), 0.0)
+  }
+
+  @Test
+  fun flowTracksALongLineAroundTheAimAndAShortOneWhole() {
+    // A 3:4 view: 0.04 of its height is 6 line heights long at 0.04 * 6 / 0.75 = 0.32 of its width.
+    val word = TextRegion(0.4, 0.45, 0.2, 0.04)
+    assertEquals(word, textFlowWindow(word, 0.5, 0.75))
+    val line = TextRegion(0.1, 0.45, 0.8, 0.04)
+    val centre = textFlowWindow(line, 0.5, 0.75)
+    assertEquals(0.34, centre.x, 1e-9)
+    assertEquals(0.32, centre.width, 1e-9)
+    assertEquals(line.y, centre.y, 1e-9)
+    assertEquals(line.height, centre.height, 1e-9)
+    // Near an end the stretch stays on the line.
+    assertEquals(0.1, textFlowWindow(line, 0.12, 0.75).x, 1e-9)
+    assertEquals(0.58, textFlowWindow(line, 0.95, 0.75).x, 1e-9)
+  }
+
+  @Test
+  fun textFlowAreaPadsTheTextAndKeepsItWhileItStaysClearOfTheEdges() {
+    val box = TextRegion(0.3, 0.45, 0.4, 0.04)
+    val area = textFlowArea(box)
+    assertEquals(0.2, area.x, 1e-9)
+    assertEquals(0.37, area.y, 1e-9)
+    assertEquals(0.6, area.width, 1e-9)
+    assertEquals(0.2, area.height, 1e-9)
+    assertTrue(textFlowAreaHolds(area, TextRegion(0.34, 0.47, 0.4, 0.04)))
+    // Past half the margin: a new crop.
+    assertFalse(textFlowAreaHolds(area, TextRegion(0.36, 0.45, 0.4, 0.04)))
+    assertFalse(textFlowAreaHolds(area, TextRegion(0.3, 0.37, 0.4, 0.04)))
   }
 
   @Test
@@ -201,5 +230,48 @@ class TextLineReadingTest {
   @Test
   fun regionClampsToTheView() {
     assertEquals(TextRegion(0.5, 0.0, 0.5, 1.0), clampedRegion(TextRegion(0.5, -0.2, 0.9, 1.5)))
+  }
+
+  @Test fun theAimIsOnTextWithinItsBoxAndALittlePast() {
+    // A slanted line from (0.2, 0.40) to (0.8, 0.46), 0.04 tall.
+    val text = DocumentCorners(DocumentPoint(.2, .40), DocumentPoint(.8, .46), DocumentPoint(.8, .50), DocumentPoint(.2, .44))
+    assertTrue(onText(text, .5, .45))
+    // Half a line's height above, past its slant, still counts.
+    assertTrue(onText(text, .5, .42))
+    assertFalse(onText(text, .5, .38))
+    assertTrue(onText(text, .82, .49))
+    assertFalse(onText(text, .9, .50))
+  }
+
+  @Test
+  fun flowCropTakesTheAreaFromATurnedBuffer() {
+    // A landscape buffer shown turned clockwise: the view's x runs down the buffer's y, from its bottom.
+    val crop = flowCrop(TextRegion(0.1, 0.3, 0.8, 0.4), 0, 0, 1280, 960, 90)!!
+    assertEquals(listOf(384, 96, 896, 864), listOf(crop.left, crop.top, crop.right, crop.bottom))
+    assertEquals(0.1, crop.view.x, 1e-9)
+    assertEquals(0.3, crop.view.y, 1e-9)
+    assertEquals(0.8, crop.view.width, 1e-9)
+    assertEquals(0.4, crop.view.height, 1e-9)
+  }
+
+  @Test
+  fun flowCropCoversItsAreaAndMapsCornersBackForEveryRotation() {
+    val area = TextRegion(0.07, 0.31, 0.61, 0.23)
+    val corners = TextRegion(0.2, 0.4, 0.3, 0.05).corners()
+    for (rotation in listOf(0, 90, 180, 270)) {
+      val crop = flowCrop(area, 10, 20, 1290, 980, rotation)!!
+      assertTrue(crop.left >= 10 && crop.top >= 20 && crop.right <= 1290 && crop.bottom <= 980)
+      assertTrue(crop.view.x <= area.x + 1e-9 && crop.view.y <= area.y + 1e-9)
+      assertTrue(crop.view.x + crop.view.width >= area.x + area.width - 1e-9)
+      assertTrue(crop.view.y + crop.view.height >= area.y + area.height - 1e-9)
+      val back = crop.toView(crop.toCrop(corners))
+      assertEquals(corners.topLeft.x, back.topLeft.x, 1e-9)
+      assertEquals(corners.bottomRight.y, back.bottomRight.y, 1e-9)
+    }
+  }
+
+  @Test
+  fun aTinyFlowAreaHasNoCrop() {
+    assertNull(flowCrop(TextRegion(0.5, 0.5, 0.01, 0.01), 0, 0, 1280, 960, 90))
   }
 }

@@ -62,6 +62,8 @@ namespace margelo::nitro::documentscanner {
     void setSampleCollection(bool on) override;
     void setSampleFolder(const std::string& uri) override;
     void copyText(const std::string& text) override;
+    void setDiagnosticsEnabled(bool on) override;
+    std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> exportDiagnosticsResult() override;
 
   private:
     jni::global_ref<JHybridDocumentScannerProcessorSpec::JavaPart> _javaPart;

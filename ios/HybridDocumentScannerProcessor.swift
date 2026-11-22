@@ -55,5 +55,14 @@ class HybridDocumentScannerProcessor: HybridDocumentScannerProcessorSpec {
     throw ScannerUnsupported.error
   }
 
+  /// Diagnostics are Android only; the JS facade raises the typed failure for enabling.
+  func setDiagnosticsEnabled(on: Bool) throws {
+    if on { throw ScannerUnsupported.error }
+  }
+
+  func exportDiagnosticsResult() throws -> Promise<Variant_String_ScannerFailure> {
+    .resolved(withResult: .second(ScannerUnsupported.failure))
+  }
+
   /// The app bundle resource the Expo plugin installs `cornerDetectionModel` as.
 }

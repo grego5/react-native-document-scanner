@@ -86,6 +86,15 @@ export const DocumentScanner = {
       if (on) requireSampleCollection();
       nativeProcessor.setSampleCollection(on);
     }, 'processor/unavailable'),
+  /** See `DocumentScannerProcessor.setDiagnosticsEnabled`. */
+  setDiagnosticsEnabled: (on: boolean) =>
+    scannerValue(() => {
+      if (on && Platform.OS === 'ios') throw new ScannerError('feature/unsupported');
+      nativeProcessor.setDiagnosticsEnabled(on);
+    }, 'processor/unavailable'),
+  /** See `DocumentScannerProcessor.exportDiagnosticsResult`. */
+  exportDiagnostics: () =>
+    scannerOperation(() => nativeProcessor.exportDiagnosticsResult(), 'processor/unavailable'),
 };
 
 /** iOS defers sample collection; void native setters cannot carry its typed failure. */

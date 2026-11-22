@@ -2,7 +2,6 @@ package com.margelo.nitro.documentscanner
 
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import java.util.ArrayDeque
 import java.util.Collections
 import java.util.concurrent.Executor
@@ -132,5 +131,5 @@ internal object ScanSessionMainOwner : Executor {
     check(handler.post(command)) { "The Android main owner is unavailable." }
   }
 
-  fun report(error: Throwable) { Log.w("RNDocumentScanner", "Session metadata delivery failed.", error) }
+  fun report(error: Throwable) { ScannerLog.w("RNDocumentScanner", "Session metadata delivery failed.", error) }
 }

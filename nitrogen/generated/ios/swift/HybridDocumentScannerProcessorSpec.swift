@@ -21,6 +21,8 @@ public protocol HybridDocumentScannerProcessorSpec_protocol: HybridObject {
   func setSampleCollection(on: Bool) throws -> Void
   func setSampleFolder(uri: String) throws -> Void
   func copyText(text: String) throws -> Void
+  func setDiagnosticsEnabled(on: Bool) throws -> Void
+  func exportDiagnosticsResult() throws -> Promise<Variant_String_ScannerFailure>
 }
 
 public extension HybridDocumentScannerProcessorSpec_protocol {

@@ -16,9 +16,10 @@ export interface TextRegion {
 
 /**
  * `crosshair` marks the region's centre, the point readings are chosen nearest to. `line` shows a single guide below
- * the target text. `brackets` marks the four region corners. `none` leaves the overlay to the host.
+ * the target text. `dot` marks the region's centre with a point, the selector alone. `none` leaves the overlay to the
+ * host.
  */
-export type TextGuide = 'none' | 'crosshair' | 'line' | 'brackets'
+export type TextGuide = 'none' | 'crosshair' | 'line' | 'dot'
 
 /** Back-camera torch for text reading. */
 export type TextTorchMode = 'off' | 'on'
@@ -50,7 +51,7 @@ export interface TextCameraProps extends HybridViewProps {
   active?: boolean
   /** The area read, as fractions of the view; clamped to it. Changes apply on the next frame without restarting. */
   textRegion: TextRegion
-  /** Defaults to `none`. Choose `crosshair`, `line`, or `brackets` to show a built-in guide. */
+  /** Defaults to `none`. Choose `crosshair`, `line`, or `dot` to show a built-in guide. */
   textGuide?: TextGuide
   /**
    * Highlights the text being read with a soft fill in the guide colour, following it as the camera moves until its
@@ -77,16 +78,18 @@ export interface TextCameraProps extends HybridViewProps {
   /** Tapping the preview focuses there for 5 s, then focus returns to the region; defaults to true. */
   tapToFocus?: boolean
   /**
-   * Holds focus on the region's text instead of continuous autofocus, which hunts at reading distance as the hand
-   * drifts. The lens opens with autofocus off at the distance this camera last read text at, or before its first lock at
-   * a close-up reading distance, 70% of its nearest focus in diopters (about 14 cm on a phone focusing to 10 cm); once
-   * the phone holds steady it scores the region's text at nearby distances and holds the sharpest. It searches again
-   * when the held text turns soft while steady, judged by fine against coarse detail so other text sliding into the
-   * region does not count, or when detail appears after a search over blank paper found no peak. When the phone turns,
-   * the held distance is checked on the new text first and kept unless that text is soft; a search that cannot settle leaves focus to the camera's autofocus until the phone turns. A tap focuses
-   * there for its 5 s, then the hold resumes from where it left the lens. Needs a camera that can set its lens distance
-   * and motion sensors (a gyroscope and linear acceleration); otherwise continuous autofocus stays on the region. Android only; the native view defaults to false,
-   * and `TextCamera` turns it on.
+   * Helps continuous autofocus, which settles soft or on the wrong depth at close range, with the camera's own locking
+   * scan, a sweep that finds the sharpest distance. Continuous autofocus follows the region while the phone moves. On a
+   * steady hold its report is confirmed: the region is locked once continuous autofocus settles or reports no focus,
+   * at once in a dark scene with the torch off, or after 0.6 s of searching. The first lock permits reading, since unconfirmed
+   * continuous autofocus misreads; after it, reading goes on while the lock is released, pausing only while a lock scans.
+   * Every line read in the region is kept where it is and moves with the page; the region's centre selects one, which
+   * shows once two reads agree, so moving onto a line already read shows it at once. The region is read as new text
+   * enters it, and until the aimed line agrees. A lock under which four reads find no agreed text locks again; a hold gets two locks. Turning or
+   * moving the phone, moving it nearer or farther, as the read text changing size shows, or a new region, releases the
+   * lock and starts over. A tap focuses there for its 5 s, then continuous autofocus resumes. Needs single-shot autofocus
+   * and motion sensors (a gyroscope and linear acceleration); otherwise continuous autofocus alone follows the region.
+   * Android only; the native view defaults to false, and `TextCamera` turns it on.
    */
   focusLock?: boolean
   /**
@@ -98,9 +101,9 @@ export interface TextCameraProps extends HybridViewProps {
   torch?: TextTorchMode
   /**
    * Most recognitions per second, from 1 to 15; defaults to 5. Frames in between are dropped, and a recognizer slower
-   * than the rate sets its own pace. Lower saves power; higher agrees sooner. On Android, once 4 recognitions in a row
-   * have read the agreed text and it holds still, recognition slows to once a second, back to this rate when a reading
-   * disagrees, the text moves, the phone turns or a `focusLock` lens search ends.
+   * than the rate sets its own pace. Lower saves power; higher agrees sooner. On Android with `focusLock`, this paces
+   * each lock's few reads. Otherwise, once 4 recognitions in a row have read the agreed text and it holds still,
+   * recognition slows to once a second, back to this rate when a reading disagrees, the text moves or the phone turns.
    */
   recognitionRate?: number
   /**
@@ -110,11 +113,9 @@ export interface TextCameraProps extends HybridViewProps {
   analysisFrameWidth?: number
   onCameraStateChange?: (state: CameraState) => void
   /**
-   * Focus on the region. With `focusLock` holding the lens: `scan` while it searches, `locked` once a search has
-   * settled on the sharpest text, and `inactive` while the lens holds with no search settled since the camera started,
-   * the phone turned or a tap. The camera's own autofocus, in a fallback, during a tap's hold or without `focusLock`,
-   * reports its Camera2 state. The built-in guide shows it too: yellow while scanning, a green flash when focus lands,
-   * a red one when it fails, and a swell at each step of a lens search. iOS reports `inactive`.
+   * Focus on the region. A lock or a tap reports `scan` while its scan runs and `locked` once the camera reports the
+   * lock; continuous autofocus reports its Camera2 state. The built-in guide shows it too: yellow while scanning, a
+   * green flash when focus lands, a red one when it fails, and a swell when a lock starts. iOS reports `inactive`.
    */
   onAutofocusChange?: (state: AutofocusState) => void
   /**

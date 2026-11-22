@@ -1,6 +1,5 @@
 package com.margelo.nitro.documentscanner
 
-import com.margelo.nitro.documentscanner.processing.FlowMotionStatus
 import com.margelo.nitro.documentscanner.processing.FrameRecord
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -12,13 +11,16 @@ internal enum class StabilityBreak { MOVING, SMEARED, TRACKING_LOST, NO_DOCUMENT
 
 /**
  * Framing stability for a capture, built from consecutive analyzed frames fed in order, one [FrameRecord] each. Three
- * separate questions decide whether a frame continues the sequence: its flow from the previous analyzed frame moves under
- * [MAX_SPEED] frame widths per second whatever the exposure (framing); its own smear stays within the blur limit
- * (exposure); and, when a page is required, the page keeps its position, scale and shape within [MAX_SHIFT],
- * [MAX_SCALE] and [MAX_SHAPE] of where the sequence began (geometry). Missing or broken flow, a frame whose flow does not
- * start at the sequence's last frame, and unknown smear never continue a sequence. A frame whose capture result never
- * arrived has unknown exposure, so its smear is unknown: it still checks speed and geometry and keeps the sequence
- * unbroken, but does not count toward it. Flow without enough texture falls back to the frame's gyroscope speed. Main thread.
+ * separate questions decide whether a frame continues the sequence: the gyroscope turns the phone under [MAX_SPEED]
+ * frame widths per second and the accelerometer reads under [MAX_ACCELERATION] over the frame interval, whatever the
+ * exposure (framing), since a quiet gyroscope cannot show the phone kept its distance; its own gyroscope smear stays within
+ * the blur limit (exposure); and, when a page is required, the page keeps its position, scale and shape within
+ * [MAX_SHIFT], [MAX_SCALE] and [MAX_SHAPE] of where the sequence began (geometry). The motion sensors judge motion,
+ * since optical flow over soft or noisy frames, out of focus or in the dark, reads motion a still hand does not make;
+ * flow only carries the guide's outline. With [observe]'s motion sensors running, a frame missing either reading is
+ * unknown motion and never continues a sequence; without them the framing check judges what readings there are. A
+ * skipped frame and unknown smear never continue a sequence. A frame whose capture result never arrived has unknown exposure, so its smear is
+ * unknown: it still checks speed and geometry and keeps the sequence unbroken, but does not count toward it. Main thread.
  */
 internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
   private var reference: DocumentCorners? = null
@@ -30,8 +32,8 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
     private set
   var latestSensorNs = 0L
     private set
-  /** Sensor timestamp of the sequence's latest frame, counted or not, where the next frame's flow must start. */
-  private var chainSensorNs = 0L
+  /** The sequence's latest frame, counted or not, which the next frame must follow. */
+  private var chainSequence = -1L
   var lastBreak: StabilityBreak? = null
     private set
 
@@ -42,7 +44,7 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
     reference = null
     firstSensorNs = 0L
     latestSensorNs = 0L
-    chainSensorNs = 0L
+    chainSequence = -1L
   }
 
   /** Breaks the sequence for a frame judged outside it: by default one the reader fell too far behind to see. */
@@ -52,19 +54,17 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
 
   /**
    * Feeds the next analyzed frame. With [requireDocument], a frame without a page breaks the sequence. [blurLimit] above 0
-   * checks the frame's own motion blur. Returns [stable].
+   * checks the frame's own motion blur. [motionSensors]: the gyroscope and accelerometer run, so each frame must carry
+   * both readings. Returns [stable].
    */
-  fun observe(frame: FrameRecord, requireDocument: Boolean, blurLimit: Double): Boolean {
-    val flow = frame.flow ?: return restart(StabilityBreak.TRACKING_LOST)
-    // Each estimate starts at the previous analyzed frame; one that does not follow the sequence skipped a frame.
-    if (count > 0 && flow.fromSensorNs != chainSensorNs) restart(StabilityBreak.TRACKING_LOST)
-    val speed = when (flow.status) {
-      FlowMotionStatus.MEASURED -> if (flow.lostRegions > 0) return restart(StabilityBreak.TRACKING_LOST)
-        else flow.speedPxPerSecond?.let { it / flow.sourceWidth }
-      FlowMotionStatus.NO_REFERENCE, FlowMotionStatus.TRACKING_FAILED -> return restart(StabilityBreak.TRACKING_LOST)
-      FlowMotionStatus.TOO_FEW_FEATURES, FlowMotionStatus.POOR_COVERAGE -> frame.gyroSpeed
-    } ?: return restart(StabilityBreak.TRACKING_LOST)
-    if (speed > MAX_SPEED) return restart(StabilityBreak.MOVING)
+  fun observe(frame: FrameRecord, requireDocument: Boolean, blurLimit: Double, motionSensors: Boolean = false): Boolean {
+    // A frame that does not follow the sequence's last one skipped a frame.
+    if (count > 0 && frame.sequence != chainSequence + 1) restart(StabilityBreak.TRACKING_LOST)
+    val speed = frame.gyroSpeed
+    val acceleration = frame.acceleration
+    if (motionSensors && (speed == null || acceleration == null)) return restart(StabilityBreak.TRACKING_LOST)
+    if (speed != null && speed > MAX_SPEED) return restart(StabilityBreak.MOVING)
+    if (acceleration != null && acceleration > MAX_ACCELERATION) return restart(StabilityBreak.MOVING)
     val smearUnknown = blurLimit > 0 && frame.frame == null
     if (blurLimit > 0 && !smearUnknown) {
       val blur = frame.motion?.blur
@@ -77,11 +77,11 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
       if (reference == null) reference = corners
     }
     if (smearUnknown) {
-      if (count > 0) chainSensorNs = frame.sensorNs
+      if (count > 0) chainSequence = frame.sequence
       return stable
     }
     if (count == 0) firstSensorNs = frame.sensorNs
-    chainSensorNs = frame.sensorNs
+    chainSequence = frame.sequence
     latestSensorNs = frame.sensorNs
     count++
     return stable
@@ -100,6 +100,9 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
      * 0.31%; at a 30 ms exposure those are 3% and 10% of the width per second. A starting setting.
      */
     const val MAX_SPEED = 0.05
+    /** Peak linear acceleration in m/s² over a frame interval; a resting hand stays under it, past sensor noise and
+     * tremor, as the focus cycle's quiet hand does. A starting setting. */
+    const val MAX_ACCELERATION = 0.5
     /** Normalized centroid travel, relative scale change and residual corner travel allowed over a sequence. Starting
      * settings above the guide's frame-to-frame model noise.
      */

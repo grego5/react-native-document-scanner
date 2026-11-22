@@ -14,6 +14,7 @@ import { ActionButton } from './ActionButton';
 import { PrimaryButton } from './PrimaryButton';
 import { SheetModal } from './SheetModal';
 import { ShutterButton } from './ShutterButton';
+import { diagnosticsAvailable, shareDiagnostics } from '../lib/diagnostics';
 import { errorMessage } from '../lib/errorMessage';
 import { styles } from '../styles';
 
@@ -25,7 +26,7 @@ const REGIONS: Record<'line' | 'code', TextRegion> = {
 /** Zoom steps: more lets close-up text fill the frame from farther away, inside the lens's focus range. */
 const ZOOMS = [1, 1.5, 2];
 /** The built-in guides, in the order the guide button steps through them. */
-const GUIDES: TextGuide[] = ['crosshair', 'line', 'brackets', 'none'];
+const GUIDES: TextGuide[] = ['crosshair', 'dot', 'line', 'none'];
 /** Zoom and the focus report are Android only. */
 const ANDROID = Platform.OS === 'android';
 
@@ -95,6 +96,7 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
                 onPress={() => setZoom(ZOOMS[(ZOOMS.indexOf(zoom) + 1) % ZOOMS.length])}
               />
             )}
+            {diagnosticsAvailable && <ActionButton label="Share log" onPress={shareDiagnostics} />}
           </View>
           <View style={styles.shutterCenter}>
             <ShutterButton disabled={!granted} onPress={read} />

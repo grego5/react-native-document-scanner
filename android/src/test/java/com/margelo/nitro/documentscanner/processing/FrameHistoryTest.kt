@@ -83,5 +83,5 @@ class FrameHistoryTest {
   private fun append(log: FrameHistory) = log.append { frameResult(null).copy(sequence = it) }
 
   private fun frameResult(frame: CameraFrameState?) =
-    FrameRecord(0, 100, 100, 200, frame, null, null, null, null)
+    FrameRecord(0, 100, 100, 200, frame, null, null, null, null, null)
 }

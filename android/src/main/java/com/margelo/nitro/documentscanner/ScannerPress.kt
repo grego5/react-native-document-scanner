@@ -54,8 +54,8 @@ internal class ScannerPress(startedMs: Long) {
   }
 
   companion object {
-    /** A press's whole focus wait: a search and its retry, the torch settling, and the final scan, which on the
-     * SM-G998U starts from the lens's near end. */
+    /** A press's whole focus wait: a lock and its retry, the torch settling, and the final scan; on the SM-G998U a
+     * locking scan starts from the lens's near end. */
     const val BUDGET_MS = 8_000L
     /** Budget kept for the final scan. */
     const val FINAL_SCAN_RESERVE_MS = 2_000L

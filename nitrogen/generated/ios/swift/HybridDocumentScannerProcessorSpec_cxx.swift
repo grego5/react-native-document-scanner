@@ -253,4 +253,41 @@ open class HybridDocumentScannerProcessorSpec_cxx {
       return bridge.create_Result_void_(__exceptionPtr)
     }
   }
+  
+  @inline(__always)
+  public final func setDiagnosticsEnabled(on: Bool) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.setDiagnosticsEnabled(on: on)
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func exportDiagnosticsResult() -> bridge.Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____ {
+    do {
+      let __result = try self.__implementation.exportDiagnosticsResult()
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure___(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_std__string__ScannerFailure_ in
+              switch __result {
+                case .first(let __value):
+                  return bridge.create_std__variant_std__string__ScannerFailure_(std.string(__value))
+                case .second(let __value):
+                  return bridge.create_std__variant_std__string__ScannerFailure_(__value)
+              }
+            }().variant) })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_std__string__ScannerFailure____(__exceptionPtr)
+    }
+  }
 }

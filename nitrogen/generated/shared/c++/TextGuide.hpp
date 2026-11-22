@@ -32,7 +32,7 @@ namespace margelo::nitro::documentscanner {
     NONE      SWIFT_NAME(none) = 0,
     CROSSHAIR      SWIFT_NAME(crosshair) = 1,
     LINE      SWIFT_NAME(line) = 2,
-    BRACKETS      SWIFT_NAME(brackets) = 3,
+    DOT      SWIFT_NAME(dot) = 3,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::documentscanner
@@ -48,7 +48,7 @@ namespace margelo::nitro {
         case hashString("none"): return margelo::nitro::documentscanner::TextGuide::NONE;
         case hashString("crosshair"): return margelo::nitro::documentscanner::TextGuide::CROSSHAIR;
         case hashString("line"): return margelo::nitro::documentscanner::TextGuide::LINE;
-        case hashString("brackets"): return margelo::nitro::documentscanner::TextGuide::BRACKETS;
+        case hashString("dot"): return margelo::nitro::documentscanner::TextGuide::DOT;
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert \"" + unionValue + "\" to enum TextGuide - invalid value!");
       }
@@ -58,7 +58,7 @@ namespace margelo::nitro {
         case margelo::nitro::documentscanner::TextGuide::NONE: return JSIConverter<std::string>::toJSI(runtime, "none");
         case margelo::nitro::documentscanner::TextGuide::CROSSHAIR: return JSIConverter<std::string>::toJSI(runtime, "crosshair");
         case margelo::nitro::documentscanner::TextGuide::LINE: return JSIConverter<std::string>::toJSI(runtime, "line");
-        case margelo::nitro::documentscanner::TextGuide::BRACKETS: return JSIConverter<std::string>::toJSI(runtime, "brackets");
+        case margelo::nitro::documentscanner::TextGuide::DOT: return JSIConverter<std::string>::toJSI(runtime, "dot");
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert TextGuide to JS - invalid value: "
                                     + std::to_string(static_cast<int>(arg)) + "!");
@@ -73,7 +73,7 @@ namespace margelo::nitro {
         case hashString("none"):
         case hashString("crosshair"):
         case hashString("line"):
-        case hashString("brackets"):
+        case hashString("dot"):
           return true;
         default:
           return false;

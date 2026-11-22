@@ -116,4 +116,17 @@ export interface DocumentScannerProcessor
   setSampleFolder(uri: string): void
   /** Puts plain text on the system clipboard, such as a `TextCamera` reading. */
   copyText(text: string): void
+  /**
+   * Turns diagnostics on or off for this run of the app, in any build. While on, the module keeps its recent log lines
+   * in memory, and camera views created afterwards also log in release builds and keep their last 15 s camera trace.
+   * Off by default, and nothing is written until `exportDiagnosticsResult`. Android only; iOS reports
+   * `feature/unsupported`.
+   */
+  setDiagnosticsEnabled(on: boolean): void
+  /**
+   * Writes the kept log lines and each mounted camera's trace, under a device header, to a new text file in the app's
+   * cache, and resolves with its `file://` URI, for the app to share. The file holds no image pixels; text camera lines
+   * can hold recognized text. Exports older than a day are removed.
+   */
+  exportDiagnosticsResult(): Promise<string | ScannerFailure>
 }

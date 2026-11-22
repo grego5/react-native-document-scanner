@@ -4,8 +4,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executor
 
 /** Why `zsl` bound `latency`: a lit torch, white balance that keeps searching, a gated shot the zero-shutter-lag buffer
- * starved, a sustained dark scene with nothing lighting it, or `focusLock` holding the lens with autofocus off. */
-internal enum class LightFallback { TORCH, WHITE_BALANCE, STARVED_BUFFER, DARK, HELD_LENS }
+ * starved, or a sustained dark scene with nothing lighting it. */
+internal enum class LightFallback { TORCH, WHITE_BALANCE, STARVED_BUFFER, DARK }
 
 /**
  * Main-thread owner of the camera's light: the torch and low-light boost commands, their CameraX acknowledgements, their
@@ -45,19 +45,29 @@ internal class CameraLightController(private val executor: Executor, private val
   }
 
   /**
-   * Applies both settings; CameraX owns their interaction. The boost and the user's own torch mode wait while a capture
-   * is pending ([capturePending]), so a press keeps the light it was admitted with. The auto torch's lit state, from a
-   * dark room or the focus cycle's torch step alike, waits only while [autoHeld]: the view holds it for a shot being
-   * taken, and for a whole pending capture only with zero shutter lag, whose buffer refuses frames while white balance
-   * settles under a new light. A press waiting for focus in the dark otherwise gets that light.
+   * Applies both settings. CameraX keeps only the last one set of the torch and the boost on, so the boost is asked off
+   * while the torch is lit, or held lit, and asked on again once it is off; otherwise a torch lit over the boost would
+   * leave the boost off for good. The boost and the user's own torch mode wait while a capture is pending
+   * ([capturePending]), so a press keeps the light it was admitted with. The auto torch's lit state, from a dark room or
+   * the focus cycle's torch step alike, waits only while [autoHeld]: the view holds it for a shot being taken, and for a
+   * whole pending capture only with zero shutter lag, whose buffer refuses frames while white balance settles under a
+   * new light. A press waiting for focus in the dark otherwise gets that light.
    */
   fun apply(camera: BoundCamera?, mode: TorchMode, lowLightBoost: Boolean, capturePending: Boolean, autoHeld: Boolean,
     autoLit: () -> Boolean) {
     if (camera == null) return
-    if (!capturePending && camera.info.isLowLightBoostSupported) setBoost(camera, lowLightBoost)
-    if (!camera.info.hasFlashUnit()) return
-    if (if (mode == TorchMode.AUTO) autoHeld else capturePending) return
-    setTorch(camera, when (mode) { TorchMode.ON -> true; TorchMode.AUTO -> autoLit(); TorchMode.OFF -> false })
+    val flash = camera.info.hasFlashUnit()
+    val torchHeld = if (mode == TorchMode.AUTO) autoHeld else capturePending
+    val lit = when {
+      !flash -> false
+      torchHeld -> (torch.request?.on ?: torchLit) == true
+      else -> when (mode) { TorchMode.ON -> true; TorchMode.AUTO -> autoLit(); TorchMode.OFF -> false }
+    }
+    val boost = !capturePending && camera.info.isLowLightBoostSupported
+    // The boost goes off before the torch lights, and the torch off before the boost returns.
+    if (lit && boost) setBoost(camera, false)
+    if (flash && !torchHeld) setTorch(camera, lit)
+    if (!lit && boost) setBoost(camera, lowLightBoost)
   }
 
   /**

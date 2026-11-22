@@ -61,6 +61,14 @@ abstract class HybridDocumentScannerProcessorSpec: HybridObject() {
   @DoNotStrip
   @Keep
   abstract fun copyText(text: String): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun setDiagnosticsEnabled(on: Boolean): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun exportDiagnosticsResult(): Promise<Variant_String_ScannerFailure>
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

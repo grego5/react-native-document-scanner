@@ -10,12 +10,6 @@ internal data class CameraFrameState(
   val afState: Int? = null,
   val opticalStabilization: Boolean? = null,
   val focusDiopters: Float? = null,
-  /** Autofocus was off: the lens is fixed rather than unknown once [outOfFocus] says it stopped. */
-  val manualFocus: Boolean = false,
-  /** The lens distance the frame's capture request asked for with autofocus off, or null. */
-  val requestedDiopters: Float? = null,
-  /** The result reported LENS_STATE; without it, [outOfFocus] cannot say the lens is moving. */
-  val lensStateReported: Boolean = false,
   /** As of this frame, the sensor time of the frame on which autofocus last reached focus or a lock, or null. */
   val focusReachedSensorNs: Long? = null,
   /** Raw CONTROL_AE_STATE and CONTROL_AWB_STATE, which zero-shutter-lag buffering requires converged. */
@@ -59,6 +53,9 @@ internal fun motionBlur(gyro: GyroHistory, optics: LiveCameraOptics, fromNs: Lon
 /** One 200 Hz gyroscope period, so a short exposure still spans at least one sample. */
 internal const val GYRO_MARGIN_NS = 5_000_000L
 
+/** The span before a frame whose peak gyroscope rate is its framing speed: one frame interval at 30 fps. */
+internal const val SPEED_SPAN_NS = 33_333_333L
+
 /** Which estimate a motion gate judged. */
 internal enum class MotionSource { FLOW, GYRO }
 
@@ -71,14 +68,3 @@ internal data class GateMotion(val blur: Double, val source: MotionSource, val l
 internal fun flowBlur(estimate: FlowMotionEstimate, exposureNs: Long): Double? =
   NativeMotion.gateNative(estimate.speedPxPerSecond?.let { doubleArrayOf(it) }, estimate.sourceWidth,
     estimate.lostRegions, exposureNs, null)?.first()
-
-/** This frame's blur from its measured [flow], otherwise its [gyroBlur]. Both estimates describe the same exposure;
- * capture checks the completed frame record's age separately. Null when neither source knows.
- */
-internal fun gateMotion(
-  flow: FlowMotionEstimate?, exposureNs: Long, gyroBlur: Double?,
-): GateMotion? {
-  val result = NativeMotion.gateNative(flow?.speedPxPerSecond?.let { doubleArrayOf(it) }, flow?.sourceWidth ?: 1,
-    flow?.lostRegions ?: 0, exposureNs, gyroBlur?.let { doubleArrayOf(it) }) ?: return null
-  return GateMotion(result[0], MotionSource.entries[result[1].toInt()], result[2].toInt())
-}

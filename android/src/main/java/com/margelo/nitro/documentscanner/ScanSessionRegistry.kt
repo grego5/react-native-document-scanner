@@ -1,7 +1,6 @@
 package com.margelo.nitro.documentscanner
 
 import android.net.Uri
-import android.util.Log
 import com.margelo.nitro.documentscanner.processing.SampleCollection
 import java.io.File
 import java.util.concurrent.CompletableFuture
@@ -124,7 +123,7 @@ internal class ScanSessionRegistry(
         PageThumbnails.forget(paths.map { Uri.fromFile(it).toString() })
         SampleCollection.forget(paths.map { it.name })
       },
-      { error -> Log.w("RNDocumentScanner", "Session resource cleanup failed.", error) },
+      { error -> ScannerLog.w("RNDocumentScanner", "Session resource cleanup failed.", error) },
     )
   }
 }

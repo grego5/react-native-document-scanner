@@ -1,6 +1,5 @@
 package com.margelo.nitro.documentscanner
 
-import android.util.Log
 import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -201,7 +200,7 @@ internal class ScannerWorkQueue(
   companion object {
     private fun shared(name: String) = ScannerWorkQueue(
       Executors.newSingleThreadExecutor { task -> Thread(task, name).apply { isDaemon = true } },
-      { error -> Log.e("RNDocumentScanner", "Scanner queue callback failed.", error) },
+      { error -> ScannerLog.e("RNDocumentScanner", "Scanner queue callback failed.", error) },
     )
 
     val images: ScannerWorkQueue = shared("DocumentScannerImages")

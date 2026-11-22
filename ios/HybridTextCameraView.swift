@@ -709,6 +709,7 @@ final class TextRegionOverlay: UIView {
     self.guide = guide
     self.highlight = highlight
     crosshair.strokeColor = color.cgColor
+    crosshair.fillColor = color.cgColor
     textOutline.fillColor = color.withAlphaComponent(0.35).cgColor
     setNeedsLayout()
   }
@@ -758,23 +759,12 @@ final class TextRegionOverlay: UIView {
       crosshair.path = line.cgPath
       return
     }
-    if guide == .brackets {
-      let arm = min(14, rect.width / 4, rect.height / 3)
-      let path = UIBezierPath()
-      path.move(to: CGPoint(x: rect.minX, y: rect.minY + arm))
-      path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-      path.addLine(to: CGPoint(x: rect.minX + arm, y: rect.minY))
-      path.move(to: CGPoint(x: rect.maxX - arm, y: rect.minY))
-      path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-      path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + arm))
-      path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - arm))
-      path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-      path.addLine(to: CGPoint(x: rect.maxX - arm, y: rect.maxY))
-      path.move(to: CGPoint(x: rect.minX + arm, y: rect.maxY))
-      path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-      path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - arm))
+    if guide == .dot {
+      // The layer fills what it strokes; the other guides are open lines with nothing to fill.
+      let radius = 3.5
       crosshair.frame = bounds
-      crosshair.path = path.cgPath
+      crosshair.path = UIBezierPath(ovalIn: CGRect(x: rect.midX - radius, y: rect.midY - radius,
+                                                   width: radius * 2, height: radius * 2)).cgPath
       return
     }
     // The point readings are chosen nearest to.

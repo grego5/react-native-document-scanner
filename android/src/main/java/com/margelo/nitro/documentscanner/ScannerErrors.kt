@@ -1,6 +1,5 @@
 package com.margelo.nitro.documentscanner
 
-import android.util.Log
 import com.margelo.nitro.core.Promise
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
@@ -27,7 +26,7 @@ internal fun scannerFailure(error: Throwable, fallback: ScannerErrorCode): Scann
     is InvalidInputException -> ScannerErrorCode.INPUT_INVALID
     else -> fallback
   }
-  Log.w("RNDocumentScanner", code.name, error)
+  ScannerLog.w("RNDocumentScanner", code.name, error)
   return ScannerFailure(code)
 }
 

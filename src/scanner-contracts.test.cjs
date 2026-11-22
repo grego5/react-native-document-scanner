@@ -53,6 +53,8 @@ test('utility facade keeps typed sample controls separate from explicit session 
     setSampleCollection: (on) => { calls.push(['collect', on]); folder = { ...folder, collecting: on } },
     clearSampleFolder: () => { folder = { collecting: false } },
     copyText: (text) => { calls.push(['copy', text]) },
+    setDiagnosticsEnabled: (on) => { calls.push(['diagnostics', on]) },
+    exportDiagnosticsResult: async () => ({ uri: 'file:///diagnostics.txt' }),
   }
   const { DocumentScanner } = load('src/index.ts', {
     'react-native': { Platform: { OS: 'android' } },
@@ -67,10 +69,12 @@ test('utility facade keeps typed sample controls separate from explicit session 
   DocumentScanner.clearSampleFolder()
   assert.deepEqual(DocumentScanner.getSampleFolder(), { collecting: false })
   DocumentScanner.copyText('SN-42')
-  assert.deepEqual(calls, [['folder', 'file:///samples'], ['collect', true], ['copy', 'SN-42']])
+  DocumentScanner.setDiagnosticsEnabled(true)
+  assert.deepEqual(await DocumentScanner.exportDiagnostics(), { uri: 'file:///diagnostics.txt' })
+  assert.deepEqual(calls, [['folder', 'file:///samples'], ['collect', true], ['copy', 'SN-42'], ['diagnostics', true]])
   assert.deepEqual(Object.keys(DocumentScanner).sort(), [
-    'clearSampleFolder', 'copyText', 'createSession', 'getSampleFolder', 'pickSampleFolder', 'setSampleCollection', 'setSampleFolder',
-    'waitForCornerDetectionModel',
+    'clearSampleFolder', 'copyText', 'createSession', 'exportDiagnostics', 'getSampleFolder', 'pickSampleFolder',
+    'setDiagnosticsEnabled', 'setSampleCollection', 'setSampleFolder', 'waitForCornerDetectionModel',
   ].sort())
 })
 
@@ -522,6 +526,7 @@ test('scanner creates only after commit, replaces sessions on New scan and close
     '../components/OptionsPanel': { DEFAULT_TUNING: {} }, '../components/PrimaryButton': {},
     '../components/ReviewPanel': {}, '../components/SheetModal': {}, '../components/ShutterButton': {},
     '../components/ActionButton': {}, '../components/TextScanPanel': {}, '../hooks/useScanReview': {}, '../lib/errorMessage': {},
+    '../lib/diagnostics': { diagnosticsAvailable: false, shareDiagnostics() {} },
     '../lib/labels': load('example/lib/labels.ts'),
     '../lib/pdfExports': { removeOldPdfExports() {} }, '../lib/settings': { loadSettings: d => d, saveSettings() {} }, '../lib/scanSession': appModel, '../styles': { styles: {} },
   }).default
@@ -1447,7 +1452,7 @@ test('text camera sends concrete defaults and maps empty readings to undefined',
   assert.equal(view.props.textRegion, DEFAULT_TEXT_REGION)
   assert.equal(view.props.textGuide, 'none')
   assert.equal(TextCamera({ textGuide: 'line' }, {}).props.textGuide, 'line')
-  assert.equal(TextCamera({ textGuide: 'brackets' }, {}).props.textGuide, 'brackets')
+  assert.equal(TextCamera({ textGuide: 'dot' }, {}).props.textGuide, 'dot')
   assert.equal(TextCamera({ textGuide: 'native' }, {}).props.textGuide, 'native')
   assert.equal(view.props.guideColor, 0xffff0000)
   assert.equal(view.props.allowedCharacters, '')

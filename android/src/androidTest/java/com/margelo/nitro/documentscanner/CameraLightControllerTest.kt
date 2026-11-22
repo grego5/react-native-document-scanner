@@ -51,8 +51,9 @@ class CameraLightControllerTest {
       h.policy.light()
       h.apply(TorchMode.AUTO, boost = true)
       assertEquals(listOf(true),h.commands); assertTrue(h.boosts.isEmpty())
+      // The torch is lit, so the boost CameraX would trade it for is asked off rather than on.
       h.capture = false; h.apply(TorchMode.AUTO, boost = true)
-      assertEquals(1,h.boosts.size)
+      assertEquals(listOf(false),h.boosts)
     }
   }
   @Test fun autoLatchDuringCaptureIsAppliedLaterAndReadinessUsesHardwareEvidence() = main {
@@ -112,20 +113,23 @@ class CameraLightControllerTest {
       assertEquals(true,h.controller.torchLit); assertEquals(1,h.settled)
     }
   }
-  @Test fun torchChangesDoNotResendBoostAndBothSettingsDeferDuringCapture() = main {
+  @Test fun theBoostWaitsWhileTheTorchIsLitAndBothSettingsDeferDuringCapture() = main {
     Harness().use { h ->
       h.boostSupported = true
       h.apply(TorchMode.AUTO, boost = true)
-      assertEquals(listOf("boost=true", "torch=false"), h.order)
+      assertEquals(listOf("torch=false", "boost=true"), h.order)
       h.completeAll()
       h.policy.observe(0, 66_000_000, 1600)
       h.policy.observe(1_000_000_000, 66_000_000, 1600)
       h.apply(TorchMode.AUTO, boost = true)
       h.completeAll()
+      // CameraX keeps only the last of the two on: the boost goes off before the torch lights.
+      assertEquals(listOf("torch=false", "boost=true", "boost=false", "torch=true"), h.order)
       h.capture = true; h.apply(TorchMode.OFF, boost = true)
-      assertEquals(3, h.order.size)
+      assertEquals(4, h.order.size)
+      // And the torch goes off before the boost returns.
       h.capture = false; h.apply(TorchMode.OFF, boost = true)
-      assertEquals(listOf("boost=true", "torch=false", "torch=true", "torch=false"), h.order)
+      assertEquals(listOf("torch=false", "boost=true", "boost=false", "torch=true", "torch=false", "boost=true"), h.order)
       assertTrue(h.controller.pending)
       h.completeAll()
       assertFalse(h.controller.pending)

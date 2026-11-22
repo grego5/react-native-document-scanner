@@ -52,4 +52,12 @@ class RecognitionPaceTest {
     pace.reset()
     assertFalse(pace.settled)
   }
+
+  @Test fun aLostOutlineReturnsToTheFullRate() {
+    val pace = RecognitionPace()
+    repeat(RecognitionPace.SETTLED_AGREEMENT) { pace.recognized("A", "A", null) }
+    assertTrue(pace.settled)
+    pace.lost()
+    assertFalse(pace.settled)
+  }
 }

@@ -8,7 +8,7 @@
 
 ## Live guide traces
 
-For intermittent preview issues on Android 10 and later, build the example's `assembleRelease` with `-PdocumentScannerStandaloneTrace=true`. The APK runs without Metro or ADB. In Scanner mode with Camera stats visible, tap **Save last 15s trace** immediately after the issue. The trace goes to Downloads as a pixel-free TSV. Match repeating Camera2 requests and results to detector decisions by sensor timestamp. A one-shot CameraX request can fall outside that callback. App commands and guide expiry use the device's elapsed clock, and expiry includes the guide acceptance ID.
+For issues on testers' devices, use the example's release APK: it turns diagnostics on at launch, and **Share log** at the bottom of the camera and text screens sends the export through the share sheet right after the issue. The export holds the recent log lines and each mounted document camera's last 15 s trace, pixel-free. Match repeating Camera2 requests and results to detector decisions by sensor timestamp. A one-shot CameraX request can fall outside that callback. App commands and guide expiry use the device's elapsed clock, and expiry includes the guide acceptance ID.
 
 `LiveGuideTraceRecordingTest` records pixel-free TSV through instrumentation with `-Measure`. Enable `liveGuideCapture` only for a human-tapped shutter. Pull the test app's `files/live-guide-traces` into ignored `.local/`. Replay through `LiveGuideTraceReplayTest` with `-Argument liveGuideTrace=<device-path>`. The trace must match the current schema; exact guide equality requires matching config. Replay reuses recorded flow and cannot validate different feature tracking or the actual paper boundary.
 
@@ -16,5 +16,5 @@ For intermittent preview issues on Android 10 and later, build the example's `as
 ## Focus and OCR checks
 
 - Document focus: check a bright press on an existing page lock and a dim press that reaches torch recovery. Match torch request, confirmation and lit frames to the press outcome. Include guide dropout during a lens search and app suspension during a wait.
-- Text focus: check tap takeover, a region change during a search, initial zoom, rapid return to a previous zoom, and refusal. Compare the first admitted OCR frame with capture-result zoom and sensor time. Use different text in the two fields of view so stale readings are visible.
-- Debug tag `RNDocumentScannerText` records lens steps, sharpness and motion, zoom confirmation and frame admission, delivered analyzer rate, scoring cost and recognition cost. Use a fixed scene at different recognition rates to isolate analyzer contention.
+- Text focus: check tap takeover, a region change during a lock's scan, initial zoom, rapid return to a previous zoom, and refusal. Compare the first admitted OCR frame with capture-result zoom and sensor time. Use different text in the two fields of view so stale readings are visible.
+- Debug tag `RNDocumentScannerText` records each focus lock with its reason (`text focus lock for …`), its release (`text focus lock released: …`), lost and resent triggers, turns, zoom confirmation and frame admission, and delivered analyzer rate against camera frames with the longest analyzer gap and recognition cost. Use a fixed scene at different recognition rates to isolate analyzer contention.

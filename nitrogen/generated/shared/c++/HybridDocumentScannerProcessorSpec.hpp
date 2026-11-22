@@ -67,6 +67,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setSampleCollection(bool on) = 0;
       virtual void setSampleFolder(const std::string& uri) = 0;
       virtual void copyText(const std::string& text) = 0;
+      virtual void setDiagnosticsEnabled(bool on) = 0;
+      virtual std::shared_ptr<Promise<std::variant<std::string, ScannerFailure>>> exportDiagnosticsResult() = 0;
 
     protected:
       // Hybrid Setup

@@ -31,6 +31,7 @@ import { SheetModal } from '../components/SheetModal';
 import { TextScanPanel } from '../components/TextScanPanel';
 import { ShutterButton } from '../components/ShutterButton';
 import { ActionButton } from '../components/ActionButton';
+import { diagnosticsAvailable, shareDiagnostics } from '../lib/diagnostics';
 import { useScanReview } from '../hooks/useScanReview';
 import { errorMessage } from '../lib/errorMessage';
 import { removeOldPdfExports } from '../lib/pdfExports';
@@ -376,6 +377,14 @@ export function ScanScreen({
                   onPress={importFromGallery}
                 />
                 <ActionButton label="Options" disabled={busy} onPress={() => setOptionsOpen(true)} />
+                {diagnosticsAvailable && (
+                  <ActionButton
+                    label="Share log"
+                    accessibilityHint="Sends the scanner's recent log and camera trace through the share sheet."
+                    disabled={capturing}
+                    onPress={shareDiagnostics}
+                  />
+                )}
               </View>
             </View>
           </View>

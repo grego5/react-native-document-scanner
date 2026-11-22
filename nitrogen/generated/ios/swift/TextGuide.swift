@@ -23,8 +23,8 @@ public extension TextGuide {
         self = .crosshair
       case "line":
         self = .line
-      case "brackets":
-        self = .brackets
+      case "dot":
+        self = .dot
       default:
         return nil
     }
@@ -41,8 +41,8 @@ public extension TextGuide {
         return "crosshair"
       case .line:
         return "line"
-      case .brackets:
-        return "brackets"
+      case .dot:
+        return "dot"
     }
   }
 }

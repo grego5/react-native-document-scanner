@@ -7,7 +7,8 @@ import kotlin.math.abs
  * new text, but once [SETTLED_AGREEMENT] in a row have read the agreed text and the view holds still, more add little,
  * so it slows to one each [SETTLED_INTERVAL_MS], which still notices text that changes without the camera moving. It
  * returns to the full rate when a recognition disagrees, the agreed text's outline moves past [MOVE_HEIGHTS] of its
- * height or [MOVE_WIDTHS] of its width since the last recognition, or main wakes it, as after a turn or a lens search.
+ * height or [MOVE_WIDTHS] of its width since the last recognition, its outline is lost, or main wakes it, as after a
+ * turn.
  */
 internal class RecognitionPace {
   private var streak = 0
@@ -39,6 +40,11 @@ internal class RecognitionPace {
     val dx = abs((box.x + box.width / 2) - (from.x + from.width / 2))
     val dy = abs((box.y + box.height / 2) - (from.y + from.height / 2))
     if (dx > from.width * MOVE_WIDTHS || dy > from.height * MOVE_HEIGHTS) streak = 0
+  }
+
+  /** The agreed text's outline was lost, as when flow cannot follow the frame: a recognition must place it again. */
+  fun lost() {
+    streak = 0
   }
 
   /** New votes, as after a region, filter or binding change. */

@@ -57,7 +57,8 @@ export type CameraCaptureState = 'unavailable' | 'ready' | 'waiting' | 'shooting
 
 /**
  * Capture readiness checks. Motion blur is measured as a percentage of frame width over the exposure; on Android
- * optical flow falls back to gyroscope motion when available, while iOS treats low-texture motion as unknown. iOS
+ * the gyroscope measures it, and the gyroscope and accelerometer the framing's steadiness, since optical flow over soft
+ * or dark frames reads motion a still hand does not make; without a gyroscope neither is checked. iOS treats low-texture motion as unknown. iOS
  * judges focus from whether the lens is still, since AVFoundation reports no focus result.
  */
 export interface LowQualityControl {
@@ -150,18 +151,18 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   tapToFocus?: boolean
   /**
-   * Locks focus while the camera holds steady, cycling once per steady hold; the gyroscope showing the phone turning
-   * ends the lock and starts the cycle over. A detected page gets a lock held until it is out of view for a second.
-   * With no page found once the phone is steady, as when it is too blurred to detect, the frame's centre is locked
-   * for 5 seconds, and a page found meanwhile takes the lock over;
-   * if still no page is found, or a lock fails, the torch lights when `torch` is `auto` (it then stays lit like the auto
-   * torch) for one more lock at the page or the centre; then the cycle gives up until the phone turns, moves and holds
-   * steady again, or a page arrives anew. Between locks the lens stays where the last one put it; a page lock focuses
-   * by scoring the print at nearby lens distances, starting from where this camera's last lock was sharp, which is
-   * remembered across launches. A `zsl` capture mode binds as `latency` meanwhile, since the zero-shutter-lag buffer
-   * takes only frames reporting autofocus focused. A tap takes over meanwhile. A gated photo that requires focus waits
-   * for the cycle's lock rather than continuous autofocus, within the budget `requireFocus` describes; when the cycle
-   * gives up, the photo runs one final autofocus scan. Android only; the native view defaults to false,
+   * Manages focus while the camera holds steady, cycling once per steady hold; the gyroscope showing the phone turning
+   * or the motion sensors showing it moving ends a lock and starts the cycle over. Continuous autofocus follows a
+   * detected page while the phone moves, but may report focus on a nearer object, so on a steady hold its settling, or
+   * its reporting no focus, starts the camera's own locking scan, which confirms it, held until the page is out of view
+   * for a second. The lock also runs in a dark scene. A photo of a page always waits for a lock, and shoots at once on a
+   * held one. With no page found once the phone is steady in the dark, or with
+   * continuous autofocus reporting no focus, the frame's centre is locked for 5 seconds, and a page found meanwhile takes
+   * the lock over; if still no page is found, or a lock fails, the torch lights when `torch` is `auto` (it then stays lit
+   * like the auto torch) for one more lock at the page or the centre; then the cycle gives up until the phone turns,
+   * moves and holds steady again, or a page arrives anew. A tap takes over meanwhile. A gated photo that requires focus
+   * waits for the cycle: an accepted lock, or continuous focus outside the dark when no page is required, within the budget `requireFocus` describes; when
+   * the cycle gives up, the photo runs one final autofocus scan. Android only; the native view defaults to false,
    * and `Camera` turns it on in document mode.
    */
   focusLock?: boolean

@@ -7,9 +7,10 @@ import com.margelo.nitro.documentscanner.DocumentCorners
  * Analysis results used to check capture readiness for one frame. [sensorNs] is its exposure start;
  * [realtimeSensorNs] is the same instant on elapsedRealtimeNanos() when camera timestamps are REALTIME, else null.
  * [arrivalNs] is System.nanoTime() when analysis received it. [frame] is its own capture result, null when that had
- * not arrived. [flow] is the motion from the previous analyzed frame, null without flow. [motion] is this exposure's
- * blur estimate and its source, null when unknown. [gyroSpeed] is the rotation speed over the flow interval as frame
- * widths per second, calculated only for the low-texture fallback.
+ * not arrived. [flow] is the motion from the previous analyzed frame, null without flow; it carries the guide only.
+ * [motion] is this exposure's gyroscope blur, null when unknown. [gyroSpeed] is the gyroscope's peak rotation speed
+ * over the frame interval before it, as frame widths per second, null without the gyroscope. [acceleration] is the
+ * accelerometer's peak linear acceleration (m/s²) over that span, null without its samples.
  * [guide] is the confirmed, in-frame page outline after this frame, null while none is tracked.
  */
 internal data class FrameRecord(
@@ -21,6 +22,7 @@ internal data class FrameRecord(
   val flow: FlowMotionEstimate?,
   val motion: GateMotion?,
   val gyroSpeed: Double?,
+  val acceleration: Double?,
   val guide: DocumentCorners?,
   val inferenceFinished: Boolean = false,
 ) {
