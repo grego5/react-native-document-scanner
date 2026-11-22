@@ -139,7 +139,7 @@ class CameraLightControllerTest {
     Harness().use { h ->
       h.boostSupported = true
       fun fallback(atBind: Boolean = false) = h.controller.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,true,true,
-        dark = true, whiteBalanceUnsettled = false, atBind = atBind)
+        dark = true, whiteBalanceUnsettled = false, atBind = atBind, darkLatency = true)
       assertNull(fallback(atBind = true))
       h.apply(TorchMode.OFF, boost = true); h.boostFutures.last().fail()
       assertEquals(1,h.refused)
@@ -173,7 +173,10 @@ class CameraLightControllerTest {
       assertNull(c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,false,false,false,false,true))
       // A working boost lights a dark scene; nothing else does without a torch.
       assertNull(c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,true,true,true,false,true))
-      assertEquals(LightFallback.DARK,c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,true,false,true,false,true))
+      // Darkness binds `latency` only when `darkLatency` asks for it.
+      assertNull(c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,true,false,true,false,true))
+      assertEquals(LightFallback.DARK,c.zslFallback(CaptureMode.ZSL,TorchMode.OFF,false,true,true,false,true,false,true,
+        darkLatency = true))
     }
   }
   @Test fun aStarvedBufferHoldsLatencyAcrossBindsButNeverOverridesAnExplicitMode() = main {

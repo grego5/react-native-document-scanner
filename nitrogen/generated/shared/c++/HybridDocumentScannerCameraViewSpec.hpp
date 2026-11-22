@@ -132,6 +132,8 @@ namespace margelo::nitro::documentscanner {
       virtual void setLowLightBoost(std::optional<bool> lowLightBoost) = 0;
       virtual std::optional<CaptureMode> getCaptureMode() = 0;
       virtual void setCaptureMode(std::optional<CaptureMode> captureMode) = 0;
+      virtual std::optional<bool> getDarkLatency() = 0;
+      virtual void setDarkLatency(std::optional<bool> darkLatency) = 0;
       virtual std::optional<bool> getHighResolutionPhoto() = 0;
       virtual void setHighResolutionPhoto(std::optional<bool> highResolutionPhoto) = 0;
       virtual std::optional<double> getGuideTransitionDuration() = 0;

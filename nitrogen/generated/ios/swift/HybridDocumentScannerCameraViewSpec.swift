@@ -28,6 +28,7 @@ public protocol HybridDocumentScannerCameraViewSpec_protocol: HybridObject, Hybr
   var torch: TorchMode? { get set }
   var lowLightBoost: Bool? { get set }
   var captureMode: CaptureMode? { get set }
+  var darkLatency: Bool? { get set }
   var highResolutionPhoto: Bool? { get set }
   var guideTransitionDuration: Double? { get set }
   var analysisFrameWidth: Double? { get set }

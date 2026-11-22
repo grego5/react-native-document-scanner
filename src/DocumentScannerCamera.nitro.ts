@@ -194,6 +194,13 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   captureMode?: CaptureMode
   /**
+   * Experimental, Android only: binds `latency` for `zsl` in a sustained dark scene with the torch off and no working
+   * low-light boost. Defaults to false: a page press waits for its focus lock and for the newest frame the zero shutter
+   * lag buffer accepts, which keeps frames from before the focus scan out of the photo. A comparison switch that may
+   * be removed.
+   */
+  darkLatency?: boolean
+  /**
    * The photo size for text, preferring 4:3 within 4096 px and 12.6 MP, widest short side first; other aspects
    * are binding fallbacks. Defaults to true. On Android that
    * includes the sizes the camera lists as high-resolution (below 20 fps, generally without zero shutter lag) when no

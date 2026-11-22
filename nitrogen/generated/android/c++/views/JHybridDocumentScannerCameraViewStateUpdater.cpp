@@ -144,6 +144,11 @@ void JHybridDocumentScannerCameraViewStateUpdater::updateViewProps(jni::alias_re
     hybridView->setCaptureMode(newProps->captureMode.get());
   }
   if (oldProps == nullptr
+        ? newProps->darkLatency.isProvided()
+        : !newProps->darkLatency.hasSameValue(oldProps->darkLatency)) {
+    hybridView->setDarkLatency(newProps->darkLatency.get());
+  }
+  if (oldProps == nullptr
         ? newProps->highResolutionPhoto.isProvided()
         : !newProps->highResolutionPhoto.hasSameValue(oldProps->highResolutionPhoto)) {
     hybridView->setHighResolutionPhoto(newProps->highResolutionPhoto.get());

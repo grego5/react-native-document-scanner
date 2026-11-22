@@ -74,6 +74,7 @@ namespace margelo::nitro::documentscanner::views {
     nitro::ReactProp<std::optional<TorchMode>> torch;
     nitro::ReactProp<std::optional<bool>> lowLightBoost;
     nitro::ReactProp<std::optional<CaptureMode>> captureMode;
+    nitro::ReactProp<std::optional<bool>> darkLatency;
     nitro::ReactProp<std::optional<bool>> highResolutionPhoto;
     nitro::ReactProp<std::optional<double>> guideTransitionDuration;
     nitro::ReactProp<std::optional<double>> analysisFrameWidth;
@@ -111,6 +112,7 @@ namespace margelo::nitro::documentscanner::views {
              torch.hasSameValue(other.torch) &&
              lowLightBoost.hasSameValue(other.lowLightBoost) &&
              captureMode.hasSameValue(other.captureMode) &&
+             darkLatency.hasSameValue(other.darkLatency) &&
              highResolutionPhoto.hasSameValue(other.highResolutionPhoto) &&
              guideTransitionDuration.hasSameValue(other.guideTransitionDuration) &&
              analysisFrameWidth.hasSameValue(other.analysisFrameWidth) &&
@@ -149,6 +151,7 @@ namespace margelo::nitro::documentscanner::views {
              torch.isProvided() ||
              lowLightBoost.isProvided() ||
              captureMode.isProvided() ||
+             darkLatency.isProvided() ||
              highResolutionPhoto.isProvided() ||
              guideTransitionDuration.isProvided() ||
              analysisFrameWidth.isProvided() ||

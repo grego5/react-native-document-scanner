@@ -16,7 +16,7 @@
 ### Light and ZSL
 
 - `CameraLightController` owns torch and boost commands and confirmations. Auto torch latches for the run and shares that decision with focus recovery. With latency bound it may light while a press waits. With ZSL bound it waits for capture settlement. Manual torch, boost and exposure changes defer during a pending capture. CameraX keeps only the last set of torch and boost on, so the boost is asked off while the torch is lit and on again once it is off.
-- CameraX owns ZSL frame selection. Gated ZSL checks buffer eligibility even with optional focus, subject to the fixed-focus exception. Held-lens focus, torch, sustained white-balance instability and darkness without boost can bind latency. A buffer-starved capture can trigger one latency fallback for the view lifetime. Other light fallbacks are reconsidered on later bindings.
+- CameraX owns ZSL frame selection. Gated ZSL checks buffer eligibility even with optional focus, subject to the fixed-focus exception. Held-lens focus, torch and sustained white-balance instability can bind latency; darkness without boost does only with the experimental `darkLatency` prop, off by default, since a page press waits for its focus lock and for the newest frame the buffer accepts, which keeps frames from before the scan out of the photo. A buffer-starved capture can trigger one latency fallback for the view lifetime. Other light fallbacks are reconsidered on later bindings.
 
 ## Text camera
 

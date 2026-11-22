@@ -272,6 +272,13 @@ namespace margelo::nitro::documentscanner {
     inline void setCaptureMode(std::optional<CaptureMode> captureMode) noexcept override {
       _swiftPart.setCaptureMode(captureMode);
     }
+    inline std::optional<bool> getDarkLatency() noexcept override {
+      auto __result = _swiftPart.getDarkLatency();
+      return __result;
+    }
+    inline void setDarkLatency(std::optional<bool> darkLatency) noexcept override {
+      _swiftPart.setDarkLatency(darkLatency);
+    }
     inline std::optional<bool> getHighResolutionPhoto() noexcept override {
       auto __result = _swiftPart.getHighResolutionPhoto();
       return __result;

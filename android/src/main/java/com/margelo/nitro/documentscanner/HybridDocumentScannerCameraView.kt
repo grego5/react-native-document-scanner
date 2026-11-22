@@ -595,6 +595,7 @@ open class HybridDocumentScannerCameraView(
   override var torch: TorchMode? = null
   override var lowLightBoost: Boolean? = null
   override var captureMode: CaptureMode? = null
+  override var darkLatency: Boolean? = null
   override var highResolutionPhoto: Boolean? = null
   override var guideTransitionDuration: Double? = null
   override var analysisFrameWidth: Double? = null
@@ -637,7 +638,7 @@ open class HybridDocumentScannerCameraView(
     } else if (old.lowLightBoost != next.lowLightBoost) {
       applyLight()
     }
-    // In a dark scene, the torch and the boost decide whether `zsl` binds `latency`.
+    // In a dark scene, the torch, the boost and `darkLatency` decide whether `zsl` binds `latency`.
     val lightChangesMode = bound?.let { captureModeFor(next, it).first != it.captureMode } == true
     liveDetector.statsListener = if (next.showStats) ::renderStats else null
     focusBoxOverlay.visibility = if (next.showFocusIndicator) View.VISIBLE else View.GONE
@@ -771,6 +772,7 @@ open class HybridDocumentScannerCameraView(
       squareAspectRatio = squareAspectRatio ?: false,
       analysisFrameWidth = analysisFrameWidth?.toInt()?.coerceIn(160, 1920) ?: DEFAULT_ANALYSIS_WIDTH,
       captureMode = captureMode ?: CaptureMode.ZSL,
+      darkLatency = darkLatency ?: false,
       highResolutionPhoto = highResolutionPhoto ?: true,
       showStats = showStats ?: false,
       showFocusIndicator = showFocusIndicator ?: true,
@@ -2458,7 +2460,7 @@ open class HybridDocumentScannerCameraView(
       Triple(torchPolicy.lit, darkScene.dark, whiteBalance.unsettled)
     }
     val fallback = light.zslFallback(props.captureMode, props.torch, autoLit, hasFlash, props.lowLightBoost,
-      lowLightBoostSupported, dark, unsettled, atBind)
+      lowLightBoostSupported, dark, unsettled, atBind, props.darkLatency)
     return (if (fallback != null) CaptureMode.LATENCY else props.captureMode) to fallback
   }
 
@@ -2622,6 +2624,8 @@ private data class ResolvedProps(
   val analysisFrameWidth: Int,
   val squareAspectRatio: Boolean,
   val captureMode: CaptureMode,
+  /** The experimental `darkLatency` prop: a dark scene binds `latency` for `zsl`. */
+  val darkLatency: Boolean,
   /** The photo takes the size for text, from the camera's high-resolution sizes too; otherwise the standard
    * 1440x1080-class photo. */
   val highResolutionPhoto: Boolean,

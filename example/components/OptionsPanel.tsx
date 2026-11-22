@@ -1,4 +1,4 @@
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { Alert, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import {
   DocumentScanner,
   type CameraFeatureSupport,
@@ -26,6 +26,8 @@ export interface LiveTuning {
   lowLightBoost: boolean
   captureFeedback: boolean
   captureMode: CaptureMode
+  /** Android only, experimental: a dark scene binds `latency` for `zsl`, to compare against zero shutter lag. */
+  darkLatency: boolean
   /** Locks focus while the camera holds steady: the page, or the centre and then the torch while none is found. */
   focusLock: boolean
 }
@@ -48,6 +50,7 @@ export const DEFAULT_TUNING: LiveTuning = {
   lowLightBoost: true,
   captureFeedback: true,
   captureMode: CAPTURE_MODES[0],
+  darkLatency: false,
   focusLock: true,
 }
 
@@ -122,7 +125,7 @@ export function OptionsPanel({
 }) {
   const set = (update: Partial<LiveTuning>) => onChange((t) => ({ ...t, ...update }))
   const flag = (label: string, key: keyof LiveTuning & ('squareAspectRatio' | 'lowQualityControl' | 'inferenceThrottling' |
-    'lowLightBoost' | 'captureFeedback' | 'highResolutionPhoto' | 'showStats' | 'focusLock')): Option =>
+    'lowLightBoost' | 'captureFeedback' | 'highResolutionPhoto' | 'showStats' | 'focusLock' | 'darkLatency')): Option =>
     ({ label, on: tuning[key], toggle: () => set({ [key]: !tuning[key] }) })
   const cycle = <T,>(label: string, values: readonly T[], current: T, key: keyof LiveTuning, show: (value: T) => string): Option =>
     ({ label, value: show(current), changed: current !== values[0], next: () => set({ [key]: nextValue(values, current) }) })
@@ -133,6 +136,7 @@ export function OptionsPanel({
     cycle('Capture', supportsZsl ? CAPTURE_MODES : CAPTURE_MODES.slice(1),
       tuning.captureMode, 'captureMode', (mode) =>
         mode === 'zsl' && !supportsZsl ? (cameraFeatures ? 'ZSL unavailable' : 'ZSL unverified') : mode),
+    ...(Platform.OS === 'android' ? [flag('Dark latency', 'darkLatency')] : []),
     flag('Square', 'squareAspectRatio'),
     flag('Focus lock', 'focusLock'),
     flag('Throttle detection', 'inferenceThrottling'),

@@ -83,12 +83,16 @@ internal class CameraLightController(private val executor: Executor, private val
    * second and a restart after the press. The torch counts as lit with [mode] `on`, or `auto` once it decided to light
    * ([autoLit]) or was lit when the camera last stopped, on a camera with a [hasFlash] unit.
    *
+   * The dark cause applies only with [darkLatency], the experimental `darkLatency` prop: a page press now waits for its
+   * focus lock and for the newest frame the buffer accepts, which keeps frames from before the scan out of the photo.
+   *
    * A cause latches the fallback at once; only a bind ([atBind]) that finds none releases it. Switching to `latency`
    * is the safe direction and rebinds at once; switching back waits for a bind that happens anyway, such as the one after
    * each shot, so a page never costs two restarts.
    */
   fun zslFallback(requested: CaptureMode, mode: TorchMode, autoLit: Boolean, hasFlash: Boolean, lowLightBoost: Boolean,
-    boostSupported: Boolean, dark: Boolean, whiteBalanceUnsettled: Boolean, atBind: Boolean): LightFallback? {
+    boostSupported: Boolean, dark: Boolean, whiteBalanceUnsettled: Boolean, atBind: Boolean,
+    darkLatency: Boolean = false): LightFallback? {
     if (requested != CaptureMode.ZSL) return null
     val torchLit = hasFlash && (mode == TorchMode.ON || mode == TorchMode.AUTO && (autoLit || litAtStop))
     val unlit = mode == TorchMode.OFF && !(lowLightBoost && boostSupported && !boostRejected)
@@ -96,7 +100,7 @@ internal class CameraLightController(private val executor: Executor, private val
       torchLit -> LightFallback.TORCH
       whiteBalanceUnsettled -> LightFallback.WHITE_BALANCE
       starved -> LightFallback.STARVED_BUFFER
-      unlit && dark -> LightFallback.DARK
+      unlit && dark && darkLatency -> LightFallback.DARK
       else -> null
     }
     if (cause != null || atBind) fallback = cause

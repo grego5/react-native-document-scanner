@@ -335,6 +335,15 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JCaptureMode> /* captureMode */)>("setCaptureMode");
     method(_javaPart, captureMode.has_value() ? JCaptureMode::fromCpp(captureMode.value()) : nullptr);
   }
+  std::optional<bool> JHybridDocumentScannerCameraViewSpec::getDarkLatency() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getDarkLatency");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(static_cast<bool>(__result->value())) : std::nullopt;
+  }
+  void JHybridDocumentScannerCameraViewSpec::setDarkLatency(std::optional<bool> darkLatency) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JBoolean> /* darkLatency */)>("setDarkLatency");
+    method(_javaPart, darkLatency.has_value() ? jni::JBoolean::valueOf(darkLatency.value()) : nullptr);
+  }
   std::optional<bool> JHybridDocumentScannerCameraViewSpec::getHighResolutionPhoto() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getHighResolutionPhoto");
     auto __result = method(_javaPart);

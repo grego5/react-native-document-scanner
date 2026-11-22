@@ -206,6 +206,12 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.captureMode.hasSameValue(oldViewProps->captureMode)) {
       swiftPart.setCaptureMode(newViewProps.captureMode.get());
     }
+    // darkLatency: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.darkLatency.isProvided()
+          : !newViewProps.darkLatency.hasSameValue(oldViewProps->darkLatency)) {
+      swiftPart.setDarkLatency(newViewProps.darkLatency.get());
+    }
     // highResolutionPhoto: optional
     if (oldViewProps == nullptr
           ? newViewProps.highResolutionPhoto.isProvided()

@@ -57,6 +57,8 @@ final class HybridDocumentScannerCameraView: HybridDocumentScannerCameraViewSpec
   /// Android only; AVFoundation's low-light boost is not applied.
   var lowLightBoost: Bool? = nil
   var captureMode: CaptureMode? = nil
+  /// Android only; iOS chooses its still settings without a dark fallback.
+  var darkLatency: Bool? = nil
   /// The largest bounded still, for text; false takes the standard 1440x1080-class one.
   var highResolutionPhoto: Bool? = nil
   var guideTransitionDuration: Double? = nil

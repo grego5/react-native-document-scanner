@@ -148,6 +148,12 @@ abstract class HybridDocumentScannerCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
+  abstract var darkLatency: Boolean?
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
   abstract var highResolutionPhoto: Boolean?
   
   @get:DoNotStrip

@@ -324,7 +324,7 @@ test('saved camera modes migrate while other settings survive', () => {
 test('camera options require confirmed support for ZSL and low light boost', () => {
   const { OptionsPanel, DEFAULT_TUNING } = load('example/components/OptionsPanel.tsx', {
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'react-native': { Alert: {}, Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View' },
+    'react-native': { Alert: {}, Platform: { OS: 'android' }, Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View' },
     'react-native-document-scanner': {},
     '../lib/errorMessage': { errorMessage: String },
     '../styles': { styles: {} },

@@ -86,6 +86,8 @@ namespace margelo::nitro::documentscanner {
     void setLowLightBoost(std::optional<bool> lowLightBoost) override;
     std::optional<CaptureMode> getCaptureMode() override;
     void setCaptureMode(std::optional<CaptureMode> captureMode) override;
+    std::optional<bool> getDarkLatency() override;
+    void setDarkLatency(std::optional<bool> darkLatency) override;
     std::optional<bool> getHighResolutionPhoto() override;
     void setHighResolutionPhoto(std::optional<bool> highResolutionPhoto) override;
     std::optional<double> getGuideTransitionDuration() override;

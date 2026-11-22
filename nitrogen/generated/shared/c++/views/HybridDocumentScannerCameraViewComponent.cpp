@@ -39,6 +39,7 @@ namespace margelo::nitro::documentscanner::views {
     torch(nitro::ReactProp<std::optional<TorchMode>>::fromRawValue("DocumentScannerCameraView", "torch", rawProps, sourceProps.torch)),
     lowLightBoost(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "lowLightBoost", rawProps, sourceProps.lowLightBoost)),
     captureMode(nitro::ReactProp<std::optional<CaptureMode>>::fromRawValue("DocumentScannerCameraView", "captureMode", rawProps, sourceProps.captureMode)),
+    darkLatency(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "darkLatency", rawProps, sourceProps.darkLatency)),
     highResolutionPhoto(nitro::ReactProp<std::optional<bool>>::fromRawValue("DocumentScannerCameraView", "highResolutionPhoto", rawProps, sourceProps.highResolutionPhoto)),
     guideTransitionDuration(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "guideTransitionDuration", rawProps, sourceProps.guideTransitionDuration)),
     analysisFrameWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("DocumentScannerCameraView", "analysisFrameWidth", rawProps, sourceProps.analysisFrameWidth)),
@@ -80,6 +81,7 @@ namespace margelo::nitro::documentscanner::views {
       case hashString("torch"): return true;
       case hashString("lowLightBoost"): return true;
       case hashString("captureMode"): return true;
+      case hashString("darkLatency"): return true;
       case hashString("highResolutionPhoto"): return true;
       case hashString("guideTransitionDuration"): return true;
       case hashString("analysisFrameWidth"): return true;
