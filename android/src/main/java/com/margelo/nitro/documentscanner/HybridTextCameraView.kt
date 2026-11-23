@@ -59,7 +59,6 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.margelo.nitro.core.Promise
-import com.margelo.nitro.documentscanner.processing.DarkScenePolicy
 import com.margelo.nitro.documentscanner.processing.CameraOpticsReader
 import com.margelo.nitro.documentscanner.processing.FlowMotionEstimator
 import com.margelo.nitro.documentscanner.processing.FlowMotionStatus
@@ -69,7 +68,6 @@ import com.margelo.nitro.documentscanner.processing.LiveCameraOptics
 import com.margelo.nitro.documentscanner.processing.LiveFrameGeometry
 import com.margelo.nitro.documentscanner.processing.GyroscopeSource
 import kotlin.math.abs
-import kotlin.math.acos
 import kotlin.math.ln
 import kotlin.math.sqrt
 import kotlin.math.tan
@@ -186,13 +184,11 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private val pendingReads = mutableListOf<PendingRead>()
   /** Main thread, `focusLock`: when the camera's own locking scan runs, or null while continuous autofocus alone
    * follows the text. */
-  private var textCycle: TextFocusCycle? = null
+  private var textCycle: FocusCycle? = null
   /** Main thread: the bound camera, as [focus] holds it. */
   private var boundCamera: BoundCamera? = null
   /** Main thread: whether the bound camera offers single-shot autofocus, which locks are confirmed in. */
   private var hasSingleShotAutofocus = false
-  /** Camera thread: guards [darkScene]. */
-  private val frameLock = Any()
   /** Main thread: who holds the lens: the text lock, a tap, or nobody while continuous autofocus runs. */
   private val focus = FocusController(object : FocusController.Host {
     override val camera: BoundCamera? get() = boundCamera
@@ -202,6 +198,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     override fun postDelayed(delayMs: Long, block: () -> Unit) { mainHandler.postDelayed(block, delayMs) }
     override fun log(message: String) = this@HybridTextCameraView.log("text $message")
     override fun focusChanged(snapshot: FocusSnapshot) = updateAutofocus()
+    override fun scannerLockFailed(owner: FocusOwner) { textCycle?.let { follow(it.failed()) } }
     override val confirmsLockFrames get() = hasSingleShotAutofocus
   })
   private val zoomRequests = TextZoom()
@@ -221,18 +218,20 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   /** The sensor time of the first frame since [textCycle] started without motion samples, or 0. */
   private var sensorlessSinceNs = 0L
   private val gyroscope = GyroscopeSource(themedContext, GyroHistory())
+  private val hand = HandMotion(gyroscope.history, gyroscope.acceleration)
   /** The newest capture result's sensor time; written on a camera thread. */
   @Volatile private var latestCaptureNs = 0L
   /** The newest capture result's zoom ratio, and whether any result of this binding showed one; camera thread. */
   @Volatile private var latestZoomRatio: Float? = null
+  /** Camera thread: the newest frame's `LENS_FOCUS_DISTANCE` in diopters; null when unreported. */
+  @Volatile private var latestFocusDiopters: Float? = null
+  /** Main thread: the bound camera's depth of field; null without the lens and sensor sizes or calibrated focus. */
+  @Volatile private var depthOfField: DepthOfField? = null
   @Volatile private var zoomMeasured = false
   /** The zoom request whose first capture result at its ratio the camera thread watches for, then clears. */
   private val zoomWatch = AtomicReference<TextZoom.Request?>(null)
   /** The newest capture result's autofocus state, for the camera's own autofocus; written on a camera thread. */
   @Volatile private var cameraAfState: Int? = null
-  /** Camera thread, guarded by [frameLock]: whether auto exposure's exposure × ISO shows a dark scene. */
-  private val darkScene = DarkScenePolicy()
-  @Volatile private var sceneDark = false
   private val streamObserver = Observer<PreviewView.StreamState> { updateCameraState() }
   /** Set when the bound camera closed or failed to open; reads stay unavailable until the first fresh frame. */
   private var interrupted = false
@@ -447,14 +446,12 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
           info?.cameraCharacteristics?.let { if (CameraOpticsReader.sharesGyroClock(it)) CameraOpticsReader.read(it) else null }
         } catch (_: Exception) { null }
         log("camera optics=$cameraOptics")
+        depthOfField = try { info?.cameraCharacteristics?.let { DepthOfField.read(it) } } catch (_: Exception) { null }
+        log("depth of field $depthOfField")
         hasSingleShotAutofocus = try {
           info?.cameraCharacteristics?.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
             ?.contains(CameraCharacteristics.CONTROL_AF_MODE_AUTO) == true
         } catch (_: Exception) { false }
-        synchronized(frameLock) {
-          // The room's darkness outlives the binding, but a flip under way must not count the time without frames.
-          darkScene.interrupt()
-        }
         observeCameraState(next, bindGeneration)
         boundWidth = width
         layoutChildren()
@@ -830,16 +827,21 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   }
 
   /**
-   * Analysis thread: tells the focus cycle when the aimed [line] has changed size by [DISTANCE_SCALE] since it was
-   * first measured under the held lock: moving the phone nearer or farther scales the text, and past the lens's shallow
-   * depth of focus at reading distance it blurs, though a slow move straight back neither turns nor shakes the phone.
-   * Area scales by the square of distance whatever the view's aspect, so its root is the size ratio. The baseline is
-   * the mapped line itself, so moving onto another line, even the same text at another size, measures afresh.
+   * Analysis thread: tells the focus cycle when the aimed [line] has grown or shrunk past the depth of field around the
+   * distance the lock focused at since it was first measured under the held lock: moving the phone nearer or farther
+   * scales the text and blurs it, though a slow move straight back neither turns nor shakes the phone. The limit comes
+   * from the locked lens's focus distance, the lens and the applied zoom ([sizeLimit]), and the change must hold for a
+   * few frames ([SizeWatch]). The baseline is the mapped line itself, so moving onto another line, even the same
+   * text at another size, measures afresh.
    */
   private fun checkDistance(frame: AnalysisSnapshot, line: TextMap.Line?) {
     val lock = frame.readLock ?: return
-    val scale = managed.distanceChange(frame.locked, lock, line, DISTANCE_SCALE) ?: return
-    if (debugLogging) log("text size changed %.2fx under the lock".format(scale))
+    val scale = managed.distanceChange(frame.locked, lock, line) {
+      depthOfField.sizeLimit(latestFocusDiopters, (latestZoomRatio ?: 1f).toDouble()).also {
+        if (debugLogging) log("text lock size limit $it at ${latestFocusDiopters ?: "unknown"} diopters")
+      }
+    } ?: return
+    if (debugLogging) log("text size changed %.3fx under the lock".format(scale))
     val session = frame.focusSession
     val regionRevision = frame.regionRevision
     val admission = frame.readAdmission
@@ -961,12 +963,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     val current = snapshot
     if (focusSession == 0L || focusSession != current.focusSession || regionRevision != current.regionRevision) return
     val cycle = textCycle ?: return
-    val history = gyroscope.history
-    val from = sensorNs - QUIET_HAND_NS
-    val turn = history.peakRate(from, sensorNs)
-    val acceleration = gyroscope.acceleration.peak(from, sensorNs)
+    val motion = hand.read(sensorNs)
     // Without motion samples the hand never reads steady, and no lock would ever run.
-    if (turn == null || acceleration == null) {
+    if (motion == null) {
       if (sensorlessSinceNs == 0L) sensorlessSinceNs = sensorNs
       if (sensorNs - sensorlessSinceNs > SENSOR_GRACE_NS) {
         log("text focus lock: no motion samples; camera autofocus")
@@ -977,50 +976,59 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     } else {
       sensorlessSinceNs = 0L
     }
-    val quiet = turn != null && acceleration != null && history.covers(from, sensorNs) &&
-      turn <= QUIET_TURN_RATE && acceleration <= QUIET_ACCELERATION
-    val angle = history.rotation(sensorNs - TURN_NS, sensorNs)?.let { r -> acos(((r[0] + r[4] + r[8] - 1) / 2).coerceIn(-1.0, 1.0)) }
-    val turned = angle != null && angle > TURN_RADIANS
+    val quiet = motion?.quiet == true
+    val turned = hand.turned(sensorNs)
     if (turned && !wasTurned) wakeRecognition()
     if (turned && !wasTurned && debugLogging) {
       log("text lens: turned %.1f deg over %d ms; turn rate %.2f rad/s, acceleration %.2f m/s2".format(
-        Math.toDegrees(angle), TURN_NS / 1_000_000, turn ?: Double.NaN, acceleration ?: Double.NaN))
+        Math.toDegrees(hand.turnAngle(sensorNs) ?: 0.0), FocusRules.TURN_NS / 1_000_000, motion?.turn ?: Double.NaN,
+        motion?.acceleration ?: Double.NaN))
     }
     wasTurned = turned
     if (quiet != snapshot.steady) snapshot = snapshot.copy(steady = quiet)
     val held = focus.snapshot
     if (held.owner == FocusOwner.TAP) return
     val lens = when {
-      held.owner == null -> TextFocusCycle.Lens.FREE
-      held.locked == null -> TextFocusCycle.Lens.SCANNING
-      else -> TextFocusCycle.Lens.LOCKED
+      held.owner == null -> FocusCycle.Lens.FREE
+      held.locked == null -> FocusCycle.Lens.SCANNING
+      else -> FocusCycle.Lens.LOCKED
     }
-    val settled = cameraAfState == CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED
-    val unfocused = cameraAfState == CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED
-    // A lit torch brightens what autofocus sees, as the exposure soon shows.
-    val dark = sceneDark && torch != TextTorchMode.ON
-    val lockRead = lockReadResult?.takeIf { lens == TextFocusCycle.Lens.LOCKED && it.first == current.readLock }?.second
+    // The region is the target; a lock found what it focused for when its first reads agree on the aimed line.
+    val found = lockReadResult?.takeIf { lens == FocusCycle.Lens.LOCKED && it.first == current.readLock }?.second
     val distanceChanged = rescaled
     rescaled = false
-    when (val step = cycle.next(TextFocusCycle.Frame(sensorNs, quiet, turned, settled, unfocused, lockRead, lens, dark,
-      distanceChanged))) {
-      TextFocusCycle.Step.None -> Unit
-      is TextFocusCycle.Step.Release -> {
+    cycle.motion(sensorNs, quiet)
+    follow(cycle.next(FocusCycle.Frame(quiet, turned, lens, rescaled = distanceChanged, found = found)))
+  }
+
+  /** Main thread: carries out the focus cycle's [step]. The text camera has no auto torch, so it never lights one. */
+  private fun follow(step: FocusCycle.Step) {
+    when (step) {
+      // The region is always the target, so no lock aims elsewhere and the text camera never keeps or replaces one.
+      FocusCycle.Step.None, FocusCycle.Step.Keep, is FocusCycle.Step.Light, is FocusCycle.Step.Replace -> Unit
+      is FocusCycle.Step.Release -> {
         log("text focus lock released: ${step.why}")
         focus.releaseScannerLock()
       }
-      is TextFocusCycle.Step.Lock -> lockText(step.why)
+      is FocusCycle.Step.Lock -> lockText(step.why)
+      is FocusCycle.Step.Relock -> lockText(step.why)
+      is FocusCycle.Step.GiveUp -> log("text focus cycle gave up: ${step.why}")
     }
   }
 
-  /** Main thread: the camera's own locking scan at the region, focusing and metering there; it replaces a lock. */
+  /** Main thread: the camera's own locking scan at the region, focusing and metering there. A settled lock scans again
+   * without a release, so the lens starts the sweep where it was; anything else holding the lens is released first. */
   private fun lockText(why: String) {
     val camera = boundCamera ?: return
     val point = regionPoint() ?: return
+    val accepted = {
+      textCycle?.started()
+      log("text focus lock for $why")
+      overlay.pulse()
+    }
+    if (focus.relock(camera, point, meterExposure = true, accepted = accepted)) return
     if (focus.snapshot.owner != null) focus.releaseScannerLock()
-    log("text focus lock for $why")
-    overlay.pulse()
-    focus.lock(camera, point, FocusOwner.PAGE, meterExposure = true)
+    focus.lock(camera, point, FocusOwner.PAGE, meterExposure = true, accepted = accepted)
   }
 
   /**
@@ -1055,7 +1063,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       return
     }
     sensorlessSinceNs = 0L
-    textCycle = TextFocusCycle()
+    textCycle = FocusCycle()
     // Managed OCR takes over from the paced path: a new revision drops a paced recognition still running and its queued
     // highlights, and starts the analyzer's state afresh.
     snapshot = snapshot.copy(focusSession = ++focusSessions, revision = snapshot.revision + 1)
@@ -1162,20 +1170,13 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
       if (bindGeneration != generation) return
       val afState = result.get(CaptureResult.CONTROL_AF_STATE)
-      val exposureNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
-      val iso = result.get(CaptureResult.SENSOR_SENSITIVITY)
-      synchronized(frameLock) {
-        if (exposureNs != null && darkScene.observe(SystemClock.uptimeMillis() * 1_000_000, exposureNs, iso)) {
-          sceneDark = darkScene.dark
-          if (debugLogging) log("text scene ${if (sceneDark) "dark" else "bright"} exposure*iso=%.0f".format(exposureNs / 1e6 * (iso ?: 0)))
-        }
-      }
       focus.observeFrame(result.frameNumber, request.get(CaptureRequest.CONTROL_AF_TRIGGER),
         result.get(CaptureResult.CONTROL_AF_MODE), afState)
       if (afState != cameraAfState) {
         cameraAfState = afState
         mainHandler.post { if (bindGeneration == generation) updateAutofocus() }
       }
+      latestFocusDiopters = result.get(CaptureResult.LENS_FOCUS_DISTANCE)
       val timestampNs = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: return
       if (timestampNs > latestCaptureNs) latestCaptureNs = timestampNs
       if (debugLogging) capturedFrames.incrementAndGet()
@@ -1295,7 +1296,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private fun onTap(x: Float, y: Float) {
     val camera = boundCamera ?: return
     if (tapToFocus == false) return
-    val point = previewView.meteringPointFactory.createPoint(x, y, TAP_AREA)
+    val point = previewView.meteringPointFactory.createPoint(x, y, FocusRules.TAP_AREA)
     textCycle?.reset()
     focus.tap(camera, point, point)
   }
@@ -1371,8 +1372,6 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     const val TEXT_FLOW_EDGE = 448
     /** How long the gyroscope alone may carry the outline: a few frames, over a new crop or a smeared frame. */
     const val GYRO_BRIDGE_NS = 300_000_000L
-    /** How much the text under a lock may grow or shrink, as the phone moves nearer or farther, before focus follows. */
-    const val DISTANCE_SCALE = 1.15
     /** How often, at most, the region is read while the phone moves, as new text enters it; a lower `recognitionRate` is slower. */
     const val MOVING_READ_MS = 500L
     /** How far above and below the region, in region heights, the map keeps lines. */
@@ -1380,16 +1379,6 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     const val DEFAULT_COLOR = 0xFF61E1CF.toInt()
     const val DEFAULT_RATE = 5
     const val MIN_CROP_PX = 16
-    const val TAP_AREA = 1f / 6f
-    /** The hand holds steady when the gyroscope peaks under [QUIET_TURN_RATE] rad/s and the accelerometer under
-     * [QUIET_ACCELERATION] m/s² over this span, as the scanner's focus cycle judges it. */
-    const val QUIET_HAND_NS = 300_000_000L
-    const val QUIET_TURN_RATE = .15
-    const val QUIET_ACCELERATION = .5
-    /** A turn of about 4 degrees over [TURN_NS] brings other text, so the lock ends. A hand held
-     * steady drifts about 2 degrees over that time, which is not a turn. */
-    const val TURN_RADIANS = .07
-    const val TURN_NS = 500_000_000L
     /** How long a running focus cycle waits for motion samples before leaving focus to continuous autofocus. */
     const val SENSOR_GRACE_NS = 1_000_000_000L
     /** A capture result's zoom within this fraction of a request's ratio shows it, past the crop region's rounding. */

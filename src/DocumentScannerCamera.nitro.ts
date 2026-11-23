@@ -151,16 +151,18 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   tapToFocus?: boolean
   /**
-   * Manages focus while the camera holds steady, cycling once per steady hold; the gyroscope showing the phone turning
-   * or the motion sensors showing it moving ends a lock and starts the cycle over. Continuous autofocus follows a
-   * detected page while the phone moves, but may report focus on a nearer object, so on a steady hold its settling, or
-   * its reporting no focus, starts the camera's own locking scan, which confirms it, held until the page is out of view
-   * for a second. The lock also runs in a dark scene. A photo of a page always waits for a lock, and shoots at once on a
-   * held one. With no page found once the phone is steady in the dark, or with
-   * continuous autofocus reporting no focus, the frame's centre is locked for 5 seconds, and a page found meanwhile takes
-   * the lock over; if still no page is found, or a lock fails, the torch lights when `torch` is `auto` (it then stays lit
-   * like the auto torch) for one more lock at the page or the centre; then the cycle gives up until the phone turns,
-   * moves and holds steady again, or a page arrives anew. A tap takes over meanwhile. A gated photo that requires focus
+   * Manages focus while the camera holds steady: each steady hold runs one camera locking scan, without waiting for
+   * continuous autofocus's report, which may claim focus on a nearer object or never settle. The scan aims at print: a
+   * detected page's print, or without a page the most textured spot of the guide area around the frame's centre, held
+   * for 5 seconds; a page found under that lock keeps it when the lock's point lies on the page, and otherwise locks its
+   * own print. A page that grows or shrinks past the lens's depth of field, as moving nearer or farther does, locks
+   * again once steady, from where the lens is. A page lock holds until the page is out of view for a second or the
+   * phone turns; a guide lock also ends when the phone moves. A photo of a page always waits for a
+   * lock, and shoots at once on a held one. A hold gets two locks: no page found within a second of a guide lock, or a
+   * lock failing, takes the second, with the torch lit first when `torch` is `auto` (it then stays lit like the auto
+   * torch) and the scene is dark or the lock failed; then the cycle gives up until the phone turns, moves and holds
+   * steady again, or a page arrives anew. A tap
+   * takes over meanwhile. A gated photo that requires focus
    * waits for the cycle: an accepted lock, or continuous focus outside the dark when no page is required, within the budget `requireFocus` describes; when
    * the cycle gives up, the photo runs one final autofocus scan. Android only; the native view defaults to false,
    * and `Camera` turns it on in document mode.

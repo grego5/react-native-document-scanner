@@ -2,7 +2,9 @@ package com.margelo.nitro.documentscanner.processing
 
 import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.DocumentPoint
+import com.margelo.nitro.documentscanner.FocusAim
 import java.nio.ByteBuffer
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** The pixel's luma: BT.601 weights over R, G and B for an RGBA buffer ([pixelStride] of 4), as a colour-to-grey
@@ -72,6 +74,59 @@ internal fun pickPrintSpot(
     .minBy { (it % 3 - 1) * (it % 3 - 1) + (it / 3 - 1) * (it / 3 - 1) }
   return DocumentPoint(SPOT_BORDER + (1 - 2 * SPOT_BORDER) * (chosen % 3 + .5) / 3,
     SPOT_BORDER + (1 - 2 * SPOT_BORDER) * (chosen / 3 + .5) / 3)
+}
+
+/** The static guide area around the frame's centre, in upright frame fractions: continuous autofocus's central box,
+ * where the page being scanned usually lies before it is found. */
+internal val GUIDE_AREA: DocumentCorners = (FocusAim.CENTRE - FocusAim.AREA / 2).toDouble().let { a ->
+  val b = 1 - a
+  DocumentCorners(DocumentPoint(a, a), DocumentPoint(b, a), DocumentPoint(b, b), DocumentPoint(a, b))
+}
+
+/** [pickPrintSpot] over [GUIDE_AREA], without a page: the guide's most textured spot, in upright frame fractions. A
+ * blurred frame keeps more contrast over print than over blank paper, so the spot is found before focus is. */
+internal fun pickGuideSpot(
+  buffer: ByteBuffer, rowStride: Int, pixelStride: Int, left: Int, top: Int, right: Int, bottom: Int, rotation: Int,
+): DocumentPoint? = pickPrintSpot(buffer, rowStride, pixelStride, left, top, right, bottom, rotation, GUIDE_AREA)
+  ?.let { pagePoint(GUIDE_AREA, it.x, it.y) }
+
+/** [point] lies inside the convex outline [corners]. */
+internal fun insidePage(corners: DocumentCorners, point: DocumentPoint): Boolean {
+  val outline = listOf(corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft)
+  var sign = 0
+  for (index in outline.indices) {
+    val a = outline[index]
+    val b = outline[(index + 1) % outline.size]
+    val cross = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)
+    if (cross == 0.0) continue
+    val side = if (cross > 0) 1 else -1
+    if (sign == 0) sign = side else if (side != sign) return false
+  }
+  return true
+}
+
+/** The page coordinates of [point] inside [corners], the inverse of [pagePoint]; null when it does not converge. */
+internal fun pageCoordinates(corners: DocumentCorners, point: DocumentPoint): DocumentPoint? {
+  var s = .5
+  var t = .5
+  repeat(20) {
+    val p = pagePoint(corners, s, t)
+    val ex = p.x - point.x
+    val ey = p.y - point.y
+    if (abs(ex) < 1e-9 && abs(ey) < 1e-9) return DocumentPoint(s, t)
+    // The bilinear map's derivatives along s and t.
+    val (a, b, c, d) = listOf(corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft)
+    val sx = (1 - t) * (b.x - a.x) + t * (c.x - d.x)
+    val sy = (1 - t) * (b.y - a.y) + t * (c.y - d.y)
+    val tx = (1 - s) * (d.x - a.x) + s * (c.x - b.x)
+    val ty = (1 - s) * (d.y - a.y) + s * (c.y - b.y)
+    val det = sx * ty - sy * tx
+    if (abs(det) < 1e-12) return null
+    s -= (ex * ty - ey * tx) / det
+    t -= (sx * ey - sy * ex) / det
+  }
+  val p = pagePoint(corners, s, t)
+  return DocumentPoint(s, t).takeIf { abs(p.x - point.x) < 1e-6 && abs(p.y - point.y) < 1e-6 }
 }
 
 /** Samples per cell side when picking the print spot. */

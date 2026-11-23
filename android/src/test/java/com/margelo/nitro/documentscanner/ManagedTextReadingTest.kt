@@ -56,6 +56,8 @@ class ManagedTextReadingTest {
     assertEquals(0L, stopped.lastLock)
   }
 
+  private val limit = { SizeLimit.fixed(1.15) }
+
   @Test fun identicalTextAtAnotherSizeIsANewBaselineNotAChangeOfDistance() {
     val reading = ManagedTextReading()
     reading.underLock(5)
@@ -63,15 +65,16 @@ class ManagedTextReadingTest {
     repeat(2) { reading.map.merge(tile, listOf(read("AB12", 0.42, 0.02), read("AB12", 0.5, 0.03)), sensorNs = 0L) }
     val small = reading.select(0.5, 0.43, afterRead = true, admission = 1).line
     assertNotNull(small)
-    assertNull(reading.distanceChange(true, 5, small, 1.15))
+    assertNull(reading.distanceChange(true, 5, small, limit))
     val large = reading.select(0.5, 0.515, afterRead = false, admission = 1)
     assertTrue(large.changed)
-    assertNull(reading.distanceChange(true, 5, large.line, 1.15))
-    // The same line growing is a change of distance, reported once.
+    assertNull(reading.distanceChange(true, 5, large.line, limit))
+    // The same line growing is a change of distance once it holds for the size frames, reported once.
     assertTrue(reading.map.move(grow(1.2)))
     val grown = reading.select(0.5, 0.515, afterRead = false, admission = 1).line
-    assertEquals(1.2, reading.distanceChange(true, 5, grown, 1.15)!!, 1e-9)
-    assertNull(reading.distanceChange(true, 5, grown, 1.15))
+    repeat(FocusRules.SIZE_FRAMES - 1) { assertNull(reading.distanceChange(true, 5, grown, limit)) }
+    assertEquals(1.2, reading.distanceChange(true, 5, grown, limit)!!, 1e-9)
+    assertNull(reading.distanceChange(true, 5, grown, limit))
   }
 
   @Test fun aReReadOfTheAimedLinePublishesItsRenewedBounds() {

@@ -51,12 +51,21 @@ internal class FocusPolicy {
 
   /** A shot finished: a tap past its hold and a capture's scan end; a page lock stays with its page. */
   fun afterCapture(nowNs: Long): Boolean = when (owner) {
-    FocusOwner.TAP, FocusOwner.RECOVERY -> expireTap(scanToken, nowNs, false)
+    FocusOwner.TAP, FocusOwner.GUIDE -> expireTap(scanToken, nowNs, false)
     FocusOwner.CAPTURE -> { release(); true }
     FocusOwner.PAGE, null -> false
   }
 
-  /** Ends the scanner's own lock, a page or recovery lock; true when one held the lens. */
+  /** A settled guide lock becomes a page lock, keeping its scan; true when one held the lens. */
+  fun adoptGuideLock(): Boolean {
+    if (owner != FocusOwner.GUIDE || locked != true) return false
+    owner = FocusOwner.PAGE
+    heldUntilNs = Long.MAX_VALUE
+    ++generation
+    return true
+  }
+
+  /** Ends the scanner's own lock, a page or guide lock; true when one held the lens. */
   fun releaseScannerLock(): Boolean {
     if (owner?.scanners != true) return false
     release()

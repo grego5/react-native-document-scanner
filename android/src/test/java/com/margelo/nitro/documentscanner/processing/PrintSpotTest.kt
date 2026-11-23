@@ -3,6 +3,7 @@ package com.margelo.nitro.documentscanner.processing
 import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.DocumentPoint
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
@@ -37,6 +38,23 @@ class PrintSpotTest {
     // Print only in the buffer's top-left area, which is the page's top-left cell when upright.
     val spot = pickPrintSpot(frame(6, 6, 24, 18, false), width, 1, 0, 0, width, height, 0, whole)!!
     assertTrue("$spot", spot.x < .34 && spot.y < .34)
+  }
+
+  @Test fun theGuideSpotLandsOnPrintInTheGuideArea() {
+    // Print in the guide area's lower right only; the spot is there, in frame fractions.
+    val spot = pickGuideSpot(frame(36, 27, 42, 32, true), width, 1, 0, 0, width, height, 0)!!
+    assertTrue("$spot", spot.x > .55 && spot.x < .65 && spot.y > .55 && spot.y < .65)
+  }
+
+  @Test fun pageCoordinatesInvertPagePoints() {
+    val skewed = DocumentCorners(DocumentPoint(.1, .2), DocumentPoint(.8, .1), DocumentPoint(.9, .9),
+      DocumentPoint(.2, .8))
+    val p = pagePoint(skewed, .3, .7)
+    val back = pageCoordinates(skewed, p)!!
+    assertEquals(.3, back.x, 1e-6)
+    assertEquals(.7, back.y, 1e-6)
+    assertTrue(insidePage(skewed, p))
+    assertFalse(insidePage(skewed, DocumentPoint(.05, .5)))
   }
 
   @Test fun tiedCellsPreferTheCentre() {

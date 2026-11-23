@@ -1,8 +1,5 @@
 package com.margelo.nitro.documentscanner
 
-import kotlin.math.abs
-import kotlin.math.ln
-import kotlin.math.sqrt
 
 /**
  * Main thread, `focusLock`: what the text map may read. [lock] is the map's identity: the latest settled lock, kept
@@ -49,10 +46,7 @@ internal class ManagedTextReading {
   private var shownLine: TextMap.Line? = null
   private var shownText: String? = null
   private var shownAdmission = -1L
-  private var baselineLine: TextMap.Line? = null
-  private var baselineLock = 0L
-  private var baselineArea = 0.0
-  private var rescaledLock = 0L
+  private val size = SizeWatch()
 
   fun reset() {
     map.clear()
@@ -62,9 +56,7 @@ internal class ManagedTextReading {
     shownLine = null
     shownText = null
     shownAdmission = -1L
-    baselineLine = null
-    baselineLock = 0L
-    rescaledLock = 0L
+    size.reset()
   }
 
   /** A frame read under [lock], 0 for none yet: a new lock starts the map, and its first reads, afresh. */
@@ -73,7 +65,7 @@ internal class ManagedTextReading {
     this.lock = lock
     map.clear()
     lockReads.reset()
-    baselineLine = null
+    size.reset()
   }
 
   /** The map's places now refer to [sensorNs]. */
@@ -106,28 +98,20 @@ internal class ManagedTextReading {
   }
 
   /**
-   * The aimed, agreed [line] under the held lock [lock], while [locked]: its size ratio once it has grown or shrunk by
-   * [limit] since it was first measured, as moving the phone nearer or farther does; null otherwise, and after the
-   * lock's change was reported. The baseline is the line itself, so moving onto another line, even one with the same
+   * The aimed, agreed [line] under the held lock [lock], while [locked]: its size ratio once it has grown or shrunk past
+   * [limit], measured when the line is first seen under the lock, as moving the phone nearer or farther does
+   * ([SizeWatch]); null otherwise. The baseline is the line itself, so moving onto another line, even one with the same
    * text at another size, measures afresh.
    */
-  fun distanceChange(locked: Boolean, lock: Long, line: TextMap.Line?, limit: Double): Double? {
+  fun distanceChange(locked: Boolean, lock: Long, line: TextMap.Line?, limit: () -> SizeLimit): Double? {
     if (!locked || lock == 0L) {
-      baselineLine = null
+      size.reset()
       return null
     }
-    if (line == null || rescaledLock == lock) return null
-    val area = line.corners.area()
-    if (area <= 0.0) return null
-    if (line !== baselineLine || baselineLock != lock) {
-      baselineLine = line
-      baselineLock = lock
-      baselineArea = area
-      return null
-    }
-    val scale = sqrt(area / baselineArea)
-    if (abs(ln(scale)) < ln(limit)) return null
-    rescaledLock = lock
-    return scale
+    if (line == null) return null
+    return size.observe(LineUnderLock(lock, line), line.corners.area(), limit)
   }
+
+  /** A line, by identity, under one lock. */
+  private data class LineUnderLock(val lock: Long, val line: TextMap.Line)
 }

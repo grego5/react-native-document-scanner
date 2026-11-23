@@ -23,13 +23,33 @@ internal enum class LiveGuideStatus { SEARCHING, DETECTED, TRACKING, HELD, UNAVA
 
 /**
  * A frame's page for focus: [corners] in the upright frame of [width] by [height], with the [source] transform, at the
- * frame's sensor timestamp. [spot] is the page's print spot in page coordinates, picked on this frame when
- * [LiveDocumentDetector.spotRequested] asked.
+ * frame's sensor timestamp. [sampled] answers the spot request this frame took ([LiveDocumentDetector.requestSpot]),
+ * failed picks included; its [spot] is the page's print spot in page coordinates, or without a page the guide area's
+ * in upright frame fractions.
  */
 internal data class LiveFocusCandidate(
   val corners: DocumentCorners?, val source: OutputTransform, val width: Int, val height: Int, val confirmed: Boolean,
-  val sensorNs: Long, val spot: DocumentPoint? = null,
-)
+  val sensorNs: Long, val sampled: SampledSpot? = null,
+) {
+  val spot: DocumentPoint? get() = sampled?.point
+}
+
+/** The answer to spot request [request]: the spot picked, or null when it could not be. */
+internal data class SampledSpot(val request: Long, val point: DocumentPoint?)
+
+/** The detector's spot requests: [pending], the one the next analysed frame answers, 0 for none, and [taken], the last
+ * one a frame answered, at sensor time [takenNs], 0 before any. One value, so a reader never sees a request between
+ * the two. */
+internal data class SpotRequests(val pending: Long = 0L, val taken: Long = 0L, val takenNs: Long = 0L) {
+  /** Request [id] pending, in place of any earlier one. */
+  fun request(id: Long) = copy(pending = id)
+  /** Request [id] withdrawn if still pending; a later request stays. */
+  fun cancel(id: Long) = if (pending == id) copy(pending = 0L) else this
+  /** Whatever request is pending withdrawn. */
+  fun cancelAll() = copy(pending = 0L)
+  /** The pending request taken by the frame at [sensorNs], if any. */
+  fun take(sensorNs: Long) = if (pending == 0L) this else SpotRequests(0L, pending, sensorNs)
+}
 
 /** [corners] and the [source] transform and dimensions captured at its acceptance are set for DETECTED, TRACKING and HELD; DETECTED is visible but not confirmed for focus or capture;
  * [score] is this frame's
@@ -110,8 +130,17 @@ internal class LiveDocumentDetector(
   private var analysisRate = AnalysisRateMonitor()
   /** Independent main-thread focus owner receives document targets; focus never gates detection. */
   @Volatile internal var focusCandidateListener: ((LiveFocusCandidate) -> Unit)? = null
-  /** The next focus candidate with a page picks its print spot, once; set by main, cleared here. */
-  @Volatile internal var spotRequested = false
+  /** Spot requests: set by main, taken here by the next analysed frame, whose focus candidate carries the answer. */
+  private val spotRequest = java.util.concurrent.atomic.AtomicReference(SpotRequests())
+  /** Main thread: the next analysed frame picks a spot and answers request [id], a positive number. */
+  fun requestSpot(id: Long) { spotRequest.updateAndGet { it.request(id) } }
+  /** Main thread: withdraws request [id] if it is still pending, leaving any later request in place. */
+  fun cancelSpot(id: Long) { spotRequest.updateAndGet { it.cancel(id) } }
+  /** Main thread: withdraws whatever request is pending, as the camera stops. */
+  fun cancelSpots() { spotRequest.updateAndGet { it.cancelAll() } }
+  /** Which request is pending and which a frame last answered, so the main thread can tell an answer lost on its way,
+   * as a candidate dropped for its age, from one still coming. */
+  val spotRequests: SpotRequests get() = spotRequest.get()
   /** Checks for the next analyzed frame; a change starts a fresh stabilizer, dropping its history. */
   @Volatile internal var stabilizerConfig = GuideStabilizerConfig()
   /** Estimates image motion on every analysis frame, guide or not, before inference throttling and gating. */
@@ -447,7 +476,7 @@ internal class LiveDocumentDetector(
               held.acceptanceId, held.holdDeadlineNs, lastToken, startedAt))
             // The tracked outline keeps the page, and so continuous autofocus, while inference is paused.
             postFocusCandidate(lastToken, startedAt, LiveFocusCandidate(held.accepted, source, width, height, true, sensorTimestampNs,
-              spot(image, held.accepted)))
+              spot(image, held.accepted, sensorTimestampNs)))
           } else {
             // An expired or invalid tracked guide must wake inference instead of remaining paused forever.
             adaptivePolicy.reset()
@@ -515,7 +544,7 @@ internal class LiveDocumentDetector(
       postFocusCandidate(token, startedAt,
         LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.corners, sourceTransform, width, height,
           output.status == GuideTrackingStatus.TRACKING, sensorTimestampNs,
-          spot(image, if (flowRetained) output.accepted else candidate?.corners)))
+          spot(image, if (flowRetained) output.accepted else candidate?.corners, sensorTimestampNs)))
       tracking = output.status != GuideTrackingStatus.SEARCHING
       if (!flowRetained) {
         if (output.status == GuideTrackingStatus.TRACKING) {
@@ -597,13 +626,23 @@ internal class LiveDocumentDetector(
       sensorTimestampNs + frame.rollingShutterSkewNs + frame.exposureNs + GYRO_MARGIN_NS, frame.exposureNs,
     )
 
-  private fun spot(image: ImageProxy, corners: DocumentCorners?): DocumentPoint? {
-    if (corners == null || !spotRequested) return null
-    spotRequested = false
+  private fun spot(image: ImageProxy, corners: DocumentCorners?, sensorNs: Long): SampledSpot? {
+    val request = spotRequest.getAndUpdate { it.take(sensorNs) }.pending
+    if (request == 0L) return null
+    return SampledSpot(request, pickSpot(image, corners))
+  }
+
+  private fun pickSpot(image: ImageProxy, corners: DocumentCorners?): DocumentPoint? {
     val plane = image.planes[0]
     val crop = image.cropRect
-    return pickPrintSpot(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
-      image.imageInfo.rotationDegrees, corners)
+    val rotation = image.imageInfo.rotationDegrees
+    return if (corners != null) {
+      pickPrintSpot(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
+        rotation, corners)
+    } else {
+      pickGuideSpot(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
+        rotation)
+    }
   }
 
   private fun postFocusCandidate(token: Long, startedAt: Long, hint: LiveFocusCandidate) {

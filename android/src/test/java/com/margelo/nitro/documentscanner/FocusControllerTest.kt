@@ -44,6 +44,9 @@ class FocusControllerTest {
 
   private class Rig {
     val triggers = mutableListOf<Settable<FocusMeteringResult>>()
+    /** The next trigger throws as CameraX submits it. */
+    var throwOnTrigger = false
+    val events = mutableListOf<String>()
     var cancels = 0
     var resumes = 0
     var shot = false
@@ -52,7 +55,8 @@ class FocusControllerTest {
     private var frameNumber = 0L
     private val control = Proxy.newProxyInstance(CameraControl::class.java.classLoader, arrayOf(CameraControl::class.java)) { _, method, _ ->
       when (method.name) {
-        "startFocusAndMetering" -> Settable<FocusMeteringResult>().also { triggers += it }
+        "startFocusAndMetering" -> if (throwOnTrigger) throw IllegalStateException("closed")
+          else Settable<FocusMeteringResult>().also { triggers += it }
         "cancelFocusAndMetering" -> { cancels++; Settable<Void?>().also { it.complete(null) } }
         else -> null
       }
@@ -68,7 +72,10 @@ class FocusControllerTest {
       override fun postDelayed(delayMs: Long, block: () -> Unit) {}
       override fun log(message: String) {}
       override fun focusChanged(snapshot: FocusSnapshot) {}
-      override fun scannerLockFailed(owner: FocusOwner) { failed += owner }
+      override fun scannerLockFailed(owner: FocusOwner) {
+        failed += owner
+        events += "failed"
+      }
       override val confirmsLockFrames get() = true
       override fun uptimeNs() = 0L
     })
@@ -117,6 +124,55 @@ class FocusControllerTest {
     rig.frame(CONTROL_AF_STATE_FOCUSED_LOCKED)
     rig.drain()
     assertNull(rig.focus.snapshot.locked)
+    rig.completeLast(true)
+    rig.drain()
+    assertEquals(true, rig.focus.snapshot.locked)
+  }
+
+  @Test fun aTriggerThatThrowsAtOnceReportsItsAttemptAcceptedFirst() {
+    val rig = Rig()
+    rig.throwOnTrigger = true
+    assertTrue(rig.focus.lock(rig.camera, rig.point, FocusOwner.PAGE) { rig.events += "accepted" })
+    assertEquals(listOf("accepted", "failed"), rig.events)
+    assertNull(rig.focus.snapshot.owner)
+  }
+
+  @Test fun aRelockReportsItsAttemptAcceptedBeforeAnImmediateFailureAndARefusedOneNever() {
+    val rig = Rig()
+    rig.pageLock()
+    rig.frame(CONTROL_AF_STATE_INACTIVE, trigger = true)
+    rig.frame(CONTROL_AF_STATE_FOCUSED_LOCKED)
+    rig.completeLast(true)
+    rig.drain()
+    // Refused during a still: the caller's acceptance, and with it the lock's new point, never runs.
+    rig.shot = true
+    assertFalse(rig.focus.relock(rig.camera, rig.point) { rig.events += "refused" })
+    rig.shot = false
+    rig.throwOnTrigger = true
+    assertTrue(rig.focus.relock(rig.camera, rig.point) { rig.events += "accepted" })
+    assertEquals(listOf("accepted", "failed"), rig.events)
+  }
+
+  @Test fun aRelockScansAgainWithoutCancellingTheHeldLock() {
+    val rig = Rig()
+    // Nothing to relock without a settled scanner lock.
+    assertFalse(rig.focus.relock(rig.camera, rig.point))
+    rig.pageLock()
+    assertFalse(rig.focus.relock(rig.camera, rig.point))
+    rig.frame(CONTROL_AF_STATE_INACTIVE, trigger = true)
+    rig.frame(CONTROL_AF_STATE_FOCUSED_LOCKED)
+    rig.completeLast(true)
+    rig.drain()
+    assertEquals(true, rig.focus.snapshot.locked)
+    val held = rig.focus.snapshot.generation
+    assertTrue(rig.focus.relock(rig.camera, rig.point))
+    assertEquals(0, rig.cancels)
+    assertEquals(2, rig.triggers.size)
+    assertEquals(FocusOwner.PAGE, rig.focus.snapshot.owner)
+    assertNull(rig.focus.snapshot.locked)
+    assertTrue(rig.focus.snapshot.generation > held)
+    rig.frame(CONTROL_AF_STATE_INACTIVE, trigger = true)
+    rig.frame(CONTROL_AF_STATE_FOCUSED_LOCKED)
     rig.completeLast(true)
     rig.drain()
     assertEquals(true, rig.focus.snapshot.locked)

@@ -47,17 +47,34 @@ class FocusPolicyTest {
     assertEquals(FocusOwner.TAP, f.owner)
   }
 
-  @Test fun aRecoveryLockHoldsLikeATapAndEndsWhenReleased() {
+  @Test fun aGuideLockHoldsLikeATapAndEndsWhenReleased() {
     val f = FocusPolicy()
-    val recovery = f.start(FocusOwner.RECOVERY, 0)
+    val guide = f.start(FocusOwner.GUIDE, 0)
     assertEquals(5 * second, f.tapDeadline())
-    assertTrue(f.complete(recovery, true))
-    assertTrue(f.expireTap(recovery, 5 * second, false))
-    f.start(FocusOwner.RECOVERY, 0)
+    assertTrue(f.complete(guide, true))
+    assertTrue(f.expireTap(guide, 5 * second, false))
+    f.start(FocusOwner.GUIDE, 0)
     assertTrue(f.releaseScannerLock())
     assertNull(f.owner)
     f.start(FocusOwner.TAP, 0)
     assertFalse(f.releaseScannerLock()) // A tap is the user's, never the scanner's.
+  }
+
+  @Test fun aSettledGuideLockBecomesThePagesWithoutAScan() {
+    val f = FocusPolicy()
+    val guide = f.start(FocusOwner.GUIDE, 0)
+    // A guide lock still scanning is not adopted.
+    assertFalse(f.adoptGuideLock())
+    assertTrue(f.complete(guide, true))
+    val generation = f.generation
+    assertTrue(f.adoptGuideLock())
+    assertEquals(FocusOwner.PAGE, f.owner)
+    assertEquals(true, f.locked)
+    assertEquals(guide, f.scanToken)
+    assertEquals(Long.MAX_VALUE, f.heldUntilNs)
+    assertNull(f.tapDeadline())
+    assertTrue(f.generation > generation)
+    assertFalse(f.adoptGuideLock())
   }
 
   @Test fun aCaptureScanHasADeadlineAndEndsWithItsShot() {

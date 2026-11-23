@@ -79,15 +79,14 @@ export interface TextCameraProps extends HybridViewProps {
   tapToFocus?: boolean
   /**
    * Helps continuous autofocus, which settles soft or on the wrong depth at close range, with the camera's own locking
-   * scan, a sweep that finds the sharpest distance. Continuous autofocus follows the region while the phone moves. On a
-   * steady hold its report is confirmed: the region is locked once continuous autofocus settles or reports no focus,
-   * at once in a dark scene with the torch off, or after 0.6 s of searching. The first lock permits reading, since unconfirmed
+   * scan, a sweep that finds the sharpest distance. Continuous autofocus follows the region while the phone moves; every
+   * steady hold locks the region, without waiting for continuous autofocus's report. The first lock permits reading, since unconfirmed
    * continuous autofocus misreads; after it, reading goes on while the lock is released, pausing only while a lock scans.
    * Every line read in the region is kept where it is and moves with the page; the region's centre selects one, which
    * shows once two reads agree, so moving onto a line already read shows it at once. The region is read as new text
    * enters it, and until the aimed line agrees. A lock under which four reads find no agreed text locks again; a hold gets two locks. Turning or
-   * moving the phone, moving it nearer or farther, as the read text changing size shows, or a new region, releases the
-   * lock and starts over. A tap focuses there for its 5 s, then continuous autofocus resumes. Needs single-shot autofocus
+   * moving the phone, or a new region, releases the lock and starts over; moving it nearer or farther past the lens's
+   * depth of field, as the read text changing size shows, locks again once steady, from where the lens is. A tap focuses there for its 5 s, then continuous autofocus resumes. Needs single-shot autofocus
    * and motion sensors (a gyroscope and linear acceleration); otherwise continuous autofocus alone follows the region.
    * Android only; the native view defaults to false, and `TextCamera` turns it on.
    */

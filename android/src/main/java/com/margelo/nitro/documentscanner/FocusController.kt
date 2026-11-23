@@ -12,11 +12,11 @@ internal class BoundCamera(val control: CameraControl, val info: CameraInfo)
 
 /** Who holds the lens, each with a scan that locks focus: a tap, a capture, a page lock on a steady page that holds
  * until the page is gone, or a recovery lock at the frame's centre while no page can be found. A [timed] owner holds
- * for [FocusPolicy.TAP_HOLD_NS]. The scanner's own locks, [PAGE] and [RECOVERY], end at once when their scan fails. */
+ * for [FocusPolicy.TAP_HOLD_NS]. The scanner's own locks, [PAGE] and [GUIDE], end at once when their scan fails. */
 internal enum class FocusOwner(val timed: Boolean) {
-  TAP(true), CAPTURE(false), PAGE(false), RECOVERY(true);
+  TAP(true), CAPTURE(false), PAGE(false), GUIDE(true);
 
-  val scanners: Boolean get() = this == PAGE || this == RECOVERY
+  val scanners: Boolean get() = this == PAGE || this == GUIDE
 }
 
 /**
@@ -102,13 +102,46 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     trigger(start(camera, FocusOwner.CAPTURE,
       FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF).disableAutoCancel().build()))
   }
-  /** The view's own lock, [FocusOwner.PAGE] or [FocusOwner.RECOVERY], scanning at [point], and metering exposure there
-   * too with [meterExposure]; only while nothing holds the lens. The text camera's lock is a [FocusOwner.PAGE] one. */
-  fun lock(camera: BoundCamera, point: MeteringPoint, owner: FocusOwner, meterExposure: Boolean = false) {
+  /** The view's own lock, [FocusOwner.PAGE] or [FocusOwner.GUIDE], scanning at [point], and metering exposure there
+   * too with [meterExposure]; only while nothing holds the lens and no shot is in flight. True when the scan started;
+   * [accepted] runs once it is, before its trigger is sent, so a trigger that fails at once reports a counted attempt.
+   * The text camera's lock is a [FocusOwner.PAGE] one. */
+  fun lock(camera: BoundCamera, point: MeteringPoint, owner: FocusOwner, meterExposure: Boolean = false,
+    accepted: () -> Unit = {}): Boolean {
     require(owner.scanners)
-    if (closed || host.shotInFlight() || policy.owner != null) return
+    if (closed || host.shotInFlight() || policy.owner != null) return false
+    submitScannerScan(camera, point, owner, meterExposure, accepted)
+    return true
+  }
+  /**
+   * A new scan for the scanner's lock that holds, at [point], without cancelling it: the camera stays in single-shot
+   * autofocus with the lens where the lock left it, so continuous autofocus never takes the lens between the two, and the
+   * sweep starts near. A trigger sent right after a cancel can reach continuous autofocus, which freezes the lens. Only
+   * on a settled scanner lock with no shot in flight or cancellation pending; false otherwise. [accepted] runs as for
+   * [lock].
+   */
+  fun relock(camera: BoundCamera, point: MeteringPoint, meterExposure: Boolean = false, accepted: () -> Unit = {}): Boolean {
+    val owner = policy.owner
+    if (closed || host.shotInFlight() || owner?.scanners != true || policy.pending || pendingCancel != null) return false
+    submitScannerScan(camera, point, owner, meterExposure, accepted)
+    return true
+  }
+  /** An admitted scanner scan: started, then [accepted], then its trigger sent, so a trigger that fails at once finds
+   * the caller's attempt already counted. */
+  private fun submitScannerScan(camera: BoundCamera, point: MeteringPoint, owner: FocusOwner, meterExposure: Boolean,
+    accepted: () -> Unit) {
     val flags = if (meterExposure) FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE else FocusMeteringAction.FLAG_AF
-    trigger(start(camera, owner, FocusMeteringAction.Builder(point, flags).disableAutoCancel().build()))
+    val next = start(camera, owner, FocusMeteringAction.Builder(point, flags).disableAutoCancel().build())
+    accepted()
+    trigger(next)
+  }
+  /** A settled [FocusOwner.GUIDE] lock becomes the page's, held as long as a page lock, without scanning again; false
+   * when no guide lock holds. */
+  fun adoptGuideLock(): Boolean {
+    if (closed || !policy.adoptGuideLock()) return false
+    publish()
+    scheduleDeadlines()
+    return true
   }
   /**
    * Ends the scanner's own lock, if one holds, and returns the lens to continuous autofocus, which this controller aims

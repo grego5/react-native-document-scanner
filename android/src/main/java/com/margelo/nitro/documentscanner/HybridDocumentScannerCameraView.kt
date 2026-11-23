@@ -87,6 +87,8 @@ import com.margelo.nitro.documentscanner.processing.LiveGuideTraceObserver
 import com.margelo.nitro.documentscanner.processing.GuideStabilizerConfig
 import com.margelo.nitro.documentscanner.processing.LiveFocusCandidate
 import com.margelo.nitro.documentscanner.processing.pagePoint
+import com.margelo.nitro.documentscanner.processing.pageCoordinates
+import com.margelo.nitro.documentscanner.processing.insidePage
 import com.margelo.nitro.documentscanner.processing.TorchPolicy
 import com.margelo.nitro.documentscanner.processing.DarkScenePolicy
 import com.margelo.nitro.documentscanner.processing.WhiteBalancePolicy
@@ -95,7 +97,6 @@ import com.margelo.nitro.documentscanner.processing.LiveCaptureGateSample
 import com.margelo.nitro.documentscanner.processing.FrameRecord
 
 import kotlin.math.abs
-import kotlin.math.acos
 
 private const val LOG_TAG = "RNDocumentScannerCamera"
 
@@ -176,6 +177,7 @@ open class HybridDocumentScannerCameraView(
   /** Keep the displayed crop unchanged while a capture defers a use-case rebind. */
   private var previewSquareFrame = false
   private val gyroscope = GyroscopeSource(themedContext, GyroHistory())
+  private val hand = HandMotion(gyroscope.history, gyroscope.acceleration)
   private val liveOverlay = LiveGuideOverlay(themedContext)
   private val focusBoxOverlay = FocusBoxOverlay(themedContext)
   /** Over the frozen frame, so the shooting stage shows on the photo being taken. */
@@ -374,7 +376,7 @@ open class HybridDocumentScannerCameraView(
       scheduleCaptureEvaluation()
     }
     override fun scannerLockFailed(owner: FocusOwner) {
-      escalateFocusRecovery("${owner.name.lowercase()} lock failed")
+      if (props.focusLock) follow(cycle.failed(), null)
     }
     override val confirmsLockFrames get() = hasSingleShotAutofocus
   })
@@ -444,12 +446,26 @@ open class HybridDocumentScannerCameraView(
    * blur reading or a high one, so the blur check would hold back the very lock that makes the frame sharp. */
   private val steadiness = CaptureStability()
   private var steadinessCursor = 0L
-  /** Main thread: the camera moved since the cycle's last steady hold. */
-  private var focusLockMoved = false
   /** Main thread: the page's print spot in page coordinates; null before it is picked or without a page. */
   private var printSpot: DocumentPoint? = null
-  /** Main thread: the generation of the centre lock whose settling last asked analysis for a frame. */
-  private var centreSettledGeneration: Long? = null
+  /** Main thread: the generation of the guide lock whose settling last asked analysis for a frame, and the sensor time
+   * it settled at, from which a page has [RECOVERY_NS] to appear. */
+  private var guideSettledGeneration: Long? = null
+  private var guideSettledSensorNs = 0L
+  /** Main thread, `focusLock`: the guide area's most textured spot in upright frame fractions, asked for once the
+   * phone holds steady without a page and forgotten once it moves. */
+  private val guideSpot = GuideSpot()
+  /** Main thread: the last spot request's number; each request is a new one, so an answer names what it answers. */
+  private var spotRequests = 0L
+  /** Main thread, `focusLock`: where the guide lock scans, in upright frame fractions. */
+  private var guideLockPoint: DocumentPoint? = null
+  /** Main thread, `focusLock`: the page's size under each page lock, keyed by the lock's generation. */
+  private val pageSize = SizeWatch()
+  /** Main thread, `focusLock`: the page lock whose page changed size, which relocks on the next steady frame; a press
+   * does not accept it meanwhile. */
+  private var pageRelockGeneration = -1L
+  /** Main thread: the bound camera's depth of field; null without the lens and sensor sizes or calibrated focus. */
+  private var depthOfField: DepthOfField? = null
   /** Main thread: whether `focusLock` with live corners was last applied on, and whether turning it off waits for a
    * shot being taken to settle. */
   private var scannerLensOn = false
@@ -477,14 +493,12 @@ open class HybridDocumentScannerCameraView(
   private var steadyHold = false
   /** Main thread: the steadiness trace's current second. */
   private var steadinessWait: SteadinessWait? = null
-  /** Main thread, `focusLock`: how far the focus cycle has gone since a page arrived or the phone turned. */
-  private var focusRecovery = FocusRecovery.IDLE
+  /** Main thread, `focusLock`: when the camera's own locking scan runs, as for the text camera. */
+  private val cycle = FocusCycle()
+  /** Main thread: the [FocusCycle.restarts] the targets were last picked under. */
+  private var cycleRestarts = 0L
   /** Main thread: the sensor time since which analysis has found no page; null while one is in view. */
   private var noPageSinceNs: Long? = null
-  /** Main thread, `focusLock`: continuous autofocus on the page while no scan holds the lens. */
-  private var passiveFocus = PassiveFocus.UNKNOWN
-  /** Main thread, `focusLock`: the sensor time since which the hold has not been steady; null while it is. */
-  private var lockMovingSinceNs: Long? = null
 
   override var onCameraStateChange: ((state: ScannerCameraState) -> Unit)? = null
     set(value) {
@@ -1099,10 +1113,10 @@ open class HybridDocumentScannerCameraView(
       }
       val locked = snapshot.locked == true
       val lockAccepted = when (snapshot.owner) {
-        FocusOwner.PAGE -> locked
-        // A centre lock is progress toward a page, not the page's focus: a page found under it takes the lock over, and
-        // one still missing leaves the cycle its next step and the press its final scan.
-        FocusOwner.RECOVERY -> locked && !documentRequired
+        FocusOwner.PAGE -> locked && snapshot.generation != pageRelockGeneration
+        // A guide lock is progress toward a page, not the page's focus: a page found under it keeps or takes the lock
+        // over, and one still missing leaves the cycle its next step and the press its final scan.
+        FocusOwner.GUIDE -> locked && !documentRequired
         FocusOwner.TAP, FocusOwner.CAPTURE -> locked
         // Continuous autofocus reports focus on a new scene before it reaches the page, and holds a nearer object as
         // focused, so a page's press waits for the lock it starts. Without a page to require, continuous autofocus
@@ -1111,13 +1125,13 @@ open class HybridDocumentScannerCameraView(
       }
       val lensFree = boundCamera != null && !hasShotInFlight() &&
         !(snapshot.owner == FocusOwner.TAP && snapshot.scanHolds(nowMs))
-      press.next(nowMs, lockAccepted, focusRecovery == FocusRecovery.GAVE_UP, ownScan, lensFree)
+      press.next(nowMs, lockAccepted, cycle.gaveUp, ownScan, lensFree)
     }
     if (pressFocus == PressFocus.START_FINAL_SCAN) {
       val camera = boundCamera ?: return
       val point = focusCandidate?.let(::meteringPoint)
         ?: scanPoint(FocusAim.CENTRE, FocusAim.CENTRE, MeteringPointFactory.getDefaultPointSize())
-      logLifecycle("capture final focus scan cycle=${focusRecovery.name.lowercase()} page=${latest?.guide != null}")
+      logLifecycle("capture final focus scan gaveUp=${cycle.gaveUp} lighting=${cycle.lighting} page=${latest?.guide != null}")
       // The new focus generation re-evaluates this capture.
       focus.capture(camera, point)
       return
@@ -1356,6 +1370,7 @@ open class HybridDocumentScannerCameraView(
     updateSteadiness()
     if (hint.corners == null) {
       if (noPageSinceNs == null) noPageSinceNs = hint.sensorNs
+      followCycleRestart()
       updateFocusLock(hint)
       // A page gone for PAGE_LOST_NS loses its print spot and returns continuous autofocus to the centre.
       if (hint.sensorNs - pageSeenSensorNs >= PAGE_LOST_NS) {
@@ -1368,11 +1383,11 @@ open class HybridDocumentScannerCameraView(
     if (pageArrivedSensorNs == null || hint.sensorNs - pageSeenSensorNs >= PAGE_LOST_NS) {
       pageArrivedSensorNs = hint.sensorNs
       // Lighting the torch can restart the camera, and the same page then arrives again; its lock still waits.
-      if (focusRecovery != FocusRecovery.LIGHTING) focusRecovery = FocusRecovery.IDLE
-      passiveFocus = PassiveFocus.UNKNOWN
+      cycle.reset()
       printSpot = null
       logLifecycle("page arrived sensorNs=${hint.sensorNs}")
     }
+    followCycleRestart()
     pageSeenSensorNs = maxOf(pageSeenSensorNs, hint.sensorNs)
     trackPrintSpot(hint)
     updateFocusLock(hint)
@@ -1405,7 +1420,7 @@ open class HybridDocumentScannerCameraView(
         printSpot = picked
         logLifecycle("print spot picked at %.2f, %.2f of the page".format(picked.x, picked.y))
       } else if (hint.confirmed && steadyHold) {
-        liveDetector.spotRequested = true
+        liveDetector.requestSpot(++spotRequests)
       }
     }
     val spot = printSpot
@@ -1630,6 +1645,8 @@ open class HybridDocumentScannerCameraView(
         logLifecycle("autofocus adjustable=$hasAutofocus modes=${afModes?.joinToString()} " +
           "pipelineMaxDepth=${characteristics.get(CameraCharacteristics.REQUEST_PIPELINE_MAX_DEPTH)}")
         liveDetector.cameraOptics = backCameraOptics(camera.info)
+        depthOfField = try { DepthOfField.read(characteristics) } catch (_: Exception) { null }
+        logLifecycle("depth of field $depthOfField")
         // The ImageCapture above was built from these props in this same call; a later change waits for a rebind.
         bound = BoundCapture(captureMode,
           zsl = captureMode == CaptureMode.ZSL && camera.info.isZslSupported, lowLightBoostSupported = lowLightBoostSupported,
@@ -1700,14 +1717,13 @@ open class HybridDocumentScannerCameraView(
     focusBoxOverlay.show(null, true)
     pageArrivedSensorNs = null
     steadiness.reset()
-    focusLockMoved = false
     steadyHold = false
-    lockMovingSinceNs = null
     noPageSinceNs = null
-    liveDetector.spotRequested = false
+    pageSize.reset()
+    liveDetector.cancelSpots()
+    guideSpot.cancel()
     printSpot = null
-    passiveFocus = PassiveFocus.UNKNOWN
-    if (focusRecovery != FocusRecovery.LIGHTING) focusRecovery = FocusRecovery.IDLE
+    cycle.reset()
     focus.unbind()
     steadinessWait = null
     gyroscope.stop()
@@ -1847,9 +1863,9 @@ open class HybridDocumentScannerCameraView(
     val factory = previewView.meteringPointFactory
     if (previewView.width > 0 && previewView.height > 0) {
       focusBoxOverlay.show(floatArrayOf(x / previewView.width, y / previewView.height,
-        TAP_FOCUS_AREA * previewImageScale[0], TAP_FOCUS_AREA * previewImageScale[1]), false)
+        FocusRules.TAP_AREA * previewImageScale[0], FocusRules.TAP_AREA * previewImageScale[1]), false)
     }
-    focus.tap(camera, factory.createPoint(x, y, TAP_FOCUS_AREA), factory.createPoint(x, y, TAP_METERING_AREA))
+    focus.tap(camera, factory.createPoint(x, y, FocusRules.TAP_AREA), factory.createPoint(x, y, TAP_METERING_AREA))
   }
 
   /** Main thread: sets the bound camera's torch and low-light boost from the props and the auto decision. Changes wait
@@ -1968,40 +1984,28 @@ open class HybridDocumentScannerCameraView(
     if (missed) steadiness.interrupt()
     // The motion sensors say the phone is still: a soft or dark frame, before focus is found, has flow that reads
     // motion a still hand does not make. [steadiness] stands in without them.
-    var sensed: SensedMotion? = null
+    var sensed: HandMotion.Reading? = null
     for (frame in frames) {
       steadinessCursor = frame.sequence + 1
       steadiness.observe(frame, false, 0.0, motionSensorsRunning)
       sensed = sensedMotion(frame.sensorNs)
-      if (sensed != null) {
-        if (!sensed.quiet) focusLockMoved = true
-      } else if (steadiness.count == 0 && steadiness.lastBreak == StabilityBreak.MOVING) focusLockMoved = true
+      // Every frame's steadiness, so a move between two candidates still restarts the cycle.
+      if (props.focusLock) cycle.motion(frame.sensorNs, sensed?.quiet ?: steadiness.stable)
       traceSteadiness(frame, sensed)
     }
     if (frames.isNotEmpty()) steadyHold = sensed?.quiet ?: steadiness.stable
   }
 
-  /** The gyroscope's peak turn rate (rad/s) and the accelerometer's peak linear acceleration (m/s²) over the
-   * [QUIET_HAND_NS] before [sensorNs]; null unless both sensors' samples cover it, since a quiet gyroscope alone cannot
-   * show the phone kept its distance. The focus cycle then falls back to [steadiness]. */
-  private fun sensedMotion(sensorNs: Long): SensedMotion? {
-    if (liveDetector.cameraOptics == null || !gyroscope.isRunning) return null
-    if (!gyroscope.history.covers(sensorNs - QUIET_HAND_NS, sensorNs)) return null
-    val turn = gyroscope.history.peakRate(sensorNs - QUIET_HAND_NS, sensorNs) ?: return null
-    val acceleration = gyroscope.acceleration.peak(sensorNs - QUIET_HAND_NS, sensorNs) ?: return null
-    return SensedMotion(turn, acceleration)
-  }
-
-  /** The hand's motion over the last [QUIET_HAND_NS], both sensors read over all of it. */
-  private class SensedMotion(val turn: Double, val acceleration: Double) {
-    val quiet: Boolean get() = turn <= QUIET_TURN_RATE && acceleration <= QUIET_ACCELERATION
-  }
+  /** The hand's motion at [sensorNs] by the motion sensors ([HandMotion.read]); null without them, and the focus cycle
+   * then falls back to [steadiness]. */
+  private fun sensedMotion(sensorNs: Long): HandMotion.Reading? =
+    if (liveDetector.cameraOptics == null || !gyroscope.isRunning) null else hand.read(sensorNs)
 
   /** Main thread: the gyroscope and accelerometer both run, so a frame without either reading has unknown motion. */
   private val motionSensorsRunning: Boolean get() = gyroscope.isRunning && gyroscope.hasAcceleration
 
   /** Main thread: while `focusLock` waits for a steady hold, a once-a-second trace line of why frames broke it. */
-  private fun traceSteadiness(frame: FrameRecord, sensed: SensedMotion?) {
+  private fun traceSteadiness(frame: FrameRecord, sensed: HandMotion.Reading?) {
     // Nothing reads the report without the debug log or the standalone trace.
     if (!debugLoggingEnabled && standaloneTrace == null) return
     if (!props.focusLock || focus.snapshot.owner != null) return
@@ -2039,154 +2043,164 @@ open class HybridDocumentScannerCameraView(
   }
 
   /**
-   * Main thread, `focusLock`: one focus cycle per steady hold. Continuous autofocus focuses the page first; the camera's
-   * own locking scan, which searches until the page is sharp, runs where continuous autofocus is known or seen to fail
-   * ([pageLockReason]), deliberately or as a fallback. Every lock waits for [steadyHold]: the capture's motion rule on
-   * optical flow while a page is tracked or a lock holds, and otherwise a quiet gyroscope and accelerometer, since a
-   * defocused, mostly blank frame's flow tracks noise. The gyroscope showing the phone turning ends any of the scanner's
-   * locks and starts the cycle over. A [FocusOwner.PAGE] lock holds until the page is unseen for [PAGE_LOST_NS], since
-   * continuous autofocus drifts off a page once it takes the lens back. Without a page for [PAGE_DROPOUT_NS] where
-   * continuous autofocus cannot be trusted ([centreLockReason]), a [FocusOwner.RECOVERY] lock at the frame's centre gives
-   * detection a sharp frame; still without a page, or after a failed lock, an auto torch lights; then one more lock, at
-   * the page or the centre; then the cycle gives up until the phone turns, the camera moves and holds steady again, or a
-   * page arrives anew. The model's outline jitters and drops out on a still page, so it never ends a lock by itself;
-   * without the gyroscope, only the page going unseen does.
+   * Main thread, `focusLock`: the document camera's side of [FocusCycle], which decides when the camera's own locking
+   * scan runs. The target is the confirmed page's print spot, a [FocusOwner.PAGE] lock, or without a page the guide
+   * area's most textured spot, a [FocusOwner.GUIDE] lock, since a page too blurred to find usually lies under the guide
+   * and is found once the lock sharpens it; a page unseen for [PAGE_DROPOUT_NS] leaves the guide as the target. A page
+   * found under a guide lock whose point lies on it keeps the lock as the page's; one whose point lies off it locks again
+   * at its print. A guide lock found nothing when no page appears within [RECOVERY_NS] of its settling. A page lock
+   * follows the page's size and holds until the page is unseen for [PAGE_LOST_NS]; a guide lock follows no size, so a
+   * deliberate move releases it. The model's outline jitters and drops out on a still page, so its dropout never ends a
+   * lock by itself. The steady hold is [steadyHold]: the motion sensors, or the capture's motion rule without them.
    */
   private fun updateFocusLock(hint: LiveFocusCandidate) {
     if (!props.focusLock) return
-    // Motion then a new steady hold starts a fresh cycle, as a turn does: a cycle that gave up, or one still waiting for
-    // a torch that never lit, would otherwise leave a page tracked throughout on continuous autofocus for good.
-    if (focusLockMoved && steadyHold) {
-      focusLockMoved = false
-      if (focusRecovery == FocusRecovery.GAVE_UP || (focusRecovery == FocusRecovery.LIGHTING && !torchIsLit)) {
-        focusRecovery = FocusRecovery.IDLE
-        printSpot = null
-        logLifecycle("focus lock cycle restarted: new steady hold")
-      }
-    }
     val owner = focus.snapshot.owner
-    val page = hint.corners != null
-    // A lock held over a steady page confirms it; a move this long carries the phone to another distance, and the next
-    // steady hold confirms continuous autofocus anew. The motion sensors judge it, since the lock's own scan blurs the
-    // frames the optical flow reads; a hand's tremor breaks their quiet only for a moment.
-    val motion = sensedMotion(hint.sensorNs)
-    if (motion == null || motion.quiet) lockMovingSinceNs = null
-    else {
-      val since = lockMovingSinceNs ?: hint.sensorNs.also { lockMovingSinceNs = it }
-      if (owner == FocusOwner.PAGE && hint.sensorNs - since >= LOCK_MOVED_NS) releaseScannerLock("phone moved")
-    }
-    if (deviceTurned(hint.sensorNs)) {
-      if (owner?.scanners == true) releaseScannerLock("phone turned")
-      if (focusRecovery != FocusRecovery.IDLE && focusRecovery != FocusRecovery.LIGHTING) {
-        focusRecovery = FocusRecovery.IDLE
-        printSpot = null
-        logLifecycle("focus lock cycle restarted: phone turned")
-      }
+    // A tap's or a capture's own scan holds the lens for its own time; the guide asks for its spot again after it.
+    if (owner != null && !owner.scanners) {
+      cancelGuideSpot()
       return
     }
-    if (owner == FocusOwner.RECOVERY && focus.snapshot.locked != null) {
-      // The centre lock sharpened the frame, so the page it hid can be found now rather than at the search's next retry.
-      if (centreSettledGeneration != focus.snapshot.generation) {
-        centreSettledGeneration = focus.snapshot.generation
+    val page = hint.corners != null
+    if (owner == FocusOwner.GUIDE && focus.snapshot.locked != null) {
+      // The guide lock sharpened the frame, so the page it hid can be found now rather than at the search's next retry.
+      if (guideSettledGeneration != focus.snapshot.generation) {
+        guideSettledGeneration = focus.snapshot.generation
+        guideSettledSensorNs = hint.sensorNs
         liveDetector.inferenceWanted = true
       }
     }
-    updatePassiveFocus(liveDetector.frames.at(hint.sensorNs))
-    if (focus.snapshot.owner != owner) return
-    when (owner) {
-      null -> Unit
-      FocusOwner.PAGE -> {
-        if (!page && hint.sensorNs - pageSeenSensorNs >= PAGE_LOST_NS) releaseScannerLock("page lost")
-        return
+    // The guide's spot is picked on a steady frame without a page, so the guide lock aims at what the phone holds.
+    if (!page) {
+      if (!steadyHold && owner == null) cancelGuideSpot()
+      else guideSpot.update(hint.sampled, liveDetector.spotRequests, hint.sensorNs, steadyHold && owner == null) {
+        (++spotRequests).also(liveDetector::requestSpot)
       }
-      // A page found during a centre lock takes the lock over once its print spot is picked: the centre lock keeps the
-      // frame sharp until then, rather than handing the lens to continuous autofocus between the two.
-      FocusOwner.RECOVERY -> {
-        if (page && hint.confirmed && printSpot != null && focus.snapshot.locked != null && steadyHold) {
-          releaseScannerLock("page found")
-          lockPage(hint, "a page found under the centre lock")
-        }
-        return
-      }
-      else -> return
+    } else {
+      // A page frame takes any request as the page's; the guide asks again once the page is gone.
+      guideSpot.cancel()
     }
-    // A capture waiting for steady frames may start a lock too; it then waits for the lock, not continuous focus.
-    if (!steadyHold) return
-    if (focusRecovery == FocusRecovery.LIGHTING) {
-      // The torch changes exposure and white balance under a scan, which then fails, so the next lock waits for a frame
-      // the torch lit with both converged again.
-      val frame = liveDetector.frameHistory.latest()?.frame
-      if (frame?.torchFired != true || frame.aeState != CaptureResult.CONTROL_AE_STATE_CONVERGED ||
-        frame.awbState != CaptureResult.CONTROL_AWB_STATE_CONVERGED) return
-      focusRecovery = FocusRecovery.LIT
-    }
-    if (focusRecovery == FocusRecovery.GAVE_UP) return
-    if (page) {
-      if (hint.confirmed && printSpot != null) pageLockReason()?.let { lockPage(hint, it) }
+    if (owner == FocusOwner.PAGE && !page && hint.sensorNs - pageSeenSensorNs >= PAGE_LOST_NS) {
+      releaseScannerLock("page lost")
       return
     }
-    val since = noPageSinceNs ?: return
-    // The first centre lock starts once the phone is steady, so a page too blurred to find is focused at once; the
-    // short wait only skips the outline dropping out for a frame. Later steps wait for a page to have had its chance.
-    if (hint.sensorNs - since < if (focusRecovery == FocusRecovery.IDLE) PAGE_DROPOUT_NS else RECOVERY_NS) return
-    when (focusRecovery) {
-      FocusRecovery.IDLE -> {
-        // Continuous autofocus at the centre finds most pages by itself.
-        val why = centreLockReason() ?: return
-        focusRecovery = FocusRecovery.CENTRE
-        lockCentre("no page found, $why")
-      }
-      FocusRecovery.CENTRE -> escalateFocusRecovery("no page found after a centre lock")
-      FocusRecovery.LIT -> {
-        focusRecovery = FocusRecovery.LIT_CENTRE
-        lockCentre("torch lit")
-      }
-      FocusRecovery.LIT_CENTRE -> {
-        focusRecovery = FocusRecovery.GAVE_UP
-        logLifecycle("focus lock cycle gave up: no page found with the torch")
-        scheduleCaptureEvaluation()
-      }
-      FocusRecovery.LIGHTING, FocusRecovery.GAVE_UP -> Unit
+    val held = focus.snapshot
+    val lens = when {
+      held.owner == null -> FocusCycle.Lens.FREE
+      held.locked == null -> FocusCycle.Lens.SCANNING
+      else -> FocusCycle.Lens.LOCKED
     }
+    // A page lock's relock aims at the confirmed page's print, never the guide. The guide's target waits for the
+    // detector's answer to its spot request; an answer without a spot, as sampling failed, takes the centre.
+    val pageTarget = page && hint.confirmed && printSpot != null
+    val guideTarget = !page && noPageSinceNs?.let { hint.sensorNs - it >= PAGE_DROPOUT_NS } == true && guideSpot.ready
+    val target = if (held.owner == FocusOwner.PAGE || page) pageTarget else guideTarget
+    // A page confirmed under a settled guide lock: the lock focused the page's plane when its point lies on the page.
+    val corners = hint.corners
+    val aim = if (held.owner == FocusOwner.GUIDE && held.locked == true && corners != null && hint.confirmed) {
+      val point = guideLockPoint
+      if (point != null && insidePage(corners, point)) FocusCycle.Aim.ON_NEW_TARGET else FocusCycle.Aim.OFF_NEW_TARGET
+    } else FocusCycle.Aim.TARGET
+    val found = if (held.owner == FocusOwner.GUIDE && held.locked == true && !page &&
+      guideSettledGeneration == held.generation && hint.sensorNs - guideSettledSensorNs >= RECOVERY_NS) false else null
+    // The torch changes exposure and white balance under a scan, which then fails, so a lit lock waits for both.
+    val latest = liveDetector.frameHistory.latest()?.frame
+    val lit = latest?.torchFired == true && latest.aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED &&
+      latest.awbState == CaptureResult.CONTROL_AWB_STATE_CONVERGED
+    val frame = FocusCycle.Frame(steadyHold, deviceTurned(hint.sensorNs), lens, target,
+      rescaled = held.owner == FocusOwner.PAGE && page && hint.confirmed && pageSizeChanged(hint), found = found,
+      motionReleases = held.owner == FocusOwner.GUIDE,
+      canLight = props.torch == TorchMode.AUTO && bound?.hasFlash == true && !torchIsLit, dark = darkForAutofocus(),
+      lightWanted = props.torch == TorchMode.AUTO && synchronized(metadataLock) { torchPolicy.lit }, lit = lit, aim = aim)
+    follow(cycle.next(frame), hint)
   }
 
-  /** Main thread, `focusLock`: continuous autofocus on the page as [state], the newest frame's result, shows it. */
-  private fun updatePassiveFocus(state: CameraFrameState?) {
-    val af = state?.afState
-    val next = when {
-      focus.snapshot.owner != null || focusCandidate == null || state == null -> PassiveFocus.UNKNOWN
-      af == CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED -> PassiveFocus.UNFOCUSED
-      af == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN || af == CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN -> PassiveFocus.SCANNING
-      af == CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED -> PassiveFocus.FOCUSED
-      else -> PassiveFocus.UNKNOWN
+  /** Main thread, `focusLock`: carries out the focus cycle's [step] on the page or the guide of [hint]. */
+  private fun follow(step: FocusCycle.Step, hint: LiveFocusCandidate?) {
+    when (step) {
+      FocusCycle.Step.None -> Unit
+      is FocusCycle.Step.Lock -> hint?.let { if (it.corners != null) lockPage(it, step.why) else lockGuide(it, step.why) }
+      // The cycle asks for a relock only with its target ready: a page lock's on a confirmed page.
+      is FocusCycle.Step.Relock -> hint?.let {
+        if (focus.snapshot.owner == FocusOwner.PAGE) relockPage(it, step.why) else relockGuide(it, step.why)
+      }
+      FocusCycle.Step.Keep -> hint?.let { keepGuideLockForPage(it) }
+      is FocusCycle.Step.Replace -> hint?.let {
+        releaseScannerLock("guide lock: ${step.why}")
+        if (it.corners != null) lockPage(it, step.why)
+      }
+      is FocusCycle.Step.Release -> releaseScannerLock(step.why)
+      is FocusCycle.Step.Light -> {
+        synchronized(metadataLock) { torchPolicy.light() }
+        logLifecycle("focus lock cycle lighting the torch after ${step.why}")
+        // A `zsl` binding still active while its switch to `latency` waits for a press rebinds for the light instead,
+        // which keeps this latched request through the restart; the next lock waits for the lit torch and a steady camera.
+        if (!rebindForLight()) applyLight()
+      }
+      is FocusCycle.Step.GiveUp -> {
+        logLifecycle("focus lock cycle gave up: ${step.why}")
+        scheduleCaptureEvaluation()
+      }
     }
-    if (next == passiveFocus) return
-    passiveFocus = next
-    logLifecycle("continuous focus on the page ${next.name.lowercase()}")
   }
 
   /**
-   * Main thread, `focusLock`: why a steady, confirmed page needs the camera's own locking scan now, or null while
-   * continuous autofocus still searches. Continuous autofocus reports focus it has not reached, on a nearer object or
-   * before reaching the page, so its report is never trusted: its settling starts a lock that confirms it, as its
-   * reporting no focus does, and a press locks whatever it reports. The lock also runs deliberately in a dark scene or
-   * for a cycle step after a failure.
+   * Main thread, `focusLock`: the settled guide lock's point lies on the page confirmed under it, so it focused the
+   * page's plane: the lock becomes the page's without another scan, and its point becomes the page's print spot, which
+   * flow carries. A point off the page focused the background, and the cycle replaces that lock with the page's own.
    */
-  private fun pageLockReason(): String? = when {
-    focusRecovery != FocusRecovery.IDLE -> "the cycle's ${focusRecovery.name.lowercase()} step"
-    darkForAutofocus() -> "a dark scene"
-    passiveFocus == PassiveFocus.UNFOCUSED -> "continuous autofocus reported no focus"
-    passiveFocus == PassiveFocus.FOCUSED -> "confirming continuous autofocus's focus"
-    hasPendingCapture() -> "a press"
-    else -> null
+  private fun keepGuideLockForPage(hint: LiveFocusCandidate) {
+    val corners = hint.corners ?: return
+    val point = guideLockPoint ?: return
+    val spot = pageCoordinates(corners, point)
+    if (!focus.adoptGuideLock()) return
+    if (spot != null) printSpot = spot
+    logLifecycle("guide focus lock kept for the page: its point lies on the page")
   }
 
-  /** Main thread, `focusLock`: why the frame's centre needs a locking scan while no page is found, or null while
-   * continuous autofocus may still sharpen the frame enough to find one. */
-  private fun centreLockReason(): String? = when {
-    darkForAutofocus() -> "a dark scene"
-    autofocusState == AutofocusState.UNFOCUSED -> "continuous autofocus reported no focus"
-    else -> null
+  /** Main thread: forgets the guide spot and withdraws its own request from the detector, not a page's after it. */
+  private fun cancelGuideSpot() {
+    (guideSpot.state as? GuideSpot.State.Requested)?.let { liveDetector.cancelSpot(it.id) }
+    guideSpot.cancel()
+  }
+
+  /** Main thread, `focusLock`: a cycle that started over picks its targets afresh. Called once per candidate, before
+   * the print spot is tracked, so a page's arrival clears the old spots before its own is picked or asked for. */
+  private fun followCycleRestart() {
+    if (cycle.restarts == cycleRestarts) return
+    cycleRestarts = cycle.restarts
+    printSpot = null
+    cancelGuideSpot()
+  }
+
+  /**
+   * Main thread, `focusLock`: the page has grown or shrunk past the depth of field around the distance the page lock
+   * focused at, as moving the phone nearer or farther does ([SizeWatch]); the limit comes from the lock frame's focus
+   * distance and the lens ([sizeLimit]). A press does not accept the lock until it relocks.
+   */
+  private fun pageSizeChanged(hint: LiveFocusCandidate): Boolean {
+    val corners = hint.corners ?: return false
+    val snapshot = focus.snapshot
+    if (snapshot.locked != true || pageRelockGeneration == snapshot.generation) return false
+    val scale = pageSize.observe(snapshot.generation, corners.area()) {
+      val diopters = liveDetector.frames.at(hint.sensorNs)?.focusDiopters
+      depthOfField.sizeLimit(diopters).also { logLifecycle("page lock size limit $it at ${diopters ?: "unknown"} diopters") }
+    } ?: return false
+    pageRelockGeneration = snapshot.generation
+    logLifecycle("page size changed %.3fx under the lock; relocking once steady".format(scale))
+    return true
+  }
+
+  /** Main thread, `focusLock`: the page lock scans again at the page's print without a release, so the lens starts the
+   * sweep where the lock left it and continuous autofocus never takes it between. */
+  private fun relockPage(hint: LiveFocusCandidate, why: String) {
+    val camera = boundCamera ?: return
+    if (hint.corners == null) return
+    val point = meteringPoint(hint) ?: scanPoint(FocusAim.CENTRE, FocusAim.CENTRE, MeteringPointFactory.getDefaultPointSize())
+    focus.relock(camera, point) {
+      cycle.started()
+      logLifecycle("page focus relock for $why, after ${steadiness.count} steady frames")
+    }
   }
 
   /** Main thread: a scene too dark for continuous autofocus, as the auto torch judges darkness, with no torch lit and
@@ -2194,29 +2208,19 @@ open class HybridDocumentScannerCameraView(
   private fun darkForAutofocus(): Boolean = synchronized(metadataLock) { darkScene.dark } && !torchIsLit &&
     boundCamera?.info?.lowLightBoostState?.value != LowLightBoostState.ACTIVE
 
-
-  /** Main thread: the next step after a failed lock or a page still unseen: an auto torch for one more lock, or giving up
-   * when the torch is already lit, not `auto`, absent, or was tried. */
-  private fun escalateFocusRecovery(why: String) {
-    if (focusRecovery == FocusRecovery.LIGHTING) return
-    val tried = focusRecovery == FocusRecovery.LIT || focusRecovery == FocusRecovery.LIT_CENTRE
-    // The auto torch is one lit state: a dark room may have latched it already while its command waited for a press, and
-    // the cycle's step then sends that same request rather than give up with the torch still off.
-    val lights = !tried && props.torch == TorchMode.AUTO && bound?.hasFlash == true && !torchIsLit
-    if (lights) {
-      synchronized(metadataLock) { torchPolicy.light() }
-      focusRecovery = FocusRecovery.LIGHTING
-      logLifecycle("focus lock cycle lighting the torch after $why")
-      // A `zsl` binding still active while its switch to `latency` waits for a press rebinds for the light instead, which
-      // keeps this latched request through the restart; the next lock waits for the lit torch and a steady camera.
-      if (!rebindForLight()) applyLight()
-    } else {
-      focusRecovery = FocusRecovery.GAVE_UP
-      logLifecycle("focus lock cycle gave up after $why")
-      scheduleCaptureEvaluation()
-    }
+  /** Main thread: [point], in [hint]'s upright frame fractions, as preview fractions; null when it maps outside. */
+  private fun previewFraction(hint: LiveFocusCandidate, point: DocumentPoint): FloatArray? {
+    val transform = previewView.outputTransform ?: return null
+    val width = previewView.width.toFloat()
+    val height = previewView.height.toFloat()
+    if (width == 0f || height == 0f) return null
+    val mapped = floatArrayOf((point.x * hint.width).toFloat(), (point.y * hint.height).toFloat())
+    try { CoordinateTransform(hint.source, transform).mapPoints(mapped) } catch (_: IllegalArgumentException) { return null }
+    if (!mapped.all(Float::isFinite) || mapped[0] !in 0f..width || mapped[1] !in 0f..height) return null
+    return floatArrayOf(mapped[0] / width, mapped[1] / height)
   }
 
+  /** Main thread, `focusLock`: a page lock at [hint]'s print, counted by the cycle once the camera takes it. */
   private fun lockPage(hint: LiveFocusCandidate, why: String) {
     val camera = boundCamera ?: return
     // A page too small or narrow for the smallest focus box locks at the centre, where such a page usually is.
@@ -2225,20 +2229,45 @@ open class HybridDocumentScannerCameraView(
       logLifecycle("page focus lock at the centre: no focus box fits the page")
       scanPoint(FocusAim.CENTRE, FocusAim.CENTRE, MeteringPointFactory.getDefaultPointSize())
     }
-    logLifecycle("page focus lock for $why, after ${steadiness.count} steady frames")
-    focus.lock(camera, point, FocusOwner.PAGE)
+    focus.lock(camera, point, FocusOwner.PAGE) {
+      cycle.started()
+      logLifecycle("page focus lock for $why, after ${steadiness.count} steady frames")
+    }
   }
 
-  private fun lockCentre(why: String) {
+  /** Main thread, `focusLock`: a guide lock at [guideSpot], or at the frame's centre before one is picked. */
+  private fun lockGuide(hint: LiveFocusCandidate, why: String) {
     val camera = boundCamera ?: return
-    if (previewView.width == 0 || previewView.height == 0) return
-    logLifecycle("centre focus lock after $why")
-    focus.lock(camera, scanPoint(FocusAim.CENTRE, FocusAim.CENTRE, MeteringPointFactory.getDefaultPointSize()),
-      FocusOwner.RECOVERY)
+    val (point, at) = guidePoint(hint) ?: return
+    focus.lock(camera, point, FocusOwner.GUIDE) { guideScanAccepted(at, "lock", why) }
   }
 
-  /** Main thread: ends the scanner's own lock, if one holds, and logs [why]; during a shot in flight the release waits for
-   * the shot to settle. */
+  /** Main thread, `focusLock`: the guide lock scans again without a release, at the guide's spot now. */
+  private fun relockGuide(hint: LiveFocusCandidate, why: String) {
+    val camera = boundCamera ?: return
+    val (point, at) = guidePoint(hint) ?: return
+    focus.relock(camera, point) { guideScanAccepted(at, "relock", why) }
+  }
+
+  /** Main thread, `focusLock`: the camera took a guide scan at [at]. The lock's point changes only with a scan it took,
+   * so a refused relock leaves the held lock paired with the point it focused, which page takeover reads. */
+  private fun guideScanAccepted(at: DocumentPoint, scan: String, why: String) {
+    cycle.started()
+    guideLockPoint = at
+    logLifecycle("guide focus $scan at %.2f, %.2f for $why".format(at.x, at.y))
+  }
+
+  /** Main thread, `focusLock`: the guide scan's metering point at [guideSpot], or at the frame's centre before one is
+   * picked, with that point in upright frame fractions; null before the preview is measured. */
+  private fun guidePoint(hint: LiveFocusCandidate): Pair<MeteringPoint, DocumentPoint>? {
+    if (previewView.width == 0 || previewView.height == 0) return null
+    val spot = guideSpot.point
+    val mapped = spot?.let { previewFraction(hint, it) }
+    val at = mapped ?: floatArrayOf(FocusAim.CENTRE, FocusAim.CENTRE)
+    return scanPoint(at[0], at[1], MeteringPointFactory.getDefaultPointSize()) to
+      (spot?.takeIf { mapped != null } ?: DocumentPoint(.5, .5))
+  }
+
   private fun releaseScannerLock(why: String): FocusController.Release {
     if (focus.snapshot.owner?.scanners != true) return FocusController.Release.NONE
     val release = focus.releaseScannerLock()
@@ -2247,14 +2276,9 @@ open class HybridDocumentScannerCameraView(
     return release
   }
 
-  /** Whether the gyroscope shows the phone turning more than [PAGE_LOCK_TURN] radians over the [PAGE_LOCK_TURN_NS]
-   * before [sensorNs]; false without the gyroscope or its samples. */
-  private fun deviceTurned(sensorNs: Long): Boolean {
-    if (liveDetector.cameraOptics == null || !gyroscope.isRunning) return false
-    val r = gyroscope.history.rotation(sensorNs - PAGE_LOCK_TURN_NS, sensorNs) ?: return false
-    val cosine = ((r[0] + r[4] + r[8] - 1) / 2).coerceIn(-1.0, 1.0)
-    return acos(cosine) > PAGE_LOCK_TURN
-  }
+  /** Whether the gyroscope shows the phone turned ([HandMotion.turned]); false without it or its samples. */
+  private fun deviceTurned(sensorNs: Long): Boolean =
+    liveDetector.cameraOptics != null && gyroscope.isRunning && hand.turned(sensorNs)
 
   /** `loading` or `unavailable` while the camera waits for, or lost, its model; null once it has what it needs. */
   private fun modelDocumentState(): DocumentState? = when {
@@ -2561,41 +2585,17 @@ open class HybridDocumentScannerCameraView(
     const val PAGE_LOST_NS = 1_000_000_000L
     /** A print spot this close to the frame's edge, as a fraction of it, has left the frame for focus. */
     const val SPOT_FRAME_MARGIN = .05
-    /** A turn of the phone over [PAGE_LOCK_TURN_NS] that confirms the page really left or moved: about 4 degrees, twice
-     * the drift of a hand holding steady, which reaches 2 degrees in that time. */
-    const val PAGE_LOCK_TURN = .07
-    const val PAGE_LOCK_TURN_NS = 500_000_000L
-    /** Motion this long, past a hand's tremor, releases a page lock: the motion sensors judge quiet over
-     * [QUIET_HAND_NS], so one spike already reads as motion for that long. */
-    const val LOCK_MOVED_NS = 600_000_000L
-    /** `focusLock` tries recovering focus after analysis has found no page for this long. */
+    /** A guide lock found nothing when no page appears this long after it settled. */
     const val RECOVERY_NS = 1_000_000_000L
-    /** `focusLock`'s first centre lock waits for analysis to have found no page for this long: past a dropped frame. */
+    /** `focusLock`'s first guide lock waits for analysis to have found no page for this long: past a dropped frame. */
     const val PAGE_DROPOUT_NS = 200_000_000L
-    /** Without a page or a held lock, the phone holds steady when the gyroscope peaks under [QUIET_TURN_RATE] rad/s and
-     * the accelerometer under [QUIET_ACCELERATION] m/s² over this span: a resting hand, past sensor noise and tremor. */
-    const val QUIET_HAND_NS = 300_000_000L
-    const val QUIET_TURN_RATE = .15
-    const val QUIET_ACCELERATION = .5
-    /** Sides of a tap's focus and exposure areas, as fractions of the preview: CameraX's own tap-to-focus sizes. */
-    const val TAP_FOCUS_AREA = 1f / 6f
-    const val TAP_METERING_AREA = TAP_FOCUS_AREA * 1.5f
+    /** The side of a tap's exposure area, as a fraction of the preview: CameraX's own tap-to-meter size. */
+    const val TAP_METERING_AREA = FocusRules.TAP_AREA * 1.5f
 
 
 
   }
 }
-
-/**
- * How far the `focusLock` cycle has gone since a page arrived or the phone turned: a centre lock while no page is found,
- * an auto torch after a failed lock or a page still unseen, one more lock at the page or the centre once it is lit,
- * then giving up.
- */
-private enum class FocusRecovery { IDLE, CENTRE, LIGHTING, LIT, LIT_CENTRE, GAVE_UP }
-
-/** Continuous autofocus on the page under `focusLock`, as it reports itself: [FOCUSED] settled, which a lock confirms,
- * [UNFOCUSED] reporting no focus, [SCANNING] moving, and [UNKNOWN] otherwise or with a scan holding the lens. */
-private enum class PassiveFocus { UNKNOWN, SCANNING, UNFOCUSED, FOCUSED }
 
 private data class ResolvedProps(
   val active: Boolean,
