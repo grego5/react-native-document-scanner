@@ -54,18 +54,8 @@ namespace margelo::nitro::documentscanner {
     void setActive(std::optional<bool> active) override;
     TextRegion getTextRegion() override;
     void setTextRegion(const TextRegion& textRegion) override;
-    std::optional<TextGuide> getTextGuide() override;
-    void setTextGuide(std::optional<TextGuide> textGuide) override;
-    std::optional<bool> getTextHighlight() override;
-    void setTextHighlight(std::optional<bool> textHighlight) override;
     std::optional<double> getGuideColor() override;
     void setGuideColor(std::optional<double> guideColor) override;
-    std::optional<std::string> getAllowedCharacters() override;
-    void setAllowedCharacters(const std::optional<std::string>& allowedCharacters) override;
-    std::optional<std::string> getTextPattern() override;
-    void setTextPattern(const std::optional<std::string>& textPattern) override;
-    std::optional<double> getMinLength() override;
-    void setMinLength(std::optional<double> minLength) override;
     std::optional<bool> getTapToFocus() override;
     void setTapToFocus(std::optional<bool> tapToFocus) override;
     std::optional<bool> getFocusLock() override;
@@ -74,22 +64,20 @@ namespace margelo::nitro::documentscanner {
     void setZoom(std::optional<double> zoom) override;
     std::optional<TextTorchMode> getTorch() override;
     void setTorch(std::optional<TextTorchMode> torch) override;
-    std::optional<double> getRecognitionRate() override;
-    void setRecognitionRate(std::optional<double> recognitionRate) override;
     std::optional<double> getAnalysisFrameWidth() override;
     void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) override;
     std::optional<std::function<void(CameraState /* state */)>> getOnCameraStateChange() override;
     void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) override;
     std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() override;
     void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) override;
-    std::optional<std::function<void(const TextReading& /* reading */)>> getOnTextChange() override;
-    void setOnTextChange(const std::optional<std::function<void(const TextReading& /* reading */)>>& onTextChange) override;
+    std::optional<std::function<void(bool /* blurred */)>> getOnBlurChange() override;
+    void setOnBlurChange(const std::optional<std::function<void(bool /* blurred */)>>& onBlurChange) override;
     std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() override;
     void setOnError(const std::optional<std::function<void(const ScannerFailure& /* error */)>>& onError) override;
 
   public:
     // Methods
-    std::shared_ptr<Promise<std::variant<ScannerFailure, TextReading>>> readTextResult(std::optional<double> timeoutMs) override;
+    std::shared_ptr<Promise<std::variant<ScannerFailure, TextCapture>>> captureTextResult(std::optional<double> timeoutMs) override;
 
   private:
     jni::global_ref<JHybridTextCameraViewSpec::JavaPart> _javaPart;

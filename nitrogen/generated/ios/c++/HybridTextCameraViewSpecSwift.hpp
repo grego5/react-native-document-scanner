@@ -14,34 +14,41 @@ namespace ReactNativeDocumentScanner { class HybridTextCameraViewSpec_cxx; }
 
 // Forward declaration of `TextRegion` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextRegion; }
-// Forward declaration of `TextGuide` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class TextGuide; }
 // Forward declaration of `TextTorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
 // Forward declaration of `CameraState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CameraState; }
 // Forward declaration of `AutofocusState` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class AutofocusState; }
-// Forward declaration of `TextReading` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct TextReading; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
+// Forward declaration of `TextCapture` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextCapture; }
+// Forward declaration of `TextWord` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextWord; }
+// Forward declaration of `DocumentCorners` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentCorners; }
+// Forward declaration of `DocumentPoint` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct DocumentPoint; }
 
 #include <optional>
 #include "TextRegion.hpp"
-#include "TextGuide.hpp"
-#include <string>
 #include "TextTorchMode.hpp"
 #include "CameraState.hpp"
 #include <functional>
 #include "AutofocusState.hpp"
-#include "TextReading.hpp"
 #include "ScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
+#include "TextCapture.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
+#include <string>
+#include "TextWord.hpp"
+#include <vector>
+#include "DocumentCorners.hpp"
+#include "DocumentPoint.hpp"
 
 #include "ReactNativeDocumentScanner-Swift-Cxx-Umbrella.hpp"
 
@@ -102,47 +109,12 @@ namespace margelo::nitro::documentscanner {
     inline void setTextRegion(const TextRegion& textRegion) noexcept override {
       _swiftPart.setTextRegion(std::forward<decltype(textRegion)>(textRegion));
     }
-    inline std::optional<TextGuide> getTextGuide() noexcept override {
-      auto __result = _swiftPart.getTextGuide();
-      return __result;
-    }
-    inline void setTextGuide(std::optional<TextGuide> textGuide) noexcept override {
-      _swiftPart.setTextGuide(textGuide);
-    }
-    inline std::optional<bool> getTextHighlight() noexcept override {
-      auto __result = _swiftPart.getTextHighlight();
-      return __result;
-    }
-    inline void setTextHighlight(std::optional<bool> textHighlight) noexcept override {
-      _swiftPart.setTextHighlight(textHighlight);
-    }
     inline std::optional<double> getGuideColor() noexcept override {
       auto __result = _swiftPart.getGuideColor();
       return __result;
     }
     inline void setGuideColor(std::optional<double> guideColor) noexcept override {
       _swiftPart.setGuideColor(guideColor);
-    }
-    inline std::optional<std::string> getAllowedCharacters() noexcept override {
-      auto __result = _swiftPart.getAllowedCharacters();
-      return __result;
-    }
-    inline void setAllowedCharacters(const std::optional<std::string>& allowedCharacters) noexcept override {
-      _swiftPart.setAllowedCharacters(allowedCharacters);
-    }
-    inline std::optional<std::string> getTextPattern() noexcept override {
-      auto __result = _swiftPart.getTextPattern();
-      return __result;
-    }
-    inline void setTextPattern(const std::optional<std::string>& textPattern) noexcept override {
-      _swiftPart.setTextPattern(textPattern);
-    }
-    inline std::optional<double> getMinLength() noexcept override {
-      auto __result = _swiftPart.getMinLength();
-      return __result;
-    }
-    inline void setMinLength(std::optional<double> minLength) noexcept override {
-      _swiftPart.setMinLength(minLength);
     }
     inline std::optional<bool> getTapToFocus() noexcept override {
       auto __result = _swiftPart.getTapToFocus();
@@ -172,13 +144,6 @@ namespace margelo::nitro::documentscanner {
     inline void setTorch(std::optional<TextTorchMode> torch) noexcept override {
       _swiftPart.setTorch(torch);
     }
-    inline std::optional<double> getRecognitionRate() noexcept override {
-      auto __result = _swiftPart.getRecognitionRate();
-      return __result;
-    }
-    inline void setRecognitionRate(std::optional<double> recognitionRate) noexcept override {
-      _swiftPart.setRecognitionRate(recognitionRate);
-    }
     inline std::optional<double> getAnalysisFrameWidth() noexcept override {
       auto __result = _swiftPart.getAnalysisFrameWidth();
       return __result;
@@ -200,12 +165,12 @@ namespace margelo::nitro::documentscanner {
     inline void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) noexcept override {
       _swiftPart.setOnAutofocusChange(onAutofocusChange);
     }
-    inline std::optional<std::function<void(const TextReading& /* reading */)>> getOnTextChange() noexcept override {
-      auto __result = _swiftPart.getOnTextChange();
+    inline std::optional<std::function<void(bool /* blurred */)>> getOnBlurChange() noexcept override {
+      auto __result = _swiftPart.getOnBlurChange();
       return __result;
     }
-    inline void setOnTextChange(const std::optional<std::function<void(const TextReading& /* reading */)>>& onTextChange) noexcept override {
-      _swiftPart.setOnTextChange(onTextChange);
+    inline void setOnBlurChange(const std::optional<std::function<void(bool /* blurred */)>>& onBlurChange) noexcept override {
+      _swiftPart.setOnBlurChange(onBlurChange);
     }
     inline std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() noexcept override {
       auto __result = _swiftPart.getOnError();
@@ -217,8 +182,8 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
-    inline std::shared_ptr<Promise<std::variant<ScannerFailure, TextReading>>> readTextResult(std::optional<double> timeoutMs) override {
-      auto __result = _swiftPart.readTextResult(timeoutMs);
+    inline std::shared_ptr<Promise<std::variant<ScannerFailure, TextCapture>>> captureTextResult(std::optional<double> timeoutMs) override {
+      auto __result = _swiftPart.captureTextResult(timeoutMs);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

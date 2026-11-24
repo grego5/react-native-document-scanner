@@ -156,47 +156,6 @@ open class HybridTextCameraViewSpec_cxx {
     }
   }
   
-  public final var textGuide: bridge.std__optional_TextGuide_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_TextGuide_ in
-        if let __unwrappedValue = self.__implementation.textGuide {
-          return bridge.create_std__optional_TextGuide_(__unwrappedValue)
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.textGuide = newValue.value
-    }
-  }
-  
-  public final var textHighlight: bridge.std__optional_bool_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_bool_ in
-        if let __unwrappedValue = self.__implementation.textHighlight {
-          return bridge.create_std__optional_bool_(__unwrappedValue)
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.textHighlight = { () -> Bool? in
-        if bridge.has_value_std__optional_bool_(newValue) {
-          let __unwrapped = bridge.get_std__optional_bool_(newValue)
-          return __unwrapped
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
   public final var guideColor: bridge.std__optional_double_ {
     @inline(__always)
     get {
@@ -211,78 +170,6 @@ open class HybridTextCameraViewSpec_cxx {
     @inline(__always)
     set {
       self.__implementation.guideColor = { () -> Double? in
-        if bridge.has_value_std__optional_double_(newValue) {
-          let __unwrapped = bridge.get_std__optional_double_(newValue)
-          return __unwrapped
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
-  public final var allowedCharacters: bridge.std__optional_std__string_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_std__string_ in
-        if let __unwrappedValue = self.__implementation.allowedCharacters {
-          return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.allowedCharacters = { () -> String? in
-        if bridge.has_value_std__optional_std__string_(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__string_(newValue)
-          return String(__unwrapped)
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
-  public final var textPattern: bridge.std__optional_std__string_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_std__string_ in
-        if let __unwrappedValue = self.__implementation.textPattern {
-          return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.textPattern = { () -> String? in
-        if bridge.has_value_std__optional_std__string_(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__string_(newValue)
-          return String(__unwrapped)
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
-  public final var minLength: bridge.std__optional_double_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_double_ in
-        if let __unwrappedValue = self.__implementation.minLength {
-          return bridge.create_std__optional_double_(__unwrappedValue)
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.minLength = { () -> Double? in
         if bridge.has_value_std__optional_double_(newValue) {
           let __unwrapped = bridge.get_std__optional_double_(newValue)
           return __unwrapped
@@ -382,30 +269,6 @@ open class HybridTextCameraViewSpec_cxx {
     }
   }
   
-  public final var recognitionRate: bridge.std__optional_double_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_double_ in
-        if let __unwrappedValue = self.__implementation.recognitionRate {
-          return bridge.create_std__optional_double_(__unwrappedValue)
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.recognitionRate = { () -> Double? in
-        if bridge.has_value_std__optional_double_(newValue) {
-          let __unwrapped = bridge.get_std__optional_double_(newValue)
-          return __unwrapped
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
   public final var analysisFrameWidth: bridge.std__optional_double_ {
     @inline(__always)
     get {
@@ -494,14 +357,14 @@ open class HybridTextCameraViewSpec_cxx {
     }
   }
   
-  public final var onTextChange: bridge.std__optional_std__function_void_const_TextReading_____reading______ {
+  public final var onBlurChange: bridge.std__optional_std__function_void_bool____blurred______ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_std__function_void_const_TextReading_____reading______ in
-        if let __unwrappedValue = self.__implementation.onTextChange {
-          return bridge.create_std__optional_std__function_void_const_TextReading_____reading______({ () -> bridge.Func_void_TextReading in
-            let __closureWrapper = Func_void_TextReading(__unwrappedValue)
-            return bridge.create_Func_void_TextReading(__closureWrapper.toUnsafe())
+      return { () -> bridge.std__optional_std__function_void_bool____blurred______ in
+        if let __unwrappedValue = self.__implementation.onBlurChange {
+          return bridge.create_std__optional_std__function_void_bool____blurred______({ () -> bridge.Func_void_bool in
+            let __closureWrapper = Func_void_bool(__unwrappedValue)
+            return bridge.create_Func_void_bool(__closureWrapper.toUnsafe())
           }())
         } else {
           return .init()
@@ -510,13 +373,13 @@ open class HybridTextCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.onTextChange = { () -> ((_ reading: TextReading) -> Void)? in
-        if bridge.has_value_std__optional_std__function_void_const_TextReading_____reading______(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__function_void_const_TextReading_____reading______(newValue)
-          return { () -> (TextReading) -> Void in
-            let __wrappedFunction = bridge.wrap_Func_void_TextReading(__unwrapped)
-            return { (__reading: TextReading) -> Void in
-              __wrappedFunction.call(__reading)
+      self.__implementation.onBlurChange = { () -> ((_ blurred: Bool) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_bool____blurred______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_bool____blurred______(newValue)
+          return { () -> (Bool) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_bool(__unwrapped)
+            return { (__blurred: Bool) -> Void in
+              __wrappedFunction.call(__blurred)
             }
           }()
         } else {
@@ -560,9 +423,9 @@ open class HybridTextCameraViewSpec_cxx {
 
   // Methods
   @inline(__always)
-  public final func readTextResult(timeoutMs: bridge.std__optional_double_) -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextReading____ {
+  public final func captureTextResult(timeoutMs: bridge.std__optional_double_) -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture____ {
     do {
-      let __result = try self.__implementation.readTextResult(timeoutMs: { () -> Double? in
+      let __result = try self.__implementation.captureTextResult(timeoutMs: { () -> Double? in
         if bridge.has_value_std__optional_double_(timeoutMs) {
           let __unwrapped = bridge.get_std__optional_double_(timeoutMs)
           return __unwrapped
@@ -570,25 +433,25 @@ open class HybridTextCameraViewSpec_cxx {
           return nil
         }
       }())
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_ScannerFailure__TextReading___ in
-        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_ScannerFailure__TextReading___()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__TextReading___(__promise)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture___(__promise)
         __result
-          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_ScannerFailure__TextReading_ in
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_ScannerFailure__TextCapture_ in
               switch __result {
                 case .first(let __value):
-                  return bridge.create_std__variant_ScannerFailure__TextReading_(__value)
+                  return bridge.create_std__variant_ScannerFailure__TextCapture_(__value)
                 case .second(let __value):
-                  return bridge.create_std__variant_ScannerFailure__TextReading_(__value)
+                  return bridge.create_std__variant_ScannerFailure__TextCapture_(__value)
               }
             }().variant) })
           .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
         return __promise
       }()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextReading____(__resultCpp)
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture____(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextReading____(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture____(__exceptionPtr)
     }
   }
   

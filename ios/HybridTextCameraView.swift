@@ -2,13 +2,11 @@ import AVFoundation
 import Foundation
 import NitroModules
 import UIKit
-import Vision
 
-/// Back-camera preview that reads one line inside `textRegion` with Vision text recognition. The
-/// camera runs while `active`, in a window, sized and permitted. Video buffers arrive upright;
-/// each one is recognized on the video queue inside the region (Vision's region of interest),
-/// filtered and voted on there, and the agreed reading is published on main. Props, callbacks,
-/// the reading and pending reads live on main; the capture session is configured on its own queue.
+/// Back-camera preview with a box marking `textRegion`. Capturing text to pick from is Android only for now:
+/// `captureTextResult` reports `feature/unsupported`. The camera runs while `active`, in a window, sized and
+/// permitted; video frames only report readiness. Props and callbacks live on main; the capture session is
+/// configured on its own queue.
 final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable {
   private let session = AVCaptureSession()
   private let output = AVCaptureVideoDataOutput()
@@ -28,24 +26,19 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
   var view: UIView { preview }
   var active: Bool? = nil
   var textRegion = TextRegion(x: 0.1, y: 0.44, width: 0.8, height: 0.12)
-  var textGuide: TextGuide? = nil
-  var textHighlight: Bool? = nil
   var guideColor: Double? = nil
-  var allowedCharacters: String? = nil
-  var textPattern: String? = nil
-  var minLength: Double? = nil
   var tapToFocus: Bool? = nil
   /// Android only.
   var focusLock: Bool? = nil
   /// Android only.
   var zoom: Double? = nil
   var torch: TextTorchMode? = nil
-  var recognitionRate: Double? = nil
   var analysisFrameWidth: Double? = nil
   var onCameraStateChange: ((_ state: CameraState) -> Void)? = nil { didSet { reportedState = nil; reportState() } }
   /// Android only: iOS has no lens hold and reports `inactive` once set.
   var onAutofocusChange: ((_ state: AutofocusState) -> Void)? = nil { didSet { onAutofocusChange?(.inactive) } }
-  var onTextChange: ((_ reading: TextReading) -> Void)? = nil { didSet { reportedReading = nil; reportReading() } }
+  /// Android only: iOS measures no blur and reports false once set.
+  var onBlurChange: ((_ blurred: Bool) -> Void)? = nil { didSet { onBlurChange?(false) } }
   var onError: ((_ error: ScannerFailure) -> Void)? = nil
 
   // Main only.
@@ -56,11 +49,7 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
   private var streaming = false
   private var generation = 0
   private var region = TextRegion(x: 0.1, y: 0.44, width: 0.8, height: 0.12)
-  private var filterKey: (String, String, Int)?
-  private var reading: TextReading?
   private var reportedState: CameraState?
-  private var reportedReading: TextReading?
-  private var pendingReads: [UUID: Promise<Variant_ScannerFailure_TextReading>] = [:]
   private var removePermissionListener: (() -> Void)?
   private var rotation: AVCaptureDevice.RotationCoordinator?
   private var rotationObservations: [NSKeyValueObservation] = []
@@ -92,54 +81,20 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
 
   func afterUpdate() {
     let clamped = clampedTextRegion(textRegion)
-    let key = (allowedCharacters ?? "", textPattern ?? "", Int(minLength ?? 1))
-    let regionChanged = !sameTextRegion(clamped, region)
-    var newFilter: TextLineFilter?
-    if filterKey == nil || filterKey! != key {
-      filterKey = key
-      newFilter = TextLineFilter(allowedCharacters: key.0, pattern: key.1, minLength: key.2)
-    }
-    if regionChanged || newFilter != nil {
+    if !sameTextRegion(clamped, region) {
       region = clamped
-      updateShared {
-        $0.region = clamped
-        if let newFilter { $0.filter = newFilter }
-        $0.revision += 1
-      }
-      clearReading()
-      if regionChanged { aimFocus() }
-      if newFilter?.patternInvalid == true { onError?(ScannerFailure(code: .inputInvalid)) }
+      aimFocus()
     }
-    let interval = Int64(1_000 / min(max(recognitionRate ?? 5, 1), 15))
-    updateShared { $0.frameIntervalMs = interval }
-    MainActor.assumeIsolated {
-      preview.overlay.update(region: region, guide: textGuide ?? TextGuide.none, highlight: textHighlight == true,
-                             color: Self.color(guideColor))
-    }
+    MainActor.assumeIsolated { preview.overlay.update(region: region, color: Self.color(guideColor)) }
     if running, configuredPreset != preset() { stop() }
     evaluate()
     applyTorch()
   }
 
-  func readTextResult(timeoutMs: Double?) throws -> Promise<Variant_ScannerFailure_TextReading> {
-    let promise = Promise<Variant_ScannerFailure_TextReading>()
-    let timeout = min(max(timeoutMs ?? 1_500, 0), 30_000)
-    DispatchQueue.main.async { [weak self] in
-      guard let self, !dropped, running, !interrupted else {
-        promise.resolve(withResult: .first(ScannerFailure(code: .cameraUnavailable)))
-        return
-      }
-      if let reading {
-        promise.resolve(withResult: .second(reading))
-        return
-      }
-      let id = UUID()
-      pendingReads[id] = promise
-      DispatchQueue.main.asyncAfter(deadline: .now() + timeout / 1_000) { [weak self] in
-        guard let self, let promise = pendingReads.removeValue(forKey: id) else { return }
-        promise.resolve(withResult: .second(emptyReading()))
-      }
-    }
+  /// Capture for picking text is Android only for now.
+  func captureTextResult(timeoutMs: Double?) throws -> Promise<Variant_ScannerFailure_TextCapture> {
+    let promise = Promise<Variant_ScannerFailure_TextCapture>()
+    promise.resolve(withResult: .first(ScannerFailure(code: .featureUnsupported)))
     return promise
   }
 
@@ -184,7 +139,6 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     frameDelegate = delegate
     updateShared {
       $0.generation = generation
-      $0.revision += 1
       $0.streamed = false
     }
     reportState()
@@ -261,7 +215,7 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     makeUnavailable()
   }
 
-  /// Main: frames count again. Reads stay unavailable until the first fresh frame restores readiness and clears
+  /// Main: frames count again. The camera stays unavailable until the first fresh frame restores readiness and clears
   /// `interrupted`.
   private func endInterruption(run: Int) {
     guard running, generation == run, isPaused() else { return }
@@ -274,17 +228,11 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     return sharedState.paused
   }
 
-  /// Main: the one transition that makes reads unavailable, for a stop, a failed start or an interruption. Frames
-  /// already queued no longer count, the reading clears, and pending reads fail with `camera/unavailable`. While still
-  /// running, readiness returns with the next fresh frame.
+  /// Main: the one transition that makes the camera unavailable, for a stop, a failed start or an interruption.
+  /// Frames already queued no longer count. While still running, readiness returns with the next fresh frame.
   private func makeUnavailable() {
     streaming = false
-    updateShared { $0.revision += 1; $0.availability += 1; $0.streamed = false }
-    clearReading()
-    for promise in pendingReads.values {
-      promise.resolve(withResult: .first(ScannerFailure(code: .cameraUnavailable)))
-    }
-    pendingReads.removeAll()
+    updateShared { $0.availability += 1; $0.streamed = false }
     reportState()
   }
 
@@ -308,9 +256,6 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
   }
 
   private func layoutChanged() {
-    let size = MainActor.assumeIsolated { preview.bounds.size }
-    updateShared { $0.viewSize = size; $0.revision += 1 }
-    clearReading()
     aimFocus()
     evaluate()
   }
@@ -335,13 +280,12 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
         coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.initial, .new]) { [weak self] c, _ in
           let angle = c.videoRotationAngleForHorizonLevelCapture
           guard let self else { return }
-          // Upright buffers keep the region mapping and Vision's orientation trivial.
+          // Upright buffers keep the region mapping trivial.
           sessionQueue.async { [self] in
             if let connection = output.connection(with: .video), connection.isVideoRotationAngleSupported(angle) {
               connection.videoRotationAngle = angle
             }
           }
-          updateShared { $0.revision += 1 }
         },
       ]
     }
@@ -405,7 +349,7 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     }
   }
 
-  // MARK: - Recognition
+  // MARK: - Frames
 
   private func updateShared(_ change: (inout TextAnalysisState) -> Void) {
     shared.lock()
@@ -413,109 +357,18 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     shared.unlock()
   }
 
-  /// Video queue.
-  fileprivate func recognize(_ buffer: CMSampleBuffer, generation: Int) {
-    guard let pixels = CMSampleBufferGetImageBuffer(buffer) else { return }
-    let nowMs = Int64(CACurrentMediaTime() * 1_000)
+  /// Video queue: the first frame since the last unavailable transition reports readiness.
+  fileprivate func frameArrived(generation: Int) {
     shared.lock()
-    guard sharedState.generation == generation else {
-      shared.unlock()
-      return
-    }
     // Frames still queued when the session was interrupted do not count until the interruption ends.
-    guard !sharedState.paused else {
+    guard sharedState.generation == generation, !sharedState.paused, !sharedState.streamed else {
       shared.unlock()
       return
     }
-    let state = sharedState
-    let firstFrame = !sharedState.streamed
     sharedState.streamed = true
-    let throttled = nowMs - sharedState.lastFrameMs < sharedState.frameIntervalMs
-    if !throttled { sharedState.lastFrameMs = nowMs }
+    let availability = sharedState.availability
     shared.unlock()
-    if firstFrame {
-      let availability = state.availability
-      DispatchQueue.main.async { [weak self] in self?.firstFrame(generation: generation, availability: availability) }
-    }
-    guard !throttled else { return }
-    var analyzer = videoAnalyzer
-    if analyzer.revision != state.revision {
-      analyzer.votes.clear()
-      analyzer.outline = nil
-      analyzer.revision = state.revision
-    }
-    let bufferSize = CGSize(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels))
-    let crop = textRegionInBuffer(state.region, view: state.viewSize, buffer: bufferSize)
-    guard crop.width * bufferSize.width >= 16, crop.height * bufferSize.height >= 16 else {
-      videoAnalyzer = analyzer
-      return
-    }
-    let request = VNRecognizeTextRequest()
-    request.recognitionLevel = .accurate
-    request.usesLanguageCorrection = false
-    // Vision's origin is bottom left.
-    request.regionOfInterest = CGRect(x: crop.minX, y: 1 - crop.maxY, width: crop.width, height: crop.height)
-    var accepted: TextLineFilter.Candidate?
-    do {
-      try VNImageRequestHandler(cvPixelBuffer: pixels, orientation: .up).perform([request])
-      // Boxes are normalized to the region of interest, bottom-left origin; flip to top-left.
-      let lines = (request.results ?? []).compactMap { observation -> RecognizedLine? in
-        guard let candidate = observation.topCandidates(1).first else { return nil }
-        let box = observation.boundingBox
-        return RecognizedLine(words: Self.words(candidate, line: box), top: 1 - box.maxY, bottom: 1 - box.minY,
-                              confidence: Double(candidate.confidence))
-      }
-      accepted = state.filter.select(lines, cropWidth: 1, cropHeight: 1)
-    } catch {
-      videoAnalyzer = analyzer
-      return
-    }
-    let region = state.region
-    let winner = analyzer.votes.add(accepted?.text, confidence: accepted?.confidence ?? 0, nowMs: nowMs)
-    // The outline restarts at the newest frame that read the agreed text and otherwise keeps that text's last box; a
-    // new winner this frame did not box has none yet. Vision's boxes are already fractions of the region of interest.
-    if let winner, let accepted, accepted.text == winner.text {
-      analyzer.outline = (winner.text, textBoundsInView(accepted, region: region, cropWidth: 1, cropHeight: 1))
-    } else if analyzer.outline?.text != winner?.text {
-      analyzer.outline = nil
-    }
-    let outline = analyzer.outline?.bounds
-    videoAnalyzer = analyzer
-    let revision = state.revision
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      shared.lock()
-      let current = sharedState.revision == revision
-      shared.unlock()
-      if current, running { publish(winner, region: region, outline: outline) }
-    }
-  }
-
-  /// Video queue only.
-  private var videoAnalyzer = TextVideoAnalyzer()
-
-  /// Each whitespace-separated word of `candidate` with its horizontal extent, so a reading can be the
-  /// piece of the line under the region's centre. A word Vision cannot box takes its share of the line.
-  private static func words(_ candidate: VNRecognizedText, line: CGRect) -> [RecognizedWord] {
-    let string = candidate.string
-    let count = Double(max(string.count, 1))
-    var words: [RecognizedWord] = []
-    var index = string.startIndex
-    while index < string.endIndex {
-      guard let start = string[index...].firstIndex(where: { !$0.isWhitespace }) else { break }
-      let end = string[start...].firstIndex(where: \.isWhitespace) ?? string.endIndex
-      let range = start..<end
-      if let box = (try? candidate.boundingBox(for: range))?.boundingBox, box.width > 0 {
-        words.append(RecognizedWord(text: String(string[range]), left: box.minX, right: box.maxX))
-      } else {
-        let from = Double(string.distance(from: string.startIndex, to: start)) / count
-        let to = Double(string.distance(from: string.startIndex, to: end)) / count
-        words.append(RecognizedWord(text: String(string[range]), left: line.minX + from * line.width,
-                                    right: line.minX + to * line.width))
-      }
-      index = end
-    }
-    return words
+    DispatchQueue.main.async { [weak self] in self?.firstFrame(generation: generation, availability: availability) }
   }
 
   /// Main: the first frame of this run since the last unavailable transition has arrived.
@@ -527,34 +380,6 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     streaming = true
     interrupted = false
     reportState()
-  }
-
-  private func publish(_ winner: TextVotes.Winner?, region: TextRegion, outline: TextRegion?) {
-    reading = winner.map {
-      TextReading(text: $0.text, confidence: $0.confidence, votes: Double($0.votes), region: region, bounds: outline)
-    }
-    if let reading {
-      for promise in pendingReads.values { promise.resolve(withResult: .second(reading)) }
-      pendingReads.removeAll()
-    }
-    reportReading()
-  }
-
-  private func clearReading() {
-    reading = nil
-    reportReading()
-  }
-
-  private func emptyReading() -> TextReading { TextReading(text: "", confidence: 0, votes: 0, region: region, bounds: nil) }
-
-  private func reportReading() {
-    guard !dropped else { return }
-    let next = reading ?? emptyReading()
-    MainActor.assumeIsolated { preview.overlay.showText(next.bounds) }
-    if let last = reportedReading, last.text == next.text, last.votes == next.votes,
-       sameTextBounds(last.bounds, next.bounds) { return }
-    reportedReading = next
-    onTextChange?(next)
   }
 
   private func reportState() {
@@ -592,25 +417,11 @@ private final class TextSessionObservers: @unchecked Sendable {
 
 private struct TextAnalysisState {
   var generation: Int?
-  var region = TextRegion(x: 0.1, y: 0.44, width: 0.8, height: 0.12)
-  var viewSize = CGSize.zero
-  var filter = TextLineFilter(allowedCharacters: "", pattern: "", minLength: 1)
-  /// Bumped whenever votes must restart: a new region, filter, layout, rotation or binding.
-  var revision = 0
-  var lastFrameMs: Int64 = 0
-  var frameIntervalMs: Int64 = 200
   var streamed = false
   /// Bumped by each unavailable transition, so a first-frame callback queued before one cannot restore readiness.
   var availability = 0
   /// Set from an interruption until AVFoundation ends it; frames are dropped meanwhile.
   var paused = false
-}
-
-private struct TextVideoAnalyzer {
-  var votes = TextVotes()
-  /// The outline of the text being read, as view fractions.
-  var outline: (text: String, bounds: TextRegion)?
-  var revision = -1
 }
 
 private final class TextFrameDelegate: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
@@ -623,7 +434,7 @@ private final class TextFrameDelegate: NSObject, AVCaptureVideoDataOutputSampleB
   }
 
   func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-    owner?.recognize(sampleBuffer, generation: generation)
+    owner?.frameArrived(generation: generation)
   }
 }
 
@@ -681,43 +492,25 @@ final class TextCameraPreviewView: UIView {
   }
 }
 
-/// Draws the region's guide and highlights the text being read, each when asked; nothing otherwise.
+/// Draws the box marking the region read, in the guide colour, with rounded corners.
 final class TextRegionOverlay: UIView {
-  private let textOutline = CAShapeLayer()
-  private let crosshair = CAShapeLayer()
+  private let box = CAShapeLayer()
   private var region: TextRegion?
-  private var text: TextRegion?
-  private var guide = TextGuide.none
-  private var highlight = false
 
   override init(frame: CGRect) {
     super.init(frame: frame)
     backgroundColor = .clear
-    crosshair.lineWidth = 1.5
-    crosshair.lineCap = .round
-    crosshair.lineJoin = .round
-    crosshair.fillColor = nil
-    layer.addSublayer(crosshair)
-    layer.addSublayer(textOutline)
+    box.lineWidth = 2
+    box.fillColor = nil
+    layer.addSublayer(box)
   }
 
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
-  func update(region: TextRegion, guide: TextGuide, highlight: Bool, color: UIColor) {
+  func update(region: TextRegion, color: UIColor) {
     self.region = region
-    self.guide = guide
-    self.highlight = highlight
-    crosshair.strokeColor = color.cgColor
-    crosshair.fillColor = color.cgColor
-    textOutline.fillColor = color.withAlphaComponent(0.35).cgColor
-    setNeedsLayout()
-  }
-
-  /// The text being read, as fractions of the view, or nil for none.
-  func showText(_ bounds: TextRegion?) {
-    guard !sameTextBounds(bounds, text) else { return }
-    text = bounds
+    box.strokeColor = color.cgColor
     setNeedsLayout()
   }
 
@@ -726,55 +519,13 @@ final class TextRegionOverlay: UIView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     defer { CATransaction.commit() }
-    guard bounds.width > 0, bounds.height > 0 else {
-      crosshair.path = nil
-      textOutline.path = nil
+    guard let region, bounds.width > 0, bounds.height > 0 else {
+      box.path = nil
       return
     }
-    textOutline.frame = bounds
-    // Text whose centre has left the region is no longer what is read; the reading outlives it by its votes, but the
-    // highlight goes with it.
-    if highlight, let text, let region,
-       (region.x...(region.x + region.width)).contains(text.x + text.width / 2),
-       (region.y...(region.y + region.height)).contains(text.y + text.height / 2) {
-      let box = CGRect(x: text.x * bounds.width, y: text.y * bounds.height,
-                       width: text.width * bounds.width, height: text.height * bounds.height).insetBy(dx: -3, dy: -3)
-      textOutline.path = UIBezierPath(roundedRect: box, cornerRadius: 4).cgPath
-    } else {
-      textOutline.path = nil
-    }
-    guard let region, guide != .none else {
-      crosshair.path = nil
-      return
-    }
+    box.frame = bounds
     let rect = CGRect(x: region.x * bounds.width, y: region.y * bounds.height,
                       width: region.width * bounds.width, height: region.height * bounds.height)
-    if guide == .line {
-      let inset = rect.width * 0.08
-      let y = rect.midY + min(14, rect.height / 3)
-      let line = UIBezierPath()
-      line.move(to: CGPoint(x: rect.minX + inset, y: y))
-      line.addLine(to: CGPoint(x: rect.maxX - inset, y: y))
-      crosshair.frame = bounds
-      crosshair.path = line.cgPath
-      return
-    }
-    if guide == .dot {
-      // The layer fills what it strokes; the other guides are open lines with nothing to fill.
-      let radius = 3.5
-      crosshair.frame = bounds
-      crosshair.path = UIBezierPath(ovalIn: CGRect(x: rect.midX - radius, y: rect.midY - radius,
-                                                   width: radius * 2, height: radius * 2)).cgPath
-      return
-    }
-    // The point readings are chosen nearest to.
-    let arm = min(8, rect.height / 3, rect.width / 3)
-    let cross = UIBezierPath()
-    cross.move(to: CGPoint(x: rect.midX - arm, y: rect.midY))
-    cross.addLine(to: CGPoint(x: rect.midX + arm, y: rect.midY))
-    cross.move(to: CGPoint(x: rect.midX, y: rect.midY - arm))
-    cross.addLine(to: CGPoint(x: rect.midX, y: rect.midY + arm))
-    crosshair.frame = bounds
-    crosshair.path = cross.cgPath
+    box.path = UIBezierPath(roundedRect: rect, cornerRadius: 8).cgPath
   }
 }

@@ -19,13 +19,10 @@
 
 #include <optional>
 #include "TextRegion.hpp"
-#include "TextGuide.hpp"
-#include <string>
 #include "TextTorchMode.hpp"
 #include "CameraState.hpp"
 #include <functional>
 #include "AutofocusState.hpp"
-#include "TextReading.hpp"
 #include "ScannerFailure.hpp"
 #include <memory>
 #include "HybridTextCameraViewSpec.hpp"
@@ -52,21 +49,15 @@ namespace margelo::nitro::documentscanner::views {
   public:
     nitro::ReactProp<std::optional<bool>> active;
     nitro::ReactProp<TextRegion> textRegion;
-    nitro::ReactProp<std::optional<TextGuide>> textGuide;
-    nitro::ReactProp<std::optional<bool>> textHighlight;
     nitro::ReactProp<std::optional<double>> guideColor;
-    nitro::ReactProp<std::optional<std::string>> allowedCharacters;
-    nitro::ReactProp<std::optional<std::string>> textPattern;
-    nitro::ReactProp<std::optional<double>> minLength;
     nitro::ReactProp<std::optional<bool>> tapToFocus;
     nitro::ReactProp<std::optional<bool>> focusLock;
     nitro::ReactProp<std::optional<double>> zoom;
     nitro::ReactProp<std::optional<TextTorchMode>> torch;
-    nitro::ReactProp<std::optional<double>> recognitionRate;
     nitro::ReactProp<std::optional<double>> analysisFrameWidth;
     nitro::ReactProp<std::optional<std::function<void(CameraState /* state */)>>> onCameraStateChange;
     nitro::ReactProp<std::optional<std::function<void(AutofocusState /* state */)>>> onAutofocusChange;
-    nitro::ReactProp<std::optional<std::function<void(const TextReading& /* reading */)>>> onTextChange;
+    nitro::ReactProp<std::optional<std::function<void(bool /* blurred */)>>> onBlurChange;
     nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* error */)>>> onError;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridTextCameraViewSpec>& /* ref */)>>> hybridRef;
 
@@ -74,21 +65,15 @@ namespace margelo::nitro::documentscanner::views {
     bool hasSameProps(const HybridTextCameraViewProps& other) const noexcept {
       return active.hasSameValue(other.active) &&
              textRegion.hasSameValue(other.textRegion) &&
-             textGuide.hasSameValue(other.textGuide) &&
-             textHighlight.hasSameValue(other.textHighlight) &&
              guideColor.hasSameValue(other.guideColor) &&
-             allowedCharacters.hasSameValue(other.allowedCharacters) &&
-             textPattern.hasSameValue(other.textPattern) &&
-             minLength.hasSameValue(other.minLength) &&
              tapToFocus.hasSameValue(other.tapToFocus) &&
              focusLock.hasSameValue(other.focusLock) &&
              zoom.hasSameValue(other.zoom) &&
              torch.hasSameValue(other.torch) &&
-             recognitionRate.hasSameValue(other.recognitionRate) &&
              analysisFrameWidth.hasSameValue(other.analysisFrameWidth) &&
              onCameraStateChange.hasSameValue(other.onCameraStateChange) &&
              onAutofocusChange.hasSameValue(other.onAutofocusChange) &&
-             onTextChange.hasSameValue(other.onTextChange) &&
+             onBlurChange.hasSameValue(other.onBlurChange) &&
              onError.hasSameValue(other.onError) &&
              hybridRef.hasSameValue(other.hybridRef);
     }
@@ -97,21 +82,15 @@ namespace margelo::nitro::documentscanner::views {
     bool hasAnyProvidedProps() const noexcept {
       return active.isProvided() ||
              textRegion.isProvided() ||
-             textGuide.isProvided() ||
-             textHighlight.isProvided() ||
              guideColor.isProvided() ||
-             allowedCharacters.isProvided() ||
-             textPattern.isProvided() ||
-             minLength.isProvided() ||
              tapToFocus.isProvided() ||
              focusLock.isProvided() ||
              zoom.isProvided() ||
              torch.isProvided() ||
-             recognitionRate.isProvided() ||
              analysisFrameWidth.isProvided() ||
              onCameraStateChange.isProvided() ||
              onAutofocusChange.isProvided() ||
-             onTextChange.isProvided() ||
+             onBlurChange.isProvided() ||
              onError.isProvided() ||
              hybridRef.isProvided();
     }

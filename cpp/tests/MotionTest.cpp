@@ -344,6 +344,30 @@ void tracking() {
               bool(actual.transform) == bool(expected.transform),
           "BGRA flow differs from RGBA");
   }
+  {
+    // A luma plane, as a YUV frame's, measures what the RGBA frame it was taken from does.
+    auto luma = [](const Image &i) {
+      auto out = std::make_shared<std::vector<std::byte>>(size_t(640) * 480);
+      for (size_t row = 0; row < 480; ++row)
+        for (size_t x = 0; x < 640; ++x) {
+          const auto *p = reinterpret_cast<const uint8_t *>(i.bytes->data()) + row * i.stride + x * 4;
+          (*out)[row * 640 + x] = std::byte(uint8_t((77 * p[0] + 150 * p[1] + 29 * p[2]) >> 8));
+        }
+      return out;
+    };
+    const auto ga = luma(first), gb = luma(second);
+    m::FlowEstimator rgba, grey;
+    auto la = first.lease(Orientation::rotate90), lb = second.lease(Orientation::rotate90);
+    auto sa = PixelLease(ga, *ga, {PixelFormat::gray8, {640, 480}, 640, 1, {0, 0, 640, 480}, Orientation::rotate90});
+    auto sb = PixelLease(gb, *gb, {PixelFormat::gray8, {640, 480}, 640, 1, {0, 0, 640, 480}, Orientation::rotate90});
+    rgba.update(la, start, {}, true);
+    grey.update(sa, start, {}, true);
+    const auto expected = rgba.update(lb, start + interval, {}, true);
+    const auto actual = grey.update(sb, start + interval, {}, true);
+    check(expected.status == m::Status::measured && actual.status == expected.status && actual.speed == expected.speed &&
+              actual.validTracks == expected.validTracks,
+          "Luma flow differs from RGBA");
+  }
   auto cropUpdate = [&](const Image &i, int64_t t) {
     auto lease = i.lease(Orientation::upright, {80, 0, 480, 480});
     return estimator.update(lease, t, {});

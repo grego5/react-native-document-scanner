@@ -6,9 +6,9 @@ import {
   DocumentScanner,
   TextCamera,
   type TextCameraRef,
-  type TextGuide,
-  type TextReading,
+  type TextCapture,
   type TextRegion,
+  TextSelection,
 } from 'react-native-document-scanner';
 import { ActionButton } from './ActionButton';
 import { PrimaryButton } from './PrimaryButton';
@@ -18,41 +18,43 @@ import { diagnosticsAvailable, shareDiagnostics } from '../lib/diagnostics';
 import { errorMessage } from '../lib/errorMessage';
 import { styles } from '../styles';
 
-const SERIAL_CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/';
 const REGIONS: Record<'line' | 'code', TextRegion> = {
   line: { x: 0.08, y: 0.42, width: 0.84, height: 0.12 },
   code: { x: 0.25, y: 0.4, width: 0.5, height: 0.16 },
 };
 /** Zoom steps: more lets close-up text fill the frame from farther away, inside the lens's focus range. */
 const ZOOMS = [1, 1.5, 2];
-/** The built-in guides, in the order the guide button steps through them. */
-const GUIDES: TextGuide[] = ['crosshair', 'dot', 'line', 'none'];
-/** Zoom and the focus report are Android only. */
+/** Capture, zoom and the focus report are Android only. */
 const ANDROID = Platform.OS === 'android';
 
-/** Reads one serial-like line; the user edits the result and applies it. */
+/** Captures the boxed region and lets the user pick words from it by tap or by dragging a box; the picked text can be
+ * edited and copied. */
 export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const camera = useRef<TextCameraRef>(null);
   const [region, setRegion] = useState<keyof typeof REGIONS>('line');
-  const [serialOnly, setSerialOnly] = useState(true);
   const [torch, setTorch] = useState<'off' | 'on'>('off');
   const [zoom, setZoom] = useState(1);
-  const [guide, setGuide] = useState<TextGuide>('crosshair');
-  const [highlight, setHighlight] = useState(true);
   const [focus, setFocus] = useState<AutofocusState>('inactive');
-  const [live, setLive] = useState<TextReading>();
+  const [blurred, setBlurred] = useState(false);
   const [value, setValue] = useState<string>();
+  const [capture, setCapture] = useState<TextCapture>();
   const [message, setMessage] = useState('');
 
-  const read = async () => {
+  const dismiss = () => {
+    setValue(undefined);
+    setCapture(undefined);
+  };
+
+  const shoot = async () => {
     setMessage('');
     try {
-      const reading = await camera.current?.readText();
-      if (reading) setValue(reading.text);
-      else setMessage('No text found in the frame. Hold the line inside it.');
+      const shot = await camera.current?.captureText();
+      if (!shot) return;
+      setCapture(shot);
+      setValue('');
     } catch (error) {
-      setMessage(errorMessage(error, 'Could not read text.'));
+      setMessage(errorMessage(error, 'Could not capture the text.'));
     }
   };
 
@@ -64,21 +66,17 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
           style={StyleSheet.absoluteFill}
           active={value === undefined}
           textRegion={REGIONS[region]}
-          allowedCharacters={serialOnly ? SERIAL_CHARACTERS : ''}
-          minLength={serialOnly ? 4 : 1}
           torch={torch}
           zoom={zoom}
-          textGuide={guide}
-          textHighlight={highlight}
           onAutofocusChange={setFocus}
-          onTextChange={setLive}
+          onBlurChange={setBlurred}
           onError={(error) => setMessage(errorMessage(error, 'Could not start the text camera.'))}
         />
         <View style={styles.cameraNotices} pointerEvents="none">
           {!granted && <Text style={styles.notice}>Allow camera access on the scanner screen first.</Text>}
           {value === undefined && (
             <Text style={styles.notice}>
-              {live ? `${live.text} · ${live.votes}×` : 'Point the frame at one line of text.'}
+              {blurred ? 'Blurred: move the phone back or hold still.' : 'Hold the text inside the box, then capture.'}
               {ANDROID ? ` · focus ${focus}` : ''}
             </Text>
           )}
@@ -99,42 +97,45 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
             {diagnosticsAvailable && <ActionButton label="Share log" onPress={shareDiagnostics} />}
           </View>
           <View style={styles.shutterCenter}>
-            <ShutterButton disabled={!granted} onPress={read} />
+            <ShutterButton disabled={!granted} onPress={shoot} />
           </View>
           <View style={styles.shutterSide}>
             <ActionButton
               label={region === 'line' ? 'Wide line' : 'Short code'}
               onPress={() => setRegion(region === 'line' ? 'code' : 'line')}
             />
-            <ActionButton
-              label={serialOnly ? 'Serial A-Z 0-9' : 'Any text'}
-              onPress={() => setSerialOnly(!serialOnly)}
-            />
-            <ActionButton
-              label={`Guide ${guide}`}
-              onPress={() => setGuide(GUIDES[(GUIDES.indexOf(guide) + 1) % GUIDES.length])}
-            />
-            <ActionButton label={`Highlight ${highlight ? 'on' : 'off'}`} onPress={() => setHighlight(!highlight)} />
           </View>
         </View>
       </View>
       {/* A modal sheet rises above the keyboard; the edge-to-edge main window does not resize for it. */}
-      <SheetModal visible={value !== undefined} onClose={() => setValue(undefined)}>
+      <SheetModal visible={value !== undefined} onClose={dismiss}>
         <View style={styles.optionsPanel}>
+          {capture && (
+            <View style={panel.field}>
+              <Text style={styles.tuningLabel}>
+                {`${capture.words.length} words · tap a word or drag a box over several`}
+              </Text>
+              <TextSelection
+                capture={capture}
+                style={panel.selection}
+                onSelectionChange={(_, text) => setValue(text)}
+              />
+            </View>
+          )}
           <View style={panel.field}>
-            <Text style={styles.tuningLabel}>Read text</Text>
+            <Text style={styles.tuningLabel}>Picked text</Text>
             <TextInput
               style={[styles.numberInput, panel.input]}
               value={value ?? ''}
               onChangeText={setValue}
-              autoCapitalize="characters"
+              autoCapitalize="none"
               autoCorrect={false}
-              autoFocus
+              autoFocus={!capture}
               selectTextOnFocus
             />
           </View>
           <View style={styles.actionRow}>
-            <PrimaryButton label="Scan again" variant="secondary" onPress={() => setValue(undefined)} style={panel.button} />
+            <PrimaryButton label="Scan again" variant="secondary" onPress={dismiss} style={panel.button} />
             <PrimaryButton
               label="Copy"
               style={panel.button}
@@ -145,7 +146,7 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
                 } catch (error) {
                   setMessage(errorMessage(error, 'Could not copy the text.'));
                 }
-                setValue(undefined);
+                dismiss();
               }}
             />
           </View>
@@ -159,4 +160,5 @@ const panel = StyleSheet.create({
   field: { gap: 6 },
   input: { fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
   button: { flex: 1 },
+  selection: { height: 180, borderRadius: 8, backgroundColor: '#000' },
 });

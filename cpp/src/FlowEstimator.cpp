@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 #include <limits>
 #include <vector>
@@ -158,10 +159,10 @@ Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const st
   const auto &l = view.layout();
   if (l.size.width > uint32_t(std::numeric_limits<int>::max()) ||
       l.size.height > uint32_t(std::numeric_limits<int>::max()) ||
-      (l.format != PixelFormat::rgba8 && l.format != PixelFormat::bgra8) ||
+      (l.format != PixelFormat::rgba8 && l.format != PixelFormat::bgra8 && l.format != PixelFormat::gray8) ||
       (l.orientation != Orientation::upright && l.orientation != Orientation::rotate90 &&
        l.orientation != Orientation::rotate180 && l.orientation != Orientation::rotate270))
-    throw std::invalid_argument("Expected RGBA or BGRA flow pixels and a camera rotation.");
+    throw std::invalid_argument("Expected RGBA, BGRA or grey flow pixels and a camera rotation.");
   if (region)
     for (auto p : *region)
       if (!std::isfinite(p.x) || !std::isfinite(p.y) || std::abs(p.x) > 1000 || std::abs(p.y) > 1000)
@@ -177,7 +178,8 @@ Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const st
                         uint64_t(sensor) - uint64_t(s.previousNs) <= uint64_t(s.maxGap);
   s.geometry = geometry;
   const auto bytes = view.bytes();
-  // The same luma weights for either channel order.
+  // The same luma weights for either channel order; grey pixels, as a YUV frame's luma plane, are luma already.
+  const bool gray = l.format == PixelFormat::gray8;
   const int red = l.format == PixelFormat::bgra8 ? 2 : 0, blue = 2 - red;
   // Row pointers into a reused image: per-pixel Mat::at and its offset arithmetic cost more than the conversion.
   s.full.create(int(crop.height), int(crop.width), CV_8UC1);
@@ -185,8 +187,12 @@ Estimate FlowEstimator::update(const PixelLease &lease, int64_t sensor, const st
     const auto *p = reinterpret_cast<const uint8_t *>(bytes.data()) + (crop.top + y) * l.rowStride +
                     size_t(crop.left) * l.pixelStride;
     auto *out = s.full.ptr<uint8_t>(int(y));
+    if (gray && l.pixelStride == 1) {
+      std::memcpy(out, p, crop.width);
+      continue;
+    }
     for (uint32_t x = 0; x < crop.width; ++x, p += l.pixelStride)
-      out[x] = static_cast<uint8_t>((77 * p[red] + 150 * p[1] + 29 * p[blue]) >> 8);
+      out[x] = gray ? p[0] : static_cast<uint8_t>((77 * p[red] + 150 * p[1] + 29 * p[blue]) >> 8);
   }
   const double scale = std::min(1.0, double(s.maxEdge) / std::max(crop.width, crop.height));
   const int w = std::max(1, int(std::floor(crop.width * scale + .5))),

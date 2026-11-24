@@ -18,18 +18,8 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridSetter("active", &HybridTextCameraViewSpec::setActive);
       prototype.registerHybridGetter("textRegion", &HybridTextCameraViewSpec::getTextRegion);
       prototype.registerHybridSetter("textRegion", &HybridTextCameraViewSpec::setTextRegion);
-      prototype.registerHybridGetter("textGuide", &HybridTextCameraViewSpec::getTextGuide);
-      prototype.registerHybridSetter("textGuide", &HybridTextCameraViewSpec::setTextGuide);
-      prototype.registerHybridGetter("textHighlight", &HybridTextCameraViewSpec::getTextHighlight);
-      prototype.registerHybridSetter("textHighlight", &HybridTextCameraViewSpec::setTextHighlight);
       prototype.registerHybridGetter("guideColor", &HybridTextCameraViewSpec::getGuideColor);
       prototype.registerHybridSetter("guideColor", &HybridTextCameraViewSpec::setGuideColor);
-      prototype.registerHybridGetter("allowedCharacters", &HybridTextCameraViewSpec::getAllowedCharacters);
-      prototype.registerHybridSetter("allowedCharacters", &HybridTextCameraViewSpec::setAllowedCharacters);
-      prototype.registerHybridGetter("textPattern", &HybridTextCameraViewSpec::getTextPattern);
-      prototype.registerHybridSetter("textPattern", &HybridTextCameraViewSpec::setTextPattern);
-      prototype.registerHybridGetter("minLength", &HybridTextCameraViewSpec::getMinLength);
-      prototype.registerHybridSetter("minLength", &HybridTextCameraViewSpec::setMinLength);
       prototype.registerHybridGetter("tapToFocus", &HybridTextCameraViewSpec::getTapToFocus);
       prototype.registerHybridSetter("tapToFocus", &HybridTextCameraViewSpec::setTapToFocus);
       prototype.registerHybridGetter("focusLock", &HybridTextCameraViewSpec::getFocusLock);
@@ -38,19 +28,17 @@ namespace margelo::nitro::documentscanner {
       prototype.registerHybridSetter("zoom", &HybridTextCameraViewSpec::setZoom);
       prototype.registerHybridGetter("torch", &HybridTextCameraViewSpec::getTorch);
       prototype.registerHybridSetter("torch", &HybridTextCameraViewSpec::setTorch);
-      prototype.registerHybridGetter("recognitionRate", &HybridTextCameraViewSpec::getRecognitionRate);
-      prototype.registerHybridSetter("recognitionRate", &HybridTextCameraViewSpec::setRecognitionRate);
       prototype.registerHybridGetter("analysisFrameWidth", &HybridTextCameraViewSpec::getAnalysisFrameWidth);
       prototype.registerHybridSetter("analysisFrameWidth", &HybridTextCameraViewSpec::setAnalysisFrameWidth);
       prototype.registerHybridGetter("onCameraStateChange", &HybridTextCameraViewSpec::getOnCameraStateChange);
       prototype.registerHybridSetter("onCameraStateChange", &HybridTextCameraViewSpec::setOnCameraStateChange);
       prototype.registerHybridGetter("onAutofocusChange", &HybridTextCameraViewSpec::getOnAutofocusChange);
       prototype.registerHybridSetter("onAutofocusChange", &HybridTextCameraViewSpec::setOnAutofocusChange);
-      prototype.registerHybridGetter("onTextChange", &HybridTextCameraViewSpec::getOnTextChange);
-      prototype.registerHybridSetter("onTextChange", &HybridTextCameraViewSpec::setOnTextChange);
+      prototype.registerHybridGetter("onBlurChange", &HybridTextCameraViewSpec::getOnBlurChange);
+      prototype.registerHybridSetter("onBlurChange", &HybridTextCameraViewSpec::setOnBlurChange);
       prototype.registerHybridGetter("onError", &HybridTextCameraViewSpec::getOnError);
       prototype.registerHybridSetter("onError", &HybridTextCameraViewSpec::setOnError);
-      prototype.registerHybridMethod("readTextResult", &HybridTextCameraViewSpec::readTextResult);
+      prototype.registerHybridMethod("captureTextResult", &HybridTextCameraViewSpec::captureTextResult);
     });
   }
 

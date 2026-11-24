@@ -23,21 +23,15 @@ namespace margelo::nitro::documentscanner::views {
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
     active(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextCameraView", "active", rawProps, sourceProps.active)),
     textRegion(nitro::ReactProp<TextRegion>::fromRawValue("TextCameraView", "textRegion", rawProps, sourceProps.textRegion)),
-    textGuide(nitro::ReactProp<std::optional<TextGuide>>::fromRawValue("TextCameraView", "textGuide", rawProps, sourceProps.textGuide)),
-    textHighlight(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextCameraView", "textHighlight", rawProps, sourceProps.textHighlight)),
     guideColor(nitro::ReactProp<std::optional<double>>::fromRawValue("TextCameraView", "guideColor", rawProps, sourceProps.guideColor)),
-    allowedCharacters(nitro::ReactProp<std::optional<std::string>>::fromRawValue("TextCameraView", "allowedCharacters", rawProps, sourceProps.allowedCharacters)),
-    textPattern(nitro::ReactProp<std::optional<std::string>>::fromRawValue("TextCameraView", "textPattern", rawProps, sourceProps.textPattern)),
-    minLength(nitro::ReactProp<std::optional<double>>::fromRawValue("TextCameraView", "minLength", rawProps, sourceProps.minLength)),
     tapToFocus(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextCameraView", "tapToFocus", rawProps, sourceProps.tapToFocus)),
     focusLock(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextCameraView", "focusLock", rawProps, sourceProps.focusLock)),
     zoom(nitro::ReactProp<std::optional<double>>::fromRawValue("TextCameraView", "zoom", rawProps, sourceProps.zoom)),
     torch(nitro::ReactProp<std::optional<TextTorchMode>>::fromRawValue("TextCameraView", "torch", rawProps, sourceProps.torch)),
-    recognitionRate(nitro::ReactProp<std::optional<double>>::fromRawValue("TextCameraView", "recognitionRate", rawProps, sourceProps.recognitionRate)),
     analysisFrameWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("TextCameraView", "analysisFrameWidth", rawProps, sourceProps.analysisFrameWidth)),
     onCameraStateChange(nitro::ReactProp<std::optional<std::function<void(CameraState /* state */)>>>::fromRawValue("TextCameraView", "onCameraStateChange", rawProps, sourceProps.onCameraStateChange)),
     onAutofocusChange(nitro::ReactProp<std::optional<std::function<void(AutofocusState /* state */)>>>::fromRawValue("TextCameraView", "onAutofocusChange", rawProps, sourceProps.onAutofocusChange)),
-    onTextChange(nitro::ReactProp<std::optional<std::function<void(const TextReading& /* reading */)>>>::fromRawValue("TextCameraView", "onTextChange", rawProps, sourceProps.onTextChange)),
+    onBlurChange(nitro::ReactProp<std::optional<std::function<void(bool /* blurred */)>>>::fromRawValue("TextCameraView", "onBlurChange", rawProps, sourceProps.onBlurChange)),
     onError(nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* error */)>>>::fromRawValue("TextCameraView", "onError", rawProps, sourceProps.onError)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridTextCameraViewSpec>& /* ref */)>>>::fromRawValue("TextCameraView", "hybridRef", rawProps, sourceProps.hybridRef)) {
 #ifdef ANDROID
@@ -49,21 +43,15 @@ namespace margelo::nitro::documentscanner::views {
     switch (hashString(propName)) {
       case hashString("active"): return true;
       case hashString("textRegion"): return true;
-      case hashString("textGuide"): return true;
-      case hashString("textHighlight"): return true;
       case hashString("guideColor"): return true;
-      case hashString("allowedCharacters"): return true;
-      case hashString("textPattern"): return true;
-      case hashString("minLength"): return true;
       case hashString("tapToFocus"): return true;
       case hashString("focusLock"): return true;
       case hashString("zoom"): return true;
       case hashString("torch"): return true;
-      case hashString("recognitionRate"): return true;
       case hashString("analysisFrameWidth"): return true;
       case hashString("onCameraStateChange"): return true;
       case hashString("onAutofocusChange"): return true;
-      case hashString("onTextChange"): return true;
+      case hashString("onBlurChange"): return true;
       case hashString("onError"): return true;
       case hashString("hybridRef"): return true;
       default: return false;

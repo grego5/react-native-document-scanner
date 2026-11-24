@@ -60,7 +60,7 @@ test('utility facade keeps typed sample controls separate from explicit session 
     'react-native': { Platform: { OS: 'android' } },
     './Processor': { nativeProcessor: native },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {},
   })
   DocumentScanner.setSampleFolder('file:///samples')
   DocumentScanner.setSampleCollection(true)
@@ -84,7 +84,7 @@ test('the module waits for the shared corner model with typed results', async ()
     'react-native': { Platform: { OS: 'android' } },
     './Processor': { nativeProcessor: { waitForCornerDetectionModelResult: async () => result } },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {},
   })
   result = true
   assert.equal(await DocumentScanner.waitForCornerDetectionModel(), true)
@@ -111,7 +111,7 @@ test('iOS defers sample collection with stable typed failures and idempotent dis
     'react-native': { Platform: { OS: 'ios' } },
     './Processor': { nativeProcessor: native },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {},
   })
   const unsupported = (error) => error instanceof errors.ScannerError && error.code === 'feature/unsupported'
   assert.throws(() => DocumentScanner.setSampleFolder('file:///samples'), unsupported)
@@ -1082,7 +1082,7 @@ test('the public session factory wraps admission, registration failure and stabl
     './ScannerError': errors,
     './ScanSession': { createScanSession: (native) => sessionAdapter.createScanSession(native, fixture.frames) },
     './DocumentScanner': {}, './DocumentCropEditor': {},
-    './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {},
+    './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {},
   })
   const session = DocumentScanner.createSession()
   const { getSession, subscribe, setDocumentCrop } = session
@@ -1428,7 +1428,7 @@ test('superseded operations reject as cancellation, separately from scanner fail
     error => error instanceof errors.ScannerCancellation)
 })
 
-test('text camera sends concrete defaults and maps empty readings to undefined', async () => {
+test('text camera sends concrete defaults', async () => {
   const ref = {}
   let refreshHandlers = () => {}
   const { TextCamera, DEFAULT_TEXT_REGION } = load('src/TextCamera.tsx', {
@@ -1445,35 +1445,71 @@ test('text camera sends concrete defaults and maps empty readings to undefined',
     '../nitrogen/generated/shared/json/TextCameraViewConfig.json': {},
     './ScannerError': errors,
   })
-  const texts = []
-  const view = TextCamera({ guideColor: 'red', onTextChange: (reading) => texts.push(reading) }, ref)
+  const view = TextCamera({ guideColor: 'red' }, ref)
   refreshHandlers()
   assert.equal(view.type, 'NativeTextCamera')
   assert.equal(view.props.textRegion, DEFAULT_TEXT_REGION)
-  assert.equal(view.props.textGuide, 'none')
-  assert.equal(TextCamera({ textGuide: 'line' }, {}).props.textGuide, 'line')
-  assert.equal(TextCamera({ textGuide: 'dot' }, {}).props.textGuide, 'dot')
-  assert.equal(TextCamera({ textGuide: 'native' }, {}).props.textGuide, 'native')
   assert.equal(view.props.guideColor, 0xffff0000)
-  assert.equal(view.props.allowedCharacters, '')
-  assert.equal(view.props.textPattern, '')
-  assert.equal(view.props.minLength, 1)
   assert.equal(view.props.analysisFrameWidth, 1280)
   assert.equal(view.props.torch, 'off')
-  assert.equal(view.props.recognitionRate, 5)
-  const region = { x: 0, y: 0, width: 1, height: 1 }
-  view.props.onTextChange({ text: '', confidence: 0, votes: 0, region })
-  view.props.onTextChange({ text: 'AB12', confidence: 0.9, votes: 3, region })
-  assert.deepEqual(texts.map((reading) => reading?.text), [undefined, 'AB12'])
+  assert.equal(view.props.focusLock, true)
+  assert.equal(view.props.zoom, 1)
+  const blurs = []
+  const watched = TextCamera({ onBlurChange: (value) => blurs.push(value) }, {})
+  refreshHandlers()
+  watched.props.onBlurChange(true)
+  assert.deepEqual(blurs, [true])
+  for (const removed of ['textGuide', 'textHighlight', 'allowedCharacters', 'textPattern', 'minLength', 'recognitionRate', 'onTextChange', 'onTooCloseChange']) {
+    assert.equal(removed in view.props, false, removed)
+  }
+  assert.equal('readText' in ref.current, false)
+})
 
-  await assert.rejects(ref.current.readText(), (error) => error instanceof errors.ScannerError && error.code === 'camera/unavailable')
-  const timeouts = []
-  let next = { text: '', confidence: 0, votes: 0, region }
-  view.props.hybridRef({ readTextResult: async (timeoutMs) => { timeouts.push(timeoutMs); return next } })
-  assert.equal(await ref.current.readText(), undefined)
-  next = { text: 'SN-42', confidence: 0.8, votes: 2, region }
-  assert.equal((await ref.current.readText({ timeoutMs: 300 })).text, 'SN-42')
-  next = { code: 'camera/unavailable' }
-  await assert.rejects(ref.current.readText(), (error) => error.code === 'camera/unavailable')
-  assert.deepEqual(timeouts, [1500, 300, 1500])
+test('text capture rejects typed failures and defaults its wait', async () => {
+  const ref = {}
+  const { TextCamera } = load('src/TextCamera.tsx', {
+    'react': {
+      forwardRef: (render) => render,
+      useLayoutEffect: () => {},
+      useMemo: (create) => create(),
+      useRef: (value) => ({ current: value }),
+      useImperativeHandle: (target, create) => { target.current = create() },
+    },
+    'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
+    'react-native': { processColor: () => null },
+    'react-native-nitro-modules': { callback: (fn) => fn, getHostComponent: () => 'NativeTextCamera' },
+    '../nitrogen/generated/shared/json/TextCameraViewConfig.json': {},
+    './ScannerError': errors,
+  })
+  const view = TextCamera({}, ref)
+  await assert.rejects(ref.current.captureText(), (error) => error.code === 'camera/unavailable')
+  const waits = []
+  let next = { code: 'feature/unsupported' }
+  view.props.hybridRef({ captureTextResult: async (timeoutMs) => { waits.push(timeoutMs); return next } })
+  await assert.rejects(ref.current.captureText(), (error) => error.code === 'feature/unsupported')
+  next = { uri: 'file:///capture.jpg', width: 100, height: 20, region: { x: 0, y: 0, width: 1, height: 1 }, words: [] }
+  assert.equal((await ref.current.captureText({ timeoutMs: 500 })).uri, 'file:///capture.jpg')
+  assert.deepEqual(waits, [2000, 500])
+})
+
+test('text selection joins words by line and picks boxes in reading order', () => {
+  const selection = load('src/TextSelection.tsx', {
+    'react': {}, 'react/jsx-runtime': {}, 'react-native': { StyleSheet: { create: (styles) => styles } },
+  })
+  const word = (text, line, x, y) => ({
+    text, line, confidence: 1, bounds: { x, y, width: 0.2, height: 0.1 },
+    corners: { topLeft: { x, y }, topRight: { x: x + 0.2, y }, bottomRight: { x: x + 0.2, y: y + 0.1 }, bottomLeft: { x, y: y + 0.1 } },
+  })
+  const words = [word('TITLE', 0, 0.1, 0.1), word('hello', 1, 0.1, 0.5), word('world', 1, 0.4, 0.5)]
+  assert.equal(selection.selectedText(words), 'TITLE' + String.fromCharCode(10) + 'hello world')
+  assert.equal(selection.selectedText([]), '')
+  assert.deepEqual(selection.wordsInBox(words, { x: 0, y: 0.4, width: 0.45, height: 0.3 }).map((w) => w.text), ['hello'])
+  // A word slanted 45 degrees in a square image: its box runs along the slant around its centre.
+  const slanted = { text: 'up', line: 0, confidence: 1, bounds: { x: 0, y: 0, width: 1, height: 1 },
+    corners: { topLeft: { x: 0, y: 0 }, topRight: { x: 0.5, y: 0.5 }, bottomRight: { x: 0.4, y: 0.6 }, bottomLeft: { x: -0.1, y: 0.1 } } }
+  const shape = selection.wordShape(slanted, 0, 0, 100, 100)
+  assert.ok(Math.abs(shape.angle - Math.PI / 4) < 1e-9)
+  assert.ok(Math.abs(shape.length - Math.hypot(50, 50)) < 1e-9)
+  assert.ok(Math.abs(shape.thickness - Math.hypot(10, 10)) < 1e-9)
+  assert.ok(Math.abs(shape.x - 20) < 1e-9 && Math.abs(shape.y - 30) < 1e-9)
 })

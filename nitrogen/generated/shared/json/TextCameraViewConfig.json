@@ -6,21 +6,15 @@
   "validAttributes": {
     "active": true,
     "textRegion": true,
-    "textGuide": true,
-    "textHighlight": true,
     "guideColor": true,
-    "allowedCharacters": true,
-    "textPattern": true,
-    "minLength": true,
     "tapToFocus": true,
     "focusLock": true,
     "zoom": true,
     "torch": true,
-    "recognitionRate": true,
     "analysisFrameWidth": true,
     "onCameraStateChange": true,
     "onAutofocusChange": true,
-    "onTextChange": true,
+    "onBlurChange": true,
     "onError": true,
     "hybridRef": true
   }

@@ -1,9 +1,9 @@
 package com.margelo.nitro.documentscanner
 
 /**
- * Main thread, `focusLock`: when either camera asks the camera for its own locking scan, a sweep across the lens's
- * range that finds the sharp distance itself. The document camera and the text camera run the same cycle; each only
- * finds its own focus target and judges whether a lock found what it focused for.
+ * Main thread, `focusLock`: when the document camera asks the camera for its own locking scan, a sweep across the lens's
+ * range that finds the sharp distance itself. The camera finds its own focus target and judges whether a lock found what
+ * it focused for; the text camera judges its locks by the print's blur instead ([TextFocusCycle]).
  *
  * Continuous autofocus follows the target while the phone moves and brings the lens near, but it reports focus it has
  * not reached and in low light searches on without settling, so no lock waits for its report: every steady hold with a

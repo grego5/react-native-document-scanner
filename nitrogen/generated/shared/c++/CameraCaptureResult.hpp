@@ -49,9 +49,7 @@ namespace margelo::nitro::documentscanner {
     explicit CameraCaptureResult(std::string pageId, ScanSessionSnapshot snapshot): pageId(pageId), snapshot(snapshot) {}
 
   public:
-    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const CameraCaptureResult& lhs, const CameraCaptureResult& rhs) = default;
-    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

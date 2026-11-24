@@ -2,7 +2,12 @@ import { callback, getHostComponent } from 'react-native-nitro-modules';
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react';
 import { processColor, type ViewProps } from 'react-native';
 import type { AutofocusState, CameraState } from './DocumentScannerCamera.nitro';
-import type { TextCameraMethods, TextCameraProps as NativeTextCameraProps, TextReading, TextRegion } from './TextCamera.nitro';
+import type {
+  TextCameraMethods,
+  TextCameraProps as NativeTextCameraProps,
+  TextCapture,
+  TextRegion,
+} from './TextCamera.nitro';
 import TextCameraViewConfig from '../nitrogen/generated/shared/json/TextCameraViewConfig.json';
 import { ScannerError, scannerOperation } from './ScannerError';
 import type { ScannerFailure } from './ScannerFailure';
@@ -19,55 +24,51 @@ const noop = callback(() => {});
 
 export interface TextCameraRef {
   /**
-   * The agreed reading now, or the first one within `timeoutMs` (defaults to 1500) when there is none yet; undefined
-   * when nothing was read. Rejects with `camera/unavailable` while the camera is not running.
+   * A still of the region with every word in it, for picking text with `TextSelection`: the sharpest recent frame, in
+   * focus where the camera could focus. A recent background read in focus that found text returns at once, unless a
+   * kept frame is clearly sharper, which is read instead; when neither finds text the region locks again and the
+   * capture waits for that lock's read. Past `timeoutMs` (defaults to 2000) the sharpest frame
+   * kept is read then. Rejects with `capture/not-ready` when no frame came, `camera/unavailable` while the camera is
+   * not running, and `feature/unsupported` on iOS.
    */
-  readText(options?: { timeoutMs?: number }): Promise<TextReading | undefined>;
+  captureText(options?: { timeoutMs?: number }): Promise<TextCapture>;
 }
 
 export interface TextCameraProps
-  extends Omit<NativeTextCameraProps, 'hybridRef' | 'textRegion' | 'guideColor' | 'onError' | 'onTextChange'>, ViewProps {
+  extends Omit<NativeTextCameraProps, 'hybridRef' | 'textRegion' | 'guideColor' | 'onError'>, ViewProps {
   /** Defaults to `DEFAULT_TEXT_REGION`. Keep the object stable between renders. */
   textRegion?: TextRegion;
-  /** Frame color as a React Native color string; defaults to teal. */
+  /** Box color as a React Native color string; defaults to teal. */
   guideColor?: string;
-  /** The agreed reading, or undefined when the region holds no accepted text. */
-  onTextChange?: (reading: TextReading | undefined) => void;
   onError?: (error: ScannerError) => void;
 }
 
-/** Back-camera preview that reads one line of text inside `textRegion`. */
+/** Back-camera preview with a box marking `textRegion`; `captureText()` returns its best frame and words to pick from. */
 export const TextCamera = forwardRef<TextCameraRef, TextCameraProps>(function TextCamera(
   {
     active = true,
     textRegion = DEFAULT_TEXT_REGION,
-    textGuide = 'none',
-    textHighlight = false,
     guideColor,
-    allowedCharacters = '',
-    textPattern = '',
-    minLength = 1,
     tapToFocus = true,
     focusLock = true,
     zoom = 1,
     torch = 'off',
-    recognitionRate = 5,
     analysisFrameWidth = 1280,
     onCameraStateChange,
     onAutofocusChange,
-    onTextChange,
+    onBlurChange,
     onError,
     ...props
   },
   forwardedRef,
 ) {
-  const handlers = useRef({ onCameraStateChange, onAutofocusChange, onTextChange, onError });
+  const handlers = useRef({ onCameraStateChange, onAutofocusChange, onBlurChange, onError });
   useLayoutEffect(() => {
-    handlers.current = { onCameraStateChange, onAutofocusChange, onTextChange, onError };
+    handlers.current = { onCameraStateChange, onAutofocusChange, onBlurChange, onError };
   });
   const hasCameraState = onCameraStateChange != null;
   const hasAutofocus = onAutofocusChange != null;
-  const hasText = onTextChange != null;
+  const hasBlur = onBlurChange != null;
   const hasError = onError != null;
   const nativeCameraState = useMemo(
     () => (hasCameraState ? callback((state: CameraState) => handlers.current.onCameraStateChange?.(state)) : noop),
@@ -77,12 +78,9 @@ export const TextCamera = forwardRef<TextCameraRef, TextCameraProps>(function Te
     () => (hasAutofocus ? callback((state: AutofocusState) => handlers.current.onAutofocusChange?.(state)) : noop),
     [hasAutofocus],
   );
-  const nativeText = useMemo(
-    () =>
-      hasText
-        ? callback((reading: TextReading) => handlers.current.onTextChange?.(reading.text === '' ? undefined : reading))
-        : noop,
-    [hasText],
+  const nativeBlur = useMemo(
+    () => (hasBlur ? callback((blurred: boolean) => handlers.current.onBlurChange?.(blurred)) : noop),
+    [hasBlur],
   );
   const nativeError = useMemo(
     () => (hasError ? callback((error: ScannerFailure) => handlers.current.onError?.(new ScannerError(error.code))) : noop),
@@ -105,14 +103,12 @@ export const TextCamera = forwardRef<TextCameraRef, TextCameraProps>(function Te
   );
 
   useImperativeHandle(forwardedRef, () => ({
-    readText: async (options?: { timeoutMs?: number }) => {
-      const reading = await scannerOperation(() => {
+    captureText: (options?: { timeoutMs?: number }) =>
+      scannerOperation(() => {
         const view = nativeRef.current;
         if (view == null) throw new ScannerError('camera/unavailable');
-        return view.readTextResult(options?.timeoutMs ?? 1500);
-      }, 'camera/unavailable');
-      return reading.text === '' ? undefined : reading;
-    },
+        return view.captureTextResult(options?.timeoutMs ?? 2000);
+      }, 'capture/failed'),
   }), []);
 
   return (
@@ -120,21 +116,15 @@ export const TextCamera = forwardRef<TextCameraRef, TextCameraProps>(function Te
       {...props}
       active={active}
       textRegion={textRegion}
-      textGuide={textGuide}
-      textHighlight={textHighlight}
       guideColor={nativeGuideColor}
-      allowedCharacters={allowedCharacters}
-      textPattern={textPattern}
-      minLength={minLength}
       tapToFocus={tapToFocus}
       focusLock={focusLock}
       zoom={zoom}
       torch={torch}
-      recognitionRate={recognitionRate}
       analysisFrameWidth={analysisFrameWidth}
       onCameraStateChange={nativeCameraState}
       onAutofocusChange={nativeAutofocus}
-      onTextChange={nativeText}
+      onBlurChange={nativeBlur}
       onError={nativeError}
       hybridRef={setNativeRef}
     />

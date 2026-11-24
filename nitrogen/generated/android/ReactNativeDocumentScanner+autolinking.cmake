@@ -72,7 +72,7 @@ target_sources(
   ../nitrogen/generated/android/c++/JVariant_Array_String__ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_ScanSessionObservation_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JHybridTextCameraViewSpec.cpp
-  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_TextReading.cpp
+  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_TextCapture.cpp
   ../nitrogen/generated/android/c++/views/JHybridTextCameraViewStateUpdater.cpp
 )
 

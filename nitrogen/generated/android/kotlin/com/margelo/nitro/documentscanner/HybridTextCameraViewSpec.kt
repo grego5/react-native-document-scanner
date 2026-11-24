@@ -44,37 +44,7 @@ abstract class HybridTextCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var textGuide: TextGuide?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var textHighlight: Boolean?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
   abstract var guideColor: Double?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var allowedCharacters: String?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var textPattern: String?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var minLength: Double?
   
   @get:DoNotStrip
   @get:Keep
@@ -99,12 +69,6 @@ abstract class HybridTextCameraViewSpec: HybridView() {
   @set:DoNotStrip
   @set:Keep
   abstract var torch: TextTorchMode?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var recognitionRate: Double?
   
   @get:DoNotStrip
   @get:Keep
@@ -140,18 +104,18 @@ abstract class HybridTextCameraViewSpec: HybridView() {
       onAutofocusChange = value?.let { it }
     }
   
-  abstract var onTextChange: ((reading: TextReading) -> Unit)?
+  abstract var onBlurChange: ((blurred: Boolean) -> Unit)?
   
-  private var onTextChange_cxx: Func_void_TextReading?
+  private var onBlurChange_cxx: Func_void_bool?
     @Keep
     @DoNotStrip
     get() {
-      return onTextChange?.let { Func_void_TextReading_java(it) }
+      return onBlurChange?.let { Func_void_bool_java(it) }
     }
     @Keep
     @DoNotStrip
     set(value) {
-      onTextChange = value?.let { it }
+      onBlurChange = value?.let { it }
     }
   
   abstract var onError: ((error: ScannerFailure) -> Unit)?
@@ -171,7 +135,7 @@ abstract class HybridTextCameraViewSpec: HybridView() {
   // Methods
   @DoNotStrip
   @Keep
-  abstract fun readTextResult(timeoutMs: Double?): Promise<Variant_ScannerFailure_TextReading>
+  abstract fun captureTextResult(timeoutMs: Double?): Promise<Variant_ScannerFailure_TextCapture>
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

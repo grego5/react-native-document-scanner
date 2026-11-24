@@ -8,21 +8,21 @@
 import NitroModules
 
 /**
- * Wraps a Swift `(_ zoomed: Bool) -> Void` as a class.
+ * Wraps a Swift `(_ blurred: Bool) -> Void` as a class.
  * This class can be used from C++, e.g. to wrap the Swift closure as a `std::function`.
  */
 public final class Func_void_bool {
   public typealias bridge = margelo.nitro.documentscanner.bridge.swift
 
-  private let closure: (_ zoomed: Bool) -> Void
+  private let closure: (_ blurred: Bool) -> Void
 
-  public init(_ closure: @escaping (_ zoomed: Bool) -> Void) {
+  public init(_ closure: @escaping (_ blurred: Bool) -> Void) {
     self.closure = closure
   }
 
   @inline(__always)
-  public func call(zoomed: Bool) -> Void {
-    self.closure(zoomed)
+  public func call(blurred: Bool) -> Void {
+    self.closure(blurred)
   }
 
   /**

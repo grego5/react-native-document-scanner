@@ -64,34 +64,9 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
     hybridView->setTextRegion(newProps->textRegion.get());
   }
   if (oldProps == nullptr
-        ? newProps->textGuide.isProvided()
-        : !newProps->textGuide.hasSameValue(oldProps->textGuide)) {
-    hybridView->setTextGuide(newProps->textGuide.get());
-  }
-  if (oldProps == nullptr
-        ? newProps->textHighlight.isProvided()
-        : !newProps->textHighlight.hasSameValue(oldProps->textHighlight)) {
-    hybridView->setTextHighlight(newProps->textHighlight.get());
-  }
-  if (oldProps == nullptr
         ? newProps->guideColor.isProvided()
         : !newProps->guideColor.hasSameValue(oldProps->guideColor)) {
     hybridView->setGuideColor(newProps->guideColor.get());
-  }
-  if (oldProps == nullptr
-        ? newProps->allowedCharacters.isProvided()
-        : !newProps->allowedCharacters.hasSameValue(oldProps->allowedCharacters)) {
-    hybridView->setAllowedCharacters(newProps->allowedCharacters.get());
-  }
-  if (oldProps == nullptr
-        ? newProps->textPattern.isProvided()
-        : !newProps->textPattern.hasSameValue(oldProps->textPattern)) {
-    hybridView->setTextPattern(newProps->textPattern.get());
-  }
-  if (oldProps == nullptr
-        ? newProps->minLength.isProvided()
-        : !newProps->minLength.hasSameValue(oldProps->minLength)) {
-    hybridView->setMinLength(newProps->minLength.get());
   }
   if (oldProps == nullptr
         ? newProps->tapToFocus.isProvided()
@@ -114,11 +89,6 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
     hybridView->setTorch(newProps->torch.get());
   }
   if (oldProps == nullptr
-        ? newProps->recognitionRate.isProvided()
-        : !newProps->recognitionRate.hasSameValue(oldProps->recognitionRate)) {
-    hybridView->setRecognitionRate(newProps->recognitionRate.get());
-  }
-  if (oldProps == nullptr
         ? newProps->analysisFrameWidth.isProvided()
         : !newProps->analysisFrameWidth.hasSameValue(oldProps->analysisFrameWidth)) {
     hybridView->setAnalysisFrameWidth(newProps->analysisFrameWidth.get());
@@ -134,9 +104,9 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
     hybridView->setOnAutofocusChange(newProps->onAutofocusChange.get());
   }
   if (oldProps == nullptr
-        ? newProps->onTextChange.isProvided()
-        : !newProps->onTextChange.hasSameValue(oldProps->onTextChange)) {
-    hybridView->setOnTextChange(newProps->onTextChange.get());
+        ? newProps->onBlurChange.isProvided()
+        : !newProps->onBlurChange.hasSameValue(oldProps->onBlurChange)) {
+    hybridView->setOnBlurChange(newProps->onBlurChange.get());
   }
   if (oldProps == nullptr
         ? newProps->onError.isProvided()

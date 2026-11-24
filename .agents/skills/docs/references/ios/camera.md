@@ -12,10 +12,9 @@
 
 ## Text camera
 
-- A dedicated `AVCaptureSession` owns preview and video output. The video queue maps the visible region through the upright aspect-fill crop into Vision coordinates and owns recognition and voting. Main owns publication and pending reads.
-- The newest agreed recognition supplies the highlight bounds. The highlight updates on recognition. Rotation and crop mapping follow the delivered preview geometry.
-- Stop, interruption and startup failure invalidate queued readings and reject pending reads with `camera/unavailable`. Runtime or configuration failure stops the camera. A fresh frame after interruption restores readiness.
-- [Host integration](../integration.md#text-reading) owns text options and reading semantics.
+- A dedicated `AVCaptureSession` owns the preview and a video output whose frames only report readiness. The overlay draws the box marking the region. Capturing text to pick from is not implemented on iOS: `captureTextResult` reports `feature/unsupported`.
+- Stop, interruption and startup failure make the camera unavailable. Runtime or configuration failure stops the camera. A fresh frame after interruption restores readiness.
+- [Host integration](../integration.md#text-reading) owns text options and capture semantics.
 
 ## Capture
 

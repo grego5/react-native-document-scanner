@@ -50,9 +50,7 @@ namespace margelo::nitro::documentscanner {
     explicit ImageCorrectionOptions(std::optional<bool> removeShadows, std::optional<DocumentFilter> filter, std::optional<bool> simpleDewarp): removeShadows(removeShadows), filter(filter), simpleDewarp(simpleDewarp) {}
 
   public:
-    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const ImageCorrectionOptions& lhs, const ImageCorrectionOptions& rhs) = default;
-    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

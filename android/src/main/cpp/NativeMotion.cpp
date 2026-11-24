@@ -159,10 +159,11 @@ local_ref<JArrayDouble> NativeFlowEstimator::updateNative(alias_ref<JByteBuffer>
   if (!times || times->size() != 2)
     throw std::invalid_argument("Invalid flow timestamp output.");
   if (!plane || !plane->isDirect() || !plane->getDirectBytes() || position < 0 || limit < position ||
-      uint64_t(limit) > plane->getDirectSize() || width <= 0 || height <= 0 || rowStride <= 0 || pixelStride < 4 ||
+      uint64_t(limit) > plane->getDirectSize() || width <= 0 || height <= 0 || rowStride <= 0 ||
+      (pixelStride != 1 && pixelStride < 4) ||
       left < 0 || top < 0 || right > width || bottom > height || right <= left || bottom <= top ||
       (rotation != 0 && rotation != 90 && rotation != 180 && rotation != 270))
-    throw std::invalid_argument("Invalid RGBA flow frame.");
+    throw std::invalid_argument("Invalid RGBA or luma flow frame.");
   auto owner = std::make_shared<global_ref<JByteBuffer>>(make_global(plane));
   const auto orientation = rotation == 90    ? Orientation::rotate90
                            : rotation == 180 ? Orientation::rotate180
@@ -170,7 +171,8 @@ local_ref<JArrayDouble> NativeFlowEstimator::updateNative(alias_ref<JByteBuffer>
                                              : Orientation::upright;
   PixelLease lease(owner,
                    {reinterpret_cast<const std::byte *>(plane->getDirectBytes() + position), size_t(limit - position)},
-                   {PixelFormat::rgba8,
+                   // A pixel stride of 1 is a YUV frame's luma plane; 4 or more is RGBA.
+                   {pixelStride == 1 ? PixelFormat::gray8 : PixelFormat::rgba8,
                     {uint32_t(width), uint32_t(height)},
                     size_t(rowStride),
                     size_t(pixelStride),

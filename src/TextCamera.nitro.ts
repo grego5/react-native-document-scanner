@@ -1,4 +1,5 @@
 import type { AutofocusState, CameraState } from './DocumentScannerCamera.nitro'
+import type { DocumentCorners } from './DocumentScannerProcessor.nitro'
 import type { ScannerFailure } from './ScannerFailure'
 import type {
   HybridView,
@@ -14,81 +15,37 @@ export interface TextRegion {
   height: number
 }
 
-/**
- * `crosshair` marks the region's centre, the point readings are chosen nearest to. `line` shows a single guide below
- * the target text. `dot` marks the region's centre with a point, the selector alone. `none` leaves the overlay to the
- * host.
- */
-export type TextGuide = 'none' | 'crosshair' | 'line' | 'dot'
-
 /** Back-camera torch for text reading. */
 export type TextTorchMode = 'off' | 'on'
 
-/** One line read in the region, after filtering, agreed across recent frames. */
-export interface TextReading {
-  /** The filtered line; empty when nothing was read. */
-  text: string
-  /** The recognizer's confidence from 0 to 1, averaged over the agreeing frames; Android reports 0 when unknown. */
-  confidence: number
-  /** How many of the recent frames read this text. */
-  votes: number
-  /** The region read, clamped to the view. */
-  region: TextRegion
-  /**
-   * The box around the agreed text, as fractions of the view, updated with each recognition; absent when nothing was
-   * read. A host drawing its own highlight with `textGuide: 'none'` can use it.
-   */
-  bounds?: TextRegion
-}
-
 /**
- * Reads one line of text inside a region of the back-camera preview, with the platform recognizer (Vision on iOS, ML Kit
- * on Android). It needs no scan session and saves no images. Each callback fires on change only, starting with the state
- * at the time it is set.
+ * Back-camera preview with a box marking the region text is picked from, in two steps. Live, the camera focuses on the
+ * region and keeps its sharpest recent frames; under each new focus the sharpest of its first frames is read in the
+ * background with the platform recognizer (ML Kit on Android). Nothing shows over the preview but the box. A capture
+ * then returns the best frame with its words for the user to pick from. Each callback fires on change only, starting
+ * with the state at the time it is set.
  */
 export interface TextCameraProps extends HybridViewProps {
-  /** Whether the camera runs; defaults to true. False releases the camera and clears the reading. */
+  /** Whether the camera runs; defaults to true. False releases the camera and the kept frames. */
   active?: boolean
   /** The area read, as fractions of the view; clamped to it. Changes apply on the next frame without restarting. */
   textRegion: TextRegion
-  /** Defaults to `none`. Choose `crosshair`, `line`, or `dot` to show a built-in guide. */
-  textGuide?: TextGuide
-  /**
-   * Highlights the text being read with a soft fill in the guide colour, following it as the camera moves until its
-   * centre leaves the region; defaults to false. It is independent of `textGuide`, so it also shows with `none`. A host drawing its own highlight can use
-   * the reading's `bounds` instead.
-   */
-  textHighlight?: boolean
-  /** ARGB color of the built-in guide; the TextCamera wrapper takes a color string. */
+  /** ARGB color of the box marking the region; the TextCamera wrapper takes a color string. */
   guideColor?: number
-  /**
-   * The characters a reading may contain, listed literally, e.g. `ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-`. Other
-   * characters are swapped for an allowed look-alike (O/0, I/1, Z/2, S/5, G/6, B/8, letter case). A character with
-   * none, whitespace included unless a space is listed, splits the line, and the piece nearest the region's centre is
-   * read. Empty reads the whole line nearest the centre and only collapses whitespace.
-   */
-  allowedCharacters?: string
-  /**
-   * A regular expression the whole filtered reading must match, or empty for none. Use syntax common to Java and ICU
-   * regular expressions. An invalid pattern reports `input/invalid` and matches nothing.
-   */
-  textPattern?: string
-  /** Shortest filtered reading that counts; defaults to 1. */
-  minLength?: number
   /** Tapping the preview focuses there for 5 s, then focus returns to the region; defaults to true. */
   tapToFocus?: boolean
   /**
-   * Helps continuous autofocus, which settles soft or on the wrong depth at close range, with the camera's own locking
-   * scan, a sweep that finds the sharpest distance. Continuous autofocus follows the region while the phone moves; every
-   * steady hold locks the region, without waiting for continuous autofocus's report. The first lock permits reading, since unconfirmed
-   * continuous autofocus misreads; after it, reading goes on while the lock is released, pausing only while a lock scans.
-   * Every line read in the region is kept where it is and moves with the page; the region's centre selects one, which
-   * shows once two reads agree, so moving onto a line already read shows it at once. The region is read as new text
-   * enters it, and until the aimed line agrees. A lock under which four reads find no agreed text locks again; a hold gets two locks. Turning or
-   * moving the phone, or a new region, releases the lock and starts over; moving it nearer or farther past the lens's
-   * depth of field, as the read text changing size shows, locks again once steady, from where the lens is. A tap focuses there for its 5 s, then continuous autofocus resumes. Needs single-shot autofocus
-   * and motion sensors (a gyroscope and linear acceleration); otherwise continuous autofocus alone follows the region.
-   * Android only; the native view defaults to false, and `TextCamera` turns it on.
+   * Focuses by the document scanner's rules: continuous autofocus follows the region while the phone moves, and every
+   * steady hold locks with the camera's own locking scan, a sweep that finds the sharpest distance, at the region's
+   * most textured spot, else its centre. Turning or moving the phone, or a new region, releases the lock and starts
+   * over, as does the page moving under a steady phone, which the image shows; a lock whose background read finds no
+   * text locks again, and once a hold's two locks are spent continuous autofocus follows the region until the phone
+   * moves on. Moving nearer or farther until the view goes soft under the lock, or
+   * the page shifting, locks again once steady. Frames count as in focus
+   * only under a settled lock, since at close range continuous autofocus reports focus it has not reached; without
+   * `focusLock`, they count while continuous autofocus reports focus. Needs single-shot autofocus and motion sensors (a
+   * gyroscope and linear acceleration); otherwise continuous autofocus alone follows the region. Android only; the
+   * native view defaults to false, and `TextCamera` turns it on.
    */
   focusLock?: boolean
   /**
@@ -99,13 +56,6 @@ export interface TextCameraProps extends HybridViewProps {
   zoom?: number
   torch?: TextTorchMode
   /**
-   * Most recognitions per second, from 1 to 15; defaults to 5. Frames in between are dropped, and a recognizer slower
-   * than the rate sets its own pace. Lower saves power; higher agrees sooner. On Android with `focusLock`, this paces
-   * each lock's few reads. Otherwise, once 4 recognitions in a row have read the agreed text and it holds still,
-   * recognition slows to once a second, back to this rate when a reading disagrees, the text moves or the phone turns.
-   */
-  recognitionRate?: number
-  /**
    * Requested width in pixels, before rotation, of the 4:3 frames read; the camera picks the closest size it supports.
    * Defaults to 1280. A thin region holding small text needs more. Changing it restarts the camera.
    */
@@ -113,25 +63,56 @@ export interface TextCameraProps extends HybridViewProps {
   onCameraStateChange?: (state: CameraState) => void
   /**
    * Focus on the region. A lock or a tap reports `scan` while its scan runs and `locked` once the camera reports the
-   * lock; continuous autofocus reports its Camera2 state. The built-in guide shows it too: yellow while scanning, a
-   * green flash when focus lands, a red one when it fails, and a swell when a lock starts. iOS reports `inactive`.
+   * lock; continuous autofocus reports its Camera2 state. iOS reports `inactive`.
    */
   onAutofocusChange?: (state: AutofocusState) => void
   /**
-   * The agreed reading after each recognized frame, or an empty one when the region holds no accepted text. Fires when
-   * its text, votes or bounds change.
+   * Whether the print in the region is blurred, as when nearer than the lens can focus or moving: its edges, measured
+   * across the print in the frames read, spread past what reads reliably. The camera reports a lock focused even then,
+   * and the recognizer misreads characters before it stops finding text, so the image decides. The box turns amber
+   * meanwhile; a blurred read counts as nothing found for focus, and a capture waits for a sharp one until its
+   * deadline. Android only; iOS reports false.
    */
-  onTextChange?: (reading: TextReading) => void
-  /** Camera failures, an invalid `textPattern`, and `feature/unsupported` when the recognizer cannot start. */
+  onBlurChange?: (blurred: boolean) => void
+  /** Camera failures, and `feature/unsupported` when the recognizer cannot start. */
   onError?: (error: ScannerFailure) => void
+}
+
+/**
+ * One recognized word of a capture: its text, its `corners`, turned with the text's slant, and the upright `bounds`
+ * around them, both as fractions of the capture's image; the line it belongs to, numbered in reading order from 0;
+ * and the recognizer's confidence for that line, 0 when it gives none.
+ */
+export interface TextWord {
+  text: string
+  bounds: TextRegion
+  corners: DocumentCorners
+  line: number
+  confidence: number
+}
+
+/**
+ * A still of the region for picking text: the sharpest recent frame, in focus where the camera could focus, and every
+ * word recognized in it. `uri` is a greyscale JPEG data URI of `width` by `height` pixels showing `region` of the view,
+ * for a preview: nothing is written to storage, so nothing needs cleaning up.
+ */
+export interface TextCapture {
+  uri: string
+  width: number
+  height: number
+  region: TextRegion
+  words: TextWord[]
 }
 
 export interface TextCameraMethods extends HybridViewMethods {
   /**
-   * Native result transport for public `readText`: the agreed reading now, or, when there is none yet, the first one
-   * within `timeoutMs` (defaults to 1500). An empty text means nothing was read in time.
+   * Native result transport for public `captureText`. A recent background read in focus that found text returns at
+   * once without another read, unless a kept frame of the last second is clearly sharper, which is read instead.
+   * When neither finds text, with `focusLock`, the region locks again and the capture waits for that lock's read.
+   * Past `timeoutMs` (defaults to 2000) the sharpest frame kept, in focus if any was, is read then. Android only; iOS
+   * reports `feature/unsupported`.
    */
-  readTextResult(timeoutMs?: number): Promise<TextReading | ScannerFailure>
+  captureTextResult(timeoutMs?: number): Promise<TextCapture | ScannerFailure>
 }
 
 export type TextCameraView = HybridView<

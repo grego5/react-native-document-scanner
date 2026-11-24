@@ -12,25 +12,19 @@ public protocol HybridTextCameraViewSpec_protocol: HybridObject, HybridView {
   // Properties
   var active: Bool? { get set }
   var textRegion: TextRegion { get set }
-  var textGuide: TextGuide? { get set }
-  var textHighlight: Bool? { get set }
   var guideColor: Double? { get set }
-  var allowedCharacters: String? { get set }
-  var textPattern: String? { get set }
-  var minLength: Double? { get set }
   var tapToFocus: Bool? { get set }
   var focusLock: Bool? { get set }
   var zoom: Double? { get set }
   var torch: TextTorchMode? { get set }
-  var recognitionRate: Double? { get set }
   var analysisFrameWidth: Double? { get set }
   var onCameraStateChange: ((_ state: CameraState) -> Void)? { get set }
   var onAutofocusChange: ((_ state: AutofocusState) -> Void)? { get set }
-  var onTextChange: ((_ reading: TextReading) -> Void)? { get set }
+  var onBlurChange: ((_ blurred: Bool) -> Void)? { get set }
   var onError: ((_ error: ScannerFailure) -> Void)? { get set }
 
   // Methods
-  func readTextResult(timeoutMs: Double?) throws -> Promise<Variant_ScannerFailure_TextReading>
+  func captureTextResult(timeoutMs: Double?) throws -> Promise<Variant_ScannerFailure_TextCapture>
 }
 
 public extension HybridTextCameraViewSpec_protocol {

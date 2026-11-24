@@ -100,14 +100,14 @@ namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 namespace margelo::nitro::documentscanner { struct SessionPdfOptions; }
 // Forward declaration of `TakePhotoOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
-// Forward declaration of `TextGuide` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class TextGuide; }
-// Forward declaration of `TextReading` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct TextReading; }
+// Forward declaration of `TextCapture` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextCapture; }
 // Forward declaration of `TextRegion` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextRegion; }
 // Forward declaration of `TextTorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
+// Forward declaration of `TextWord` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextWord; }
 // Forward declaration of `TorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TorchMode; }
 
@@ -158,10 +158,10 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "ScannerFailure.hpp"
 #include "SessionPdfOptions.hpp"
 #include "TakePhotoOptions.hpp"
-#include "TextGuide.hpp"
-#include "TextReading.hpp"
+#include "TextCapture.hpp"
 #include "TextRegion.hpp"
 #include "TextTorchMode.hpp"
+#include "TextWord.hpp"
 #include "TorchMode.hpp"
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/Result.hpp>

@@ -22,6 +22,11 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'default',
   userInterfaceStyle: 'automatic',
+  extra: {
+    eas: {
+      projectId: 'd5d8fad4-3926-4c1d-bf07-d780808371d0',
+    },
+  },
   plugins: [
     ['react-native-document-scanner', { cornerDetectionModel }],
     'expo-dev-client',

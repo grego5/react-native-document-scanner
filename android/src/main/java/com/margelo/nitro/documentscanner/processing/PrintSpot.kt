@@ -76,6 +76,162 @@ internal fun pickPrintSpot(
     SPOT_BORDER + (1 - 2 * SPOT_BORDER) * (chosen / 3 + .5) / 3)
 }
 
+/**
+ * The buffer rectangle [left], [top] to [right], [bottom]'s sharpness: the mean squared luma gradient over a grid of
+ * up to [SHARPNESS_SAMPLES] points spread by its shape. A smeared or soft frame loses the edges print has, so the same
+ * view scores lower; the score means nothing across views, so frames are ranked only against others of one focus
+ * ([com.margelo.nitro.documentscanner.FrameRing]).
+ * Null for a rectangle too small to sample.
+ */
+internal fun regionSharpness(
+  buffer: ByteBuffer, rowStride: Int, pixelStride: Int, left: Int, top: Int, right: Int, bottom: Int,
+): Double? {
+  val width = right - left - 2
+  val height = bottom - top - 2
+  if (width < 4 || height < 4) return null
+  val columns = kotlin.math.sqrt(SHARPNESS_SAMPLES.toDouble() * width / height).roundToInt().coerceIn(2, width)
+  val rows = (SHARPNESS_SAMPLES / columns).coerceIn(2, height)
+  fun luma(x: Int, y: Int) = luma(buffer, y * rowStride + x * pixelStride, pixelStride)
+  var energy = 0.0
+  for (j in 0 until rows) {
+    val y = top + 1 + ((j + .5) * height / rows).toInt()
+    for (i in 0 until columns) {
+      val x = left + 1 + ((i + .5) * width / columns).toInt()
+      val gx = luma(x + 1, y) - luma(x - 1, y)
+      val gy = luma(x, y + 1) - luma(x, y - 1)
+      energy += (gx * gx + gy * gy).toDouble()
+    }
+  }
+  return energy / (rows * columns)
+}
+
+/** Points sampled for [regionSharpness]: enough to cover a line of print, cheap enough for every frame. */
+private const val SHARPNESS_SAMPLES = 4096
+
+/**
+ * The buffer rectangle [left], [top] to [right], [bottom] as a coarse [THUMB_COLUMNS] by [THUMB_ROWS] grid of mean
+ * luma, each cell averaged over a few points, so frames of one view compare alike while a moved page or a new view
+ * does not. Row by row in buffer order; null for a rectangle too small to sample.
+ */
+internal fun regionThumbnail(
+  buffer: ByteBuffer, rowStride: Int, pixelStride: Int, left: Int, top: Int, right: Int, bottom: Int,
+): FloatArray? {
+  val width = right - left
+  val height = bottom - top
+  if (width < THUMB_COLUMNS * THUMB_SAMPLES || height < THUMB_ROWS * THUMB_SAMPLES) return null
+  // The region is usually a wide strip; in the buffer it may stand on its side, so the grid follows its long axis.
+  val wide = width >= height
+  val columns = if (wide) THUMB_COLUMNS else THUMB_ROWS
+  val rows = if (wide) THUMB_ROWS else THUMB_COLUMNS
+  val thumb = FloatArray(columns * rows)
+  for (j in 0 until rows) {
+    for (i in 0 until columns) {
+      var sum = 0
+      for (sj in 0 until THUMB_SAMPLES) {
+        val y = top + ((j + (sj + .5) / THUMB_SAMPLES) * height / rows).toInt()
+        for (si in 0 until THUMB_SAMPLES) {
+          val x = left + ((i + (si + .5) / THUMB_SAMPLES) * width / columns).toInt()
+          sum += luma(buffer, y * rowStride + x * pixelStride, pixelStride)
+        }
+      }
+      thumb[j * columns + i] = sum.toFloat() / (THUMB_SAMPLES * THUMB_SAMPLES)
+    }
+  }
+  return thumb
+}
+
+/**
+ * A frame's print edges: the [median] width in pixels over which the luma turns from paper to ink, the medians of the
+ * edges met along buffer rows, [rows], and columns, [columns], which part under motion blur, and the [edges] measured.
+ */
+internal data class EdgeWidth(val median: Double, val rows: Double, val columns: Double, val edges: Int)
+
+/**
+ * The buffer rectangle [left], [top] to [right], [bottom]'s edge width: how far the luma takes to turn across its
+ * print's edges. A sharp edge turns within a pixel or two and blur spreads it, whatever the print's size or contrast,
+ * so unlike [regionSharpness] the width means the same in every view. Along up to [EDGE_LINES] rows and as many
+ * columns, each local peak of the luma step of at least [EDGE_STEP] is followed both ways while the luma keeps
+ * turning, up to [EDGE_REACH] pixels each side; one turning by less than [EDGE_RISE] in all is texture or noise, not
+ * print. Its width is the distance between the points 10% and 90% of the way through its turn, so tails of a smear
+ * count less than its slope. Null with fewer than [EDGE_MIN] edges.
+ */
+internal fun regionEdgeWidth(
+  buffer: ByteBuffer, rowStride: Int, pixelStride: Int, left: Int, top: Int, right: Int, bottom: Int,
+): EdgeWidth? {
+  val width = right - left
+  val height = bottom - top
+  if (width < 8 || height < 8) return null
+  val rows = ArrayList<Double>()
+  val columns = ArrayList<Double>()
+  val line = IntArray(maxOf(width, height))
+  for (k in 0 until minOf(EDGE_LINES, height)) {
+    val y = top + ((k + .5) * height / minOf(EDGE_LINES, height)).toInt()
+    for (x in 0 until width) line[x] = luma(buffer, y * rowStride + (left + x) * pixelStride, pixelStride)
+    edgeWidths(line, width, rows)
+  }
+  for (k in 0 until minOf(EDGE_LINES, width)) {
+    val x = left + ((k + .5) * width / minOf(EDGE_LINES, width)).toInt()
+    for (y in 0 until height) line[y] = luma(buffer, (top + y) * rowStride + x * pixelStride, pixelStride)
+    edgeWidths(line, height, columns)
+  }
+  val all = rows + columns
+  if (all.size < EDGE_MIN) return null
+  return EdgeWidth(median(all), median(rows), median(columns), all.size)
+}
+
+/** The widths of the edges along the first [n] values of [line], added to [out]. */
+private fun edgeWidths(line: IntArray, n: Int, out: MutableList<Double>) {
+  var i = 0
+  while (i < n - 1) {
+    val step = line[i + 1] - line[i]
+    val size = kotlin.math.abs(step)
+    // A peak of the step: at least its neighbours on either side.
+    val before = if (i > 0) kotlin.math.abs(line[i] - line[i - 1]) else 0
+    val after = if (i < n - 2) kotlin.math.abs(line[i + 2] - line[i + 1]) else 0
+    if (size < EDGE_STEP || size < before || size < after) {
+      i++
+      continue
+    }
+    val sign = if (step > 0) 1 else -1
+    var a = i
+    while (a > 0 && i - a < EDGE_REACH && sign * (line[a] - line[a - 1]) > 0) a--
+    var b = i + 1
+    while (b < n - 1 && b - i - 1 < EDGE_REACH && sign * (line[b + 1] - line[b]) > 0) b++
+    val low = line[a]
+    val rise = line[b] - low
+    if (kotlin.math.abs(rise) >= EDGE_RISE) out += crossing(line, a, b, low + .9 * rise) - crossing(line, a, b, low + .1 * rise)
+    i = b
+  }
+}
+
+/** Where [line] first passes [level] between [a] and [b], interpolated between pixels. */
+private fun crossing(line: IntArray, a: Int, b: Int, level: Double): Double {
+  for (k in a until b) {
+    val p = line[k].toDouble()
+    val q = line[k + 1].toDouble()
+    if ((level - p) * (level - q) <= 0 && p != q) return k + (level - p) / (q - p)
+  }
+  return b.toDouble()
+}
+
+private fun median(values: List<Double>): Double {
+  if (values.isEmpty()) return Double.NaN
+  val sorted = values.sorted()
+  return sorted[sorted.size / 2]
+}
+
+/** [regionEdgeWidth]'s lines each way, least step of an edge's peak, reach each side, least rise and edges. */
+private const val EDGE_LINES = 48
+private const val EDGE_STEP = 8
+private const val EDGE_REACH = 16
+private const val EDGE_RISE = 40
+private const val EDGE_MIN = 20
+
+/** [regionThumbnail]'s grid along and across the region, and the points averaged per cell along each axis. */
+private const val THUMB_COLUMNS = 24
+private const val THUMB_ROWS = 8
+private const val THUMB_SAMPLES = 3
+
 /** The static guide area around the frame's centre, in upright frame fractions: continuous autofocus's central box,
  * where the page being scanned usually lies before it is found. */
 internal val GUIDE_AREA: DocumentCorners = (FocusAim.CENTRE - FocusAim.AREA / 2).toDouble().let { a ->

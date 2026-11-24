@@ -110,41 +110,11 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.textRegion.hasSameValue(oldViewProps->textRegion)) {
       swiftPart.setTextRegion(newViewProps.textRegion.get());
     }
-    // textGuide: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.textGuide.isProvided()
-          : !newViewProps.textGuide.hasSameValue(oldViewProps->textGuide)) {
-      swiftPart.setTextGuide(newViewProps.textGuide.get());
-    }
-    // textHighlight: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.textHighlight.isProvided()
-          : !newViewProps.textHighlight.hasSameValue(oldViewProps->textHighlight)) {
-      swiftPart.setTextHighlight(newViewProps.textHighlight.get());
-    }
     // guideColor: optional
     if (oldViewProps == nullptr
           ? newViewProps.guideColor.isProvided()
           : !newViewProps.guideColor.hasSameValue(oldViewProps->guideColor)) {
       swiftPart.setGuideColor(newViewProps.guideColor.get());
-    }
-    // allowedCharacters: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.allowedCharacters.isProvided()
-          : !newViewProps.allowedCharacters.hasSameValue(oldViewProps->allowedCharacters)) {
-      swiftPart.setAllowedCharacters(newViewProps.allowedCharacters.get());
-    }
-    // textPattern: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.textPattern.isProvided()
-          : !newViewProps.textPattern.hasSameValue(oldViewProps->textPattern)) {
-      swiftPart.setTextPattern(newViewProps.textPattern.get());
-    }
-    // minLength: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.minLength.isProvided()
-          : !newViewProps.minLength.hasSameValue(oldViewProps->minLength)) {
-      swiftPart.setMinLength(newViewProps.minLength.get());
     }
     // tapToFocus: optional
     if (oldViewProps == nullptr
@@ -170,12 +140,6 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.torch.hasSameValue(oldViewProps->torch)) {
       swiftPart.setTorch(newViewProps.torch.get());
     }
-    // recognitionRate: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.recognitionRate.isProvided()
-          : !newViewProps.recognitionRate.hasSameValue(oldViewProps->recognitionRate)) {
-      swiftPart.setRecognitionRate(newViewProps.recognitionRate.get());
-    }
     // analysisFrameWidth: optional
     if (oldViewProps == nullptr
           ? newViewProps.analysisFrameWidth.isProvided()
@@ -194,11 +158,11 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.onAutofocusChange.hasSameValue(oldViewProps->onAutofocusChange)) {
       swiftPart.setOnAutofocusChange(newViewProps.onAutofocusChange.get());
     }
-    // onTextChange: optional
+    // onBlurChange: optional
     if (oldViewProps == nullptr
-          ? newViewProps.onTextChange.isProvided()
-          : !newViewProps.onTextChange.hasSameValue(oldViewProps->onTextChange)) {
-      swiftPart.setOnTextChange(newViewProps.onTextChange.get());
+          ? newViewProps.onBlurChange.isProvided()
+          : !newViewProps.onBlurChange.hasSameValue(oldViewProps->onBlurChange)) {
+      swiftPart.setOnBlurChange(newViewProps.onBlurChange.get());
     }
     // onError: optional
     if (oldViewProps == nullptr
