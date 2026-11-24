@@ -7,60 +7,66 @@
 
 #include "JHybridTextCameraViewSpec.hpp"
 
+// Forward declaration of `HybridTextSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridTextSessionSpec; }
 // Forward declaration of `TextRegion` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextRegion; }
+// Forward declaration of `TextGuide` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuide; }
+// Forward declaration of `TextGuideColors` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideColors; }
+// Forward declaration of `TextGuideLabels` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLabels; }
+// Forward declaration of `TextGuideLabelStyle` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLabelStyle; }
+// Forward declaration of `TextGuideFontWeight` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextGuideFontWeight; }
+// Forward declaration of `TextGuideLabelPlacement` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextGuideLabelPlacement; }
 // Forward declaration of `TextTorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
-// Forward declaration of `CameraState` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class CameraState; }
-// Forward declaration of `AutofocusState` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class AutofocusState; }
+// Forward declaration of `TextGuideLayout` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLayout; }
+// Forward declaration of `TextGuideFrame` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideFrame; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
-// Forward declaration of `TextCapture` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct TextCapture; }
-// Forward declaration of `TextWord` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct TextWord; }
-// Forward declaration of `DocumentCorners` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentCorners; }
-// Forward declaration of `DocumentPoint` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentPoint; }
 
+#include <memory>
+#include "HybridTextSessionSpec.hpp"
+#include "JHybridTextSessionSpec.hpp"
 #include <optional>
 #include "TextRegion.hpp"
 #include "JTextRegion.hpp"
+#include "TextGuide.hpp"
+#include "JTextGuide.hpp"
+#include "TextGuideColors.hpp"
+#include "JTextGuideColors.hpp"
+#include "TextGuideLabels.hpp"
+#include "JTextGuideLabels.hpp"
+#include <string>
+#include "TextGuideLabelStyle.hpp"
+#include "JTextGuideLabelStyle.hpp"
+#include "TextGuideFontWeight.hpp"
+#include "JTextGuideFontWeight.hpp"
+#include "TextGuideLabelPlacement.hpp"
+#include "JTextGuideLabelPlacement.hpp"
 #include "TextTorchMode.hpp"
 #include "JTextTorchMode.hpp"
-#include "CameraState.hpp"
+#include "TextGuideLayout.hpp"
 #include <functional>
-#include "JFunc_void_CameraState.hpp"
+#include "JFunc_void_TextGuideLayout.hpp"
 #include <NitroModules/JNICallable.hpp>
-#include "JCameraState.hpp"
-#include "AutofocusState.hpp"
-#include "JFunc_void_AutofocusState.hpp"
-#include "JAutofocusState.hpp"
-#include "JFunc_void_bool.hpp"
+#include "JTextGuideLayout.hpp"
+#include "TextGuideFrame.hpp"
+#include "JTextGuideFrame.hpp"
 #include "ScannerFailure.hpp"
 #include "JFunc_void_ScannerFailure.hpp"
 #include "JScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
 #include "JScannerErrorCode.hpp"
-#include "TextCapture.hpp"
-#include <variant>
-#include <NitroModules/Promise.hpp>
-#include <NitroModules/JPromise.hpp>
-#include "JVariant_ScannerFailure_TextCapture.hpp"
-#include "JTextCapture.hpp"
-#include <string>
-#include "TextWord.hpp"
-#include <vector>
-#include "JTextWord.hpp"
-#include "DocumentCorners.hpp"
-#include "JDocumentCorners.hpp"
-#include "DocumentPoint.hpp"
-#include "JDocumentPoint.hpp"
 
 namespace margelo::nitro::documentscanner {
 
@@ -92,6 +98,15 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Properties
+  std::shared_ptr<HybridTextSessionSpec> JHybridTextCameraViewSpec::getSession() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JHybridTextSessionSpec::JavaPart>()>("getSession");
+    auto __result = method(_javaPart);
+    return __result->getJHybridTextSessionSpec();
+  }
+  void JHybridTextCameraViewSpec::setSession(const std::shared_ptr<HybridTextSessionSpec>& session) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JHybridTextSessionSpec::JavaPart> /* session */)>("setSession");
+    method(_javaPart, std::dynamic_pointer_cast<JHybridTextSessionSpec>(session)->getJavaPart());
+  }
   std::optional<bool> JHybridTextCameraViewSpec::getActive() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getActive");
     auto __result = method(_javaPart);
@@ -110,14 +125,14 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextRegion> /* textRegion */)>("setTextRegion");
     method(_javaPart, JTextRegion::fromCpp(textRegion));
   }
-  std::optional<double> JHybridTextCameraViewSpec::getGuideColor() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getGuideColor");
+  std::optional<TextGuide> JHybridTextCameraViewSpec::getGuide() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JTextGuide>()>("getGuide");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional(__result->value()) : std::nullopt;
+    return __result != nullptr ? std::make_optional(__result->toCpp()) : std::nullopt;
   }
-  void JHybridTextCameraViewSpec::setGuideColor(std::optional<double> guideColor) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* guideColor */)>("setGuideColor");
-    method(_javaPart, guideColor.has_value() ? jni::JDouble::valueOf(guideColor.value()) : nullptr);
+  void JHybridTextCameraViewSpec::setGuide(const std::optional<TextGuide>& guide) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextGuide> /* guide */)>("setGuide");
+    method(_javaPart, guide.has_value() ? JTextGuide::fromCpp(guide.value()) : nullptr);
   }
   std::optional<bool> JHybridTextCameraViewSpec::getTapToFocus() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JBoolean>()>("getTapToFocus");
@@ -164,56 +179,22 @@ namespace margelo::nitro::documentscanner {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* analysisFrameWidth */)>("setAnalysisFrameWidth");
     method(_javaPart, analysisFrameWidth.has_value() ? jni::JDouble::valueOf(analysisFrameWidth.value()) : nullptr);
   }
-  std::optional<std::function<void(CameraState /* state */)>> JHybridTextCameraViewSpec::getOnCameraStateChange() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_CameraState::javaobject>()>("getOnCameraStateChange_cxx");
+  std::optional<std::function<void(const TextGuideLayout& /* layout */)>> JHybridTextCameraViewSpec::getOnGuideLayout() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_TextGuideLayout::javaobject>()>("getOnGuideLayout_cxx");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(CameraState /* state */)> {
-      if (__result->isInstanceOf(JFunc_void_CameraState_cxx::javaClassStatic())) [[likely]] {
-        auto downcast = jni::static_ref_cast<JFunc_void_CameraState_cxx::javaobject>(__result);
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const TextGuideLayout& /* layout */)> {
+      if (__result->isInstanceOf(JFunc_void_TextGuideLayout_cxx::javaClassStatic())) [[likely]] {
+        auto downcast = jni::static_ref_cast<JFunc_void_TextGuideLayout_cxx::javaobject>(__result);
         return downcast->cthis()->getFunction();
       } else {
         auto __resultRef = jni::make_global(__result);
-        return JNICallable<JFunc_void_CameraState, void(CameraState)>(std::move(__resultRef));
+        return JNICallable<JFunc_void_TextGuideLayout, void(TextGuideLayout)>(std::move(__resultRef));
       }
     }()) : std::nullopt;
   }
-  void JHybridTextCameraViewSpec::setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_CameraState::javaobject> /* onCameraStateChange */)>("setOnCameraStateChange_cxx");
-    method(_javaPart, onCameraStateChange.has_value() ? JFunc_void_CameraState_cxx::fromCpp(onCameraStateChange.value()) : nullptr);
-  }
-  std::optional<std::function<void(AutofocusState /* state */)>> JHybridTextCameraViewSpec::getOnAutofocusChange() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_AutofocusState::javaobject>()>("getOnAutofocusChange_cxx");
-    auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(AutofocusState /* state */)> {
-      if (__result->isInstanceOf(JFunc_void_AutofocusState_cxx::javaClassStatic())) [[likely]] {
-        auto downcast = jni::static_ref_cast<JFunc_void_AutofocusState_cxx::javaobject>(__result);
-        return downcast->cthis()->getFunction();
-      } else {
-        auto __resultRef = jni::make_global(__result);
-        return JNICallable<JFunc_void_AutofocusState, void(AutofocusState)>(std::move(__resultRef));
-      }
-    }()) : std::nullopt;
-  }
-  void JHybridTextCameraViewSpec::setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_AutofocusState::javaobject> /* onAutofocusChange */)>("setOnAutofocusChange_cxx");
-    method(_javaPart, onAutofocusChange.has_value() ? JFunc_void_AutofocusState_cxx::fromCpp(onAutofocusChange.value()) : nullptr);
-  }
-  std::optional<std::function<void(bool /* blurred */)>> JHybridTextCameraViewSpec::getOnBlurChange() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_bool::javaobject>()>("getOnBlurChange_cxx");
-    auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(bool /* blurred */)> {
-      if (__result->isInstanceOf(JFunc_void_bool_cxx::javaClassStatic())) [[likely]] {
-        auto downcast = jni::static_ref_cast<JFunc_void_bool_cxx::javaobject>(__result);
-        return downcast->cthis()->getFunction();
-      } else {
-        auto __resultRef = jni::make_global(__result);
-        return JNICallable<JFunc_void_bool, void(bool)>(std::move(__resultRef));
-      }
-    }()) : std::nullopt;
-  }
-  void JHybridTextCameraViewSpec::setOnBlurChange(const std::optional<std::function<void(bool /* blurred */)>>& onBlurChange) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_bool::javaobject> /* onBlurChange */)>("setOnBlurChange_cxx");
-    method(_javaPart, onBlurChange.has_value() ? JFunc_void_bool_cxx::fromCpp(onBlurChange.value()) : nullptr);
+  void JHybridTextCameraViewSpec::setOnGuideLayout(const std::optional<std::function<void(const TextGuideLayout& /* layout */)>>& onGuideLayout) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_TextGuideLayout::javaobject> /* onGuideLayout */)>("setOnGuideLayout_cxx");
+    method(_javaPart, onGuideLayout.has_value() ? JFunc_void_TextGuideLayout_cxx::fromCpp(onGuideLayout.value()) : nullptr);
   }
   std::optional<std::function<void(const ScannerFailure& /* error */)>> JHybridTextCameraViewSpec::getOnError() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_ScannerFailure::javaobject>()>("getOnError_cxx");
@@ -234,21 +215,6 @@ namespace margelo::nitro::documentscanner {
   }
 
   // Methods
-  std::shared_ptr<Promise<std::variant<ScannerFailure, TextCapture>>> JHybridTextCameraViewSpec::captureTextResult(std::optional<double> timeoutMs) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JDouble> /* timeoutMs */)>("captureTextResult");
-    auto __result = method(_javaPart, timeoutMs.has_value() ? jni::JDouble::valueOf(timeoutMs.value()) : nullptr);
-    return [&]() {
-      auto __promise = Promise<std::variant<ScannerFailure, TextCapture>>::create();
-      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
-        auto __result = jni::static_ref_cast<JVariant_ScannerFailure_TextCapture>(__boxedResult);
-        __promise->resolve(__result->toCpp());
-      });
-      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
-        jni::JniException __jniError(__throwable);
-        __promise->reject(std::make_exception_ptr(__jniError));
-      });
-      return __promise;
-    }();
-  }
+  
 
 } // namespace margelo::nitro::documentscanner

@@ -48,6 +48,7 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridScanSessionSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTextCameraViewSpec.cpp
   ../nitrogen/generated/shared/c++/views/HybridTextCameraViewComponent.cpp
+  ../nitrogen/generated/shared/c++/HybridTextSessionSpec.cpp
   # Android-specific Nitrogen C++ sources
   ../nitrogen/generated/android/c++/JHybridCameraPermissionSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_CameraPermissionValue_ScannerFailure.cpp
@@ -60,6 +61,7 @@ target_sources(
   ../nitrogen/generated/android/c++/views/JHybridDocumentScannerCameraViewStateUpdater.cpp
   ../nitrogen/generated/android/c++/JHybridDocumentScannerProcessorSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_HybridScanSessionSpec_ScannerFailure.cpp
+  ../nitrogen/generated/android/c++/JVariant_HybridTextSessionSpec_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_ScannerFailure_SampleFolder.cpp
   ../nitrogen/generated/android/c++/JVariant_String_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JHybridImagePagerViewSpec.cpp
@@ -72,8 +74,10 @@ target_sources(
   ../nitrogen/generated/android/c++/JVariant_Array_String__ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JVariant_ScanSessionObservation_ScannerFailure.cpp
   ../nitrogen/generated/android/c++/JHybridTextCameraViewSpec.cpp
-  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_TextCapture.cpp
   ../nitrogen/generated/android/c++/views/JHybridTextCameraViewStateUpdater.cpp
+  ../nitrogen/generated/android/c++/JHybridTextSessionSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_ScannerFailure_TextSessionSnapshot.cpp
+  ../nitrogen/generated/android/c++/JVariant_TextSessionObservation_ScannerFailure.cpp
 )
 
 # From node_modules/react-native/ReactAndroid/cmake-utils/folly-flags.cmake

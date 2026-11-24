@@ -33,8 +33,9 @@ $arguments = @(
     ':react-native-document-scanner:testDebugUnitTest',
     "-PreactNativeArchitectures=$Architecture",
     '-Pkotlin.incremental=false', '-Pkotlin.compiler.execution.strategy=in-process',
-    '--no-daemon', '--console=plain', '--project-cache-dir',
-    (Join-Path $gradleCache 'project-caches/document-scanner-tests')
+    # The project's own cache, shared with app builds, so their outputs, the included Expo plugins among them, stay
+    # up to date here instead of being deleted and rebuilt.
+    '--no-daemon', '--console=plain'
 )
 foreach ($filter in $Test) { $arguments += @('--tests', $filter) }
 if (-not [string]::IsNullOrWhiteSpace($Trace)) {

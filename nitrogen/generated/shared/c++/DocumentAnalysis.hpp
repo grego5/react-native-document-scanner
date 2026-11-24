@@ -51,7 +51,9 @@ namespace margelo::nitro::documentscanner {
     explicit DocumentAnalysis(double sourceWidth, double sourceHeight, double duration, std::optional<DocumentCandidate> candidate): sourceWidth(sourceWidth), sourceHeight(sourceHeight), duration(duration), candidate(candidate) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const DocumentAnalysis& lhs, const DocumentAnalysis& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

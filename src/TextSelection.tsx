@@ -3,7 +3,7 @@ import { Image, PanResponder, StyleSheet, View, type LayoutChangeEvent, type Vie
 import type { TextCapture, TextRegion, TextWord } from './TextCamera.nitro';
 
 export interface TextSelectionProps extends Omit<ViewProps, 'children'> {
-  /** What `TextCameraRef.captureText()` returned. */
+  /** A text session's capture, `TextSessionSnapshot.capture`. */
   capture: TextCapture;
   /** Fill over selected words; defaults to translucent teal. */
   selectionColor?: string;
@@ -11,13 +11,22 @@ export interface TextSelectionProps extends Omit<ViewProps, 'children'> {
   wordColor?: string;
   /** The selected words, in reading order, and their text: words of a line joined by spaces, lines by newlines. */
   onSelectionChange?: (words: TextWord[], text: string) => void;
+  /**
+   * Where the fitted image sits in the space left by `imageInsets`, as fractions along each axis, as CSS
+   * `object-position` does: 0 at the start, 1 at the end; defaults to 0.5, centred. Taps and drags still work over the
+   * whole view, so a full-screen selection can show its image at the bottom and still be dragged anywhere.
+   */
+  imagePosition?: { x?: number; y?: number };
+  /** Space kept clear around the image, in points, as for controls over the view; the gesture area stays whole. */
+  imageInsets?: { top?: number; right?: number; bottom?: number; left?: number };
 }
 
 /** How far, as a fraction of the image's longer side, a tap may land from a word and still pick it. */
 const TAP_SLOP = 0.04;
 /** A press that moves less than this many points is a tap; past it the press drags a box. */
 const DRAG_MIN = 24;
-/** How many points above the finger a dragged box's corners sit, as a map pin does, so the finger never hides it. */
+/** How many points above the finger a dragged box's moving corner sits, as a map pin does, so the finger never hides
+ * it. */
 const LIFT = 48;
 
 /** The text of [words]: a line's words joined by spaces, lines by newlines. */
@@ -28,6 +37,40 @@ export function selectedText(words: readonly TextWord[]): string {
     text += word.text;
   });
   return text;
+}
+
+/**
+ * The box a drag from [start] to [finger] draws, in view points, or null while it has no area. It starts exactly where
+ * the press began; its moving corner rises above the finger by up to [lift], by as much as the finger has moved
+ * vertically, so the box does not jump on the first move: dragging down, it opens once the finger is [lift] below the
+ * start, and dragging up, it opens at once, its corner reaching [lift] above the finger.
+ */
+export function dragBox(start: { x: number; y: number }, finger: { x: number; y: number }, lift: number) {
+  const cornerY = finger.y - Math.min(lift, Math.abs(finger.y - start.y));
+  const rect = {
+    x: Math.min(start.x, finger.x),
+    y: Math.min(start.y, cornerY),
+    width: Math.abs(finger.x - start.x),
+    height: Math.abs(cornerY - start.y),
+  };
+  return rect.width > 0 && rect.height > 0 ? rect : null;
+}
+
+/** Where a [width] by [height] image fits in a view of [size], inside [insets], placed at [position] along each axis. */
+export function fitImage(size: { width: number; height: number }, width: number, height: number,
+  position: { x?: number; y?: number } = {}, insets: { top?: number; right?: number; bottom?: number; left?: number } = {}) {
+  const left = insets.left ?? 0;
+  const top = insets.top ?? 0;
+  const areaWidth = size.width - left - (insets.right ?? 0);
+  const areaHeight = size.height - top - (insets.bottom ?? 0);
+  const scale = areaWidth > 0 && areaHeight > 0 ? Math.min(areaWidth / width, areaHeight / height) : 0;
+  const clamp = (value: number | undefined) => Math.min(Math.max(value ?? 0.5, 0), 1);
+  return {
+    left: left + (areaWidth - width * scale) * clamp(position.x),
+    top: top + (areaHeight - height * scale) * clamp(position.y),
+    width: width * scale,
+    height: height * scale,
+  };
 }
 
 /** The centre of [word]'s corners, in image fractions. */
@@ -87,15 +130,18 @@ function wordAt(words: readonly TextWord[], x: number, y: number, fit: { left: n
 }
 
 /**
- * A captured still of the text region, fitted to the view, with every recognized word shown faintly: tap a word to
- * select it, or drag a box over the words wanted. The box appears once a drag passes a short distance and hangs above
- * the finger, as a map pin does: it spans from above where the drag started to above the finger.
+ * A captured still of the text region, fitted to the view at `imagePosition` inside `imageInsets`, with every
+ * recognized word shown faintly: tap a word to select it, or drag a box over the words wanted, anywhere over the view.
+ * The box starts exactly where the press began, and its moving corner hangs above the finger, as a map pin does
+ * (`dragBox`).
  */
 export function TextSelection({
   capture,
   selectionColor = 'rgba(97, 225, 207, 0.45)',
   wordColor = 'rgba(255, 255, 255, 0.18)',
   onSelectionChange,
+  imagePosition,
+  imageInsets,
   style,
   ...props
 }: TextSelectionProps) {
@@ -104,14 +150,8 @@ export function TextSelection({
   const [box, setBox] = useState<TextRegion | null>(null);
   // A new capture starts with nothing selected.
   useEffect(() => setSelected(new Set()), [capture]);
-  // The image fitted inside the view, centred.
-  const scale = size.width > 0 && size.height > 0 ? Math.min(size.width / capture.width, size.height / capture.height) : 0;
-  const image = {
-    left: (size.width - capture.width * scale) / 2,
-    top: (size.height - capture.height * scale) / 2,
-    width: capture.width * scale,
-    height: capture.height * scale,
-  };
+  const image = fitImage(size, capture.width, capture.height, imagePosition, imageInsets);
+  const scale = image.width > 0 ? image.width / capture.width : 0;
   const live = useRef({ image, capture, onSelectionChange });
   live.current = { image, capture, onSelectionChange };
 
@@ -138,9 +178,15 @@ export function TextSelection({
         show(word ? [word] : [], true);
         return;
       }
-      const from = toImage(start.x, start.y - LIFT);
-      const to = toImage(x, y - LIFT);
-      const rect = { x: Math.min(from.x, to.x), y: Math.min(from.y, to.y), width: Math.abs(to.x - from.x), height: Math.abs(to.y - from.y) };
+      const drawn = dragBox(start, { x, y }, LIFT);
+      if (drawn == null) {
+        setBox(null);
+        show([], done);
+        return;
+      }
+      const from = toImage(drawn.x, drawn.y);
+      const to = toImage(drawn.x + drawn.width, drawn.y + drawn.height);
+      const rect = { x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y };
       setBox(done ? null : rect);
       show(wordsInBox(shot.words, rect), done);
     };
@@ -207,7 +253,9 @@ export function TextSelection({
 }
 
 const styles = StyleSheet.create({
-  container: { overflow: 'hidden' },
+  // Image coordinates run left to right whatever the app's direction: in RTL React Native measures `left` from the
+  // right edge, which would mirror every box over the picture while touches still report physical coordinates.
+  container: { overflow: 'hidden', direction: 'ltr' },
   absolute: { position: 'absolute' },
   word: { borderRadius: 3 },
   box: { borderWidth: 1.5, borderColor: 'rgba(97, 225, 207, 0.9)', backgroundColor: 'rgba(97, 225, 207, 0.12)' },

@@ -48,7 +48,9 @@ namespace margelo::nitro::documentscanner {
     explicit DocumentCandidate(DocumentCorners corners, double score): corners(corners), score(score) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const DocumentCandidate& lhs, const DocumentCandidate& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

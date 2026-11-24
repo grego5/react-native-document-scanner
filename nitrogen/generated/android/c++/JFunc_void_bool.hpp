@@ -18,7 +18,7 @@ namespace margelo::nitro::documentscanner {
   using namespace facebook;
 
   /**
-   * Represents the Java/Kotlin callback `(blurred: Boolean) -> Unit`.
+   * Represents the Java/Kotlin callback `(zoomed: Boolean) -> Unit`.
    * This can be passed around between C++ and Java/Kotlin.
    */
   struct JFunc_void_bool: public jni::JavaClass<JFunc_void_bool> {
@@ -29,9 +29,9 @@ namespace margelo::nitro::documentscanner {
     /**
      * Invokes the function this `JFunc_void_bool` instance holds through JNI.
      */
-    void invoke(bool blurred) const {
-      static const auto method = javaClassStatic()->getMethod<void(jboolean /* blurred */)>("invoke");
-      method(self(), blurred);
+    void invoke(bool zoomed) const {
+      static const auto method = javaClassStatic()->getMethod<void(jboolean /* zoomed */)>("invoke");
+      method(self(), zoomed);
     }
   };
 
@@ -40,7 +40,7 @@ namespace margelo::nitro::documentscanner {
    */
   class JFunc_void_bool_cxx final: public jni::HybridClass<JFunc_void_bool_cxx, JFunc_void_bool> {
   public:
-    static jni::local_ref<JFunc_void_bool::javaobject> fromCpp(const std::function<void(bool /* blurred */)>& func) {
+    static jni::local_ref<JFunc_void_bool::javaobject> fromCpp(const std::function<void(bool /* zoomed */)>& func) {
       return JFunc_void_bool_cxx::newObjectCxxArgs(func);
     }
 
@@ -48,13 +48,13 @@ namespace margelo::nitro::documentscanner {
     /**
      * Invokes the C++ `std::function<...>` this `JFunc_void_bool_cxx` instance holds.
      */
-    void invoke_cxx(jboolean blurred) {
-      _func(static_cast<bool>(blurred));
+    void invoke_cxx(jboolean zoomed) {
+      _func(static_cast<bool>(zoomed));
     }
 
   public:
     [[nodiscard]]
-    inline const std::function<void(bool /* blurred */)>& getFunction() const {
+    inline const std::function<void(bool /* zoomed */)>& getFunction() const {
       return _func;
     }
 
@@ -65,11 +65,11 @@ namespace margelo::nitro::documentscanner {
     }
 
   private:
-    explicit JFunc_void_bool_cxx(const std::function<void(bool /* blurred */)>& func): _func(func) { }
+    explicit JFunc_void_bool_cxx(const std::function<void(bool /* zoomed */)>& func): _func(func) { }
 
   private:
     friend HybridBase;
-    std::function<void(bool /* blurred */)> _func;
+    std::function<void(bool /* zoomed */)> _func;
   };
 
 } // namespace margelo::nitro::documentscanner

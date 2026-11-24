@@ -1,6 +1,6 @@
-import type { AutofocusState, CameraState } from './DocumentScannerCamera.nitro'
 import type { DocumentCorners } from './DocumentScannerProcessor.nitro'
 import type { ScannerFailure } from './ScannerFailure'
+import type { TextSession } from './TextSession.nitro'
 import type {
   HybridView,
   HybridViewMethods,
@@ -18,34 +18,119 @@ export interface TextRegion {
 /** Back-camera torch for text reading. */
 export type TextTorchMode = 'off' | 'on'
 
+/** The scan statuses the guide shows while frames arrive, each with its own colour and label; see `TextScanStatus`. */
+export type TextGuideState = 'ready' | 'focusing' | 'blurred' | 'capturing'
+
+/**
+ * What a text scan is doing, one status for everything the UI shows, picked natively, highest first:
+ * - `off`: no camera shows the session, or it is suspended: inactive, hidden or without permission.
+ * - `starting`: the camera opens, or recovers from an interruption, and no frame has come yet.
+ * - `capturing`: a capture waits for a read.
+ * - `blurred`: the region's print is blurred, as when nearer than the lens can focus or moving: its edges, measured
+ *   across the print in the frames read, spread past what reads reliably. The camera reports a lock focused even then,
+ *   and the recognizer misreads characters before it stops finding text, so the image decides. A blurred read counts as
+ *   nothing found for focus, and a capture waits for a sharp one until its deadline.
+ * - `focusing`: a lock's or a tap's scan runs.
+ * - `ready`: frames arrive in focus, or continuous autofocus follows the region.
+ * iOS reports `off`, `starting` and `ready` only.
+ */
+export type TextScanStatus = 'off' | 'starting' | 'ready' | 'focusing' | 'blurred' | 'capturing'
+
+/** ARGB box colours per state; `off` and `starting` use `ready`'s. A missing state uses `ready`'s, except `blurred`, which defaults to amber. */
+export interface TextGuideColors {
+  ready?: number
+  focusing?: number
+  blurred?: number
+  capturing?: number
+}
+
+/** Label per state; a missing state uses `ready`'s, and an empty string shows none. `off` and `starting` show none. */
+export interface TextGuideLabels {
+  ready?: string
+  focusing?: string
+  blurred?: string
+  capturing?: string
+}
+
+export type TextGuideFontWeight = 'normal' | 'bold'
+/** Which side of the box the label sits on. */
+export type TextGuideLabelPlacement = 'bottom' | 'top'
+
+/** The label, in the system font. Sizes are in points; `fontSize` scales with the system font size. */
+export interface TextGuideLabelStyle {
+  /** Defaults to 14. */
+  fontSize?: number
+  fontWeight?: TextGuideFontWeight
+  /** ARGB; defaults to white. */
+  color?: number
+  /** ARGB; defaults to black at 60%. */
+  backgroundColor?: number
+  /** Space inside the background; defaults to 6. */
+  padding?: number
+  /** The background's corner radius; defaults to 6. */
+  radius?: number
+}
+
+/**
+ * The native guide: the box marking the region, and a label beside it per state. The label is centred, as wide as the
+ * box at most, up to two lines, its direction taken from its text, and screen readers announce its changes.
+ */
+export interface TextGuide {
+  /** Draws nothing natively; `onGuideLayout` still reports the box, for a guide drawn by the host. */
+  hidden?: boolean
+  colors?: TextGuideColors
+  /** The box's stroke, in points; defaults to 2. */
+  strokeWidth?: number
+  /** The box's corner radius, in points; defaults to 8. */
+  radius?: number
+  labels?: TextGuideLabels
+  labelStyle?: TextGuideLabelStyle
+  /** Defaults to `bottom`. */
+  labelPlacement?: TextGuideLabelPlacement
+  /** The gap between the box and the label, in points; defaults to 12. */
+  labelOffset?: number
+}
+
+/** A rectangle in view points, origin top left. */
+export interface TextGuideFrame {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** The guide as drawn: the box after clamping, to its stroke's outer edge, and the label while one shows. */
+export interface TextGuideLayout {
+  box: TextGuideFrame
+  label?: TextGuideFrame
+}
+
 /**
  * Back-camera preview with a box marking the region text is picked from, in two steps. Live, the camera focuses on the
  * region and keeps its sharpest recent frames; under each new focus the sharpest of its first frames is read in the
- * background with the platform recognizer (ML Kit on Android). Nothing shows over the preview but the box. A capture
- * then returns the best frame with its words for the user to pick from. Each callback fires on change only, starting
- * with the state at the time it is set.
+ * background with the platform recognizer (ML Kit on Android). Nothing shows over the preview but the guide. The
+ * session's capture then takes the best frame with its words for the user to pick from. Each callback fires on change
+ * only, starting with the state at the time it is set.
  */
 export interface TextCameraProps extends HybridViewProps {
+  /**
+   * The scan this view shows, which keeps the capture and the guide state. One view shows a session at a time: a
+   * second reports `input/invalid` on `onError` and captures nothing until the first lets go.
+   */
+  session: TextSession
   /** Whether the camera runs; defaults to true. False releases the camera and the kept frames. */
   active?: boolean
   /** The area read, as fractions of the view; clamped to it. Changes apply on the next frame without restarting. */
   textRegion: TextRegion
-  /** ARGB color of the box marking the region; the TextCamera wrapper takes a color string. */
-  guideColor?: number
+  /** The box marking the region and its label; the TextCamera wrapper takes color strings. */
+  guide?: TextGuide
   /** Tapping the preview focuses there for 5 s, then focus returns to the region; defaults to true. */
   tapToFocus?: boolean
   /**
-   * Focuses by the document scanner's rules: continuous autofocus follows the region while the phone moves, and every
-   * steady hold locks with the camera's own locking scan, a sweep that finds the sharpest distance, at the region's
-   * most textured spot, else its centre. Turning or moving the phone, or a new region, releases the lock and starts
-   * over, as does the page moving under a steady phone, which the image shows; a lock whose background read finds no
-   * text locks again, and once a hold's two locks are spent continuous autofocus follows the region until the phone
-   * moves on. Moving nearer or farther until the view goes soft under the lock, or
-   * the page shifting, locks again once steady. Frames count as in focus
-   * only under a settled lock, since at close range continuous autofocus reports focus it has not reached; without
-   * `focusLock`, they count while continuous autofocus reports focus. Needs single-shot autofocus and motion sensors (a
-   * gyroscope and linear acceleration); otherwise continuous autofocus alone follows the region. Android only; the
-   * native view defaults to false, and `TextCamera` turns it on.
+   * Enables managed focus recovery on Android. Continuous autofocus follows the region and can supply readable
+   * frames. With single-shot autofocus and motion sensors, a steady blurred region can trigger a locking scan.
+   * The native view defaults to false and the `TextCamera` wrapper enables it by default.
+   * See the Android text-camera reference for recovery and capture selection.
    */
   focusLock?: boolean
   /**
@@ -60,20 +145,11 @@ export interface TextCameraProps extends HybridViewProps {
    * Defaults to 1280. A thin region holding small text needs more. Changing it restarts the camera.
    */
   analysisFrameWidth?: number
-  onCameraStateChange?: (state: CameraState) => void
   /**
-   * Focus on the region. A lock or a tap reports `scan` while its scan runs and `locked` once the camera reports the
-   * lock; continuous autofocus reports its Camera2 state. iOS reports `inactive`.
+   * Where the guide is drawn, in this view's points, also while it is hidden, so a guide drawn by the host can be placed
+   * by it; the session's `status` tells what it shows.
    */
-  onAutofocusChange?: (state: AutofocusState) => void
-  /**
-   * Whether the print in the region is blurred, as when nearer than the lens can focus or moving: its edges, measured
-   * across the print in the frames read, spread past what reads reliably. The camera reports a lock focused even then,
-   * and the recognizer misreads characters before it stops finding text, so the image decides. The box turns amber
-   * meanwhile; a blurred read counts as nothing found for focus, and a capture waits for a sharp one until its
-   * deadline. Android only; iOS reports false.
-   */
-  onBlurChange?: (blurred: boolean) => void
+  onGuideLayout?: (layout: TextGuideLayout) => void
   /** Camera failures, and `feature/unsupported` when the recognizer cannot start. */
   onError?: (error: ScannerFailure) => void
 }
@@ -104,16 +180,7 @@ export interface TextCapture {
   words: TextWord[]
 }
 
-export interface TextCameraMethods extends HybridViewMethods {
-  /**
-   * Native result transport for public `captureText`. A recent background read in focus that found text returns at
-   * once without another read, unless a kept frame of the last second is clearly sharper, which is read instead.
-   * When neither finds text, with `focusLock`, the region locks again and the capture waits for that lock's read.
-   * Past `timeoutMs` (defaults to 2000) the sharpest frame kept, in focus if any was, is read then. Android only; iOS
-   * reports `feature/unsupported`.
-   */
-  captureTextResult(timeoutMs?: number): Promise<TextCapture | ScannerFailure>
-}
+export interface TextCameraMethods extends HybridViewMethods {}
 
 export type TextCameraView = HybridView<
   TextCameraProps,

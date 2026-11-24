@@ -54,6 +54,11 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
 
   // Update only props that differ from the previous State snapshot.
   if (oldProps == nullptr
+        ? newProps->session.isProvided()
+        : !newProps->session.hasSameValue(oldProps->session)) {
+    hybridView->setSession(newProps->session.get());
+  }
+  if (oldProps == nullptr
         ? newProps->active.isProvided()
         : !newProps->active.hasSameValue(oldProps->active)) {
     hybridView->setActive(newProps->active.get());
@@ -64,9 +69,9 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
     hybridView->setTextRegion(newProps->textRegion.get());
   }
   if (oldProps == nullptr
-        ? newProps->guideColor.isProvided()
-        : !newProps->guideColor.hasSameValue(oldProps->guideColor)) {
-    hybridView->setGuideColor(newProps->guideColor.get());
+        ? newProps->guide.isProvided()
+        : !newProps->guide.hasSameValue(oldProps->guide)) {
+    hybridView->setGuide(newProps->guide.get());
   }
   if (oldProps == nullptr
         ? newProps->tapToFocus.isProvided()
@@ -94,19 +99,9 @@ void JHybridTextCameraViewStateUpdater::updateViewProps(jni::alias_ref<jni::JCla
     hybridView->setAnalysisFrameWidth(newProps->analysisFrameWidth.get());
   }
   if (oldProps == nullptr
-        ? newProps->onCameraStateChange.isProvided()
-        : !newProps->onCameraStateChange.hasSameValue(oldProps->onCameraStateChange)) {
-    hybridView->setOnCameraStateChange(newProps->onCameraStateChange.get());
-  }
-  if (oldProps == nullptr
-        ? newProps->onAutofocusChange.isProvided()
-        : !newProps->onAutofocusChange.hasSameValue(oldProps->onAutofocusChange)) {
-    hybridView->setOnAutofocusChange(newProps->onAutofocusChange.get());
-  }
-  if (oldProps == nullptr
-        ? newProps->onBlurChange.isProvided()
-        : !newProps->onBlurChange.hasSameValue(oldProps->onBlurChange)) {
-    hybridView->setOnBlurChange(newProps->onBlurChange.get());
+        ? newProps->onGuideLayout.isProvided()
+        : !newProps->onGuideLayout.hasSameValue(oldProps->onGuideLayout)) {
+    hybridView->setOnGuideLayout(newProps->onGuideLayout.get());
   }
   if (oldProps == nullptr
         ? newProps->onError.isProvided()

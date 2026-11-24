@@ -1,6 +1,7 @@
 import type { HybridObject } from 'react-native-nitro-modules'
 import type { ScannerFailure } from './ScannerFailure'
 import type { ScanSession } from './ScanSession.nitro'
+import type { TextSession } from './TextSession.nitro'
 
 export interface DocumentPoint {
   x: number
@@ -92,6 +93,8 @@ export interface DocumentScannerProcessor
    * loading the Expo plugin's model unless a source was already requested.
    */
   createSessionResult(): ScanSession | ScannerFailure
+  /** A text scan for `TextCamera`; see `TextSession`. */
+  createTextSessionResult(): TextSession | ScannerFailure
   /**
    * Waits for the app-wide corner model's current request, starting the Expo plugin's model first if nothing was
    * requested. `true` once it is active, `false` without any model; a failed or superseded request rejects.

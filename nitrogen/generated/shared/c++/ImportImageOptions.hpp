@@ -53,7 +53,9 @@ namespace margelo::nitro::documentscanner {
     explicit ImportImageOptions(std::optional<ImageCorrectionOptions> imageCorrection, std::optional<ImageOutputOptions> outputOptions, std::optional<bool> autoCrop): imageCorrection(imageCorrection), outputOptions(outputOptions), autoCrop(autoCrop) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const ImportImageOptions& lhs, const ImportImageOptions& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

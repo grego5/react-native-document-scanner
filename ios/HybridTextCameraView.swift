@@ -3,8 +3,8 @@ import Foundation
 import NitroModules
 import UIKit
 
-/// Back-camera preview with a box marking `textRegion`. Capturing text to pick from is Android only for now:
-/// `captureTextResult` reports `feature/unsupported`. The camera runs while `active`, in a window, sized and
+/// Back-camera preview with a box marking `textRegion`, showing its `session`. Capturing text to pick from is Android
+/// only for now: the session's capture reports `feature/unsupported`. The camera runs while `active`, in a window, sized and
 /// permitted; video frames only report readiness. Props and callbacks live on main; the capture session is
 /// configured on its own queue.
 final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable {
@@ -20,13 +20,22 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
     preview.onWindowChange = { [weak self] in self?.evaluate() }
     preview.onResize = { [weak self] in self?.layoutChanged() }
     preview.onTap = { [weak self] point in self?.tapped(point) }
+    preview.overlay.onLayout = { [weak self] box, label in self?.guideLaidOut(box: box, label: label) }
     return preview
   }
 
   var view: UIView { preview }
+  /// The session as last set, and the one this view shows, which another view may hold instead.
+  private var requestedSession: (any HybridTextSessionSpec)?
+  private var attachedSession: HybridTextSession?
+  private var checkedSession: (any HybridTextSessionSpec)?
+  var session: any HybridTextSessionSpec {
+    get { requestedSession ?? HybridTextSession() }
+    set { requestedSession = newValue }
+  }
   var active: Bool? = nil
   var textRegion = TextRegion(x: 0.1, y: 0.44, width: 0.8, height: 0.12)
-  var guideColor: Double? = nil
+  var guide: TextGuide? = nil
   var tapToFocus: Bool? = nil
   /// Android only.
   var focusLock: Bool? = nil
@@ -34,11 +43,7 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
   var zoom: Double? = nil
   var torch: TextTorchMode? = nil
   var analysisFrameWidth: Double? = nil
-  var onCameraStateChange: ((_ state: CameraState) -> Void)? = nil { didSet { reportedState = nil; reportState() } }
-  /// Android only: iOS has no lens hold and reports `inactive` once set.
-  var onAutofocusChange: ((_ state: AutofocusState) -> Void)? = nil { didSet { onAutofocusChange?(.inactive) } }
-  /// Android only: iOS measures no blur and reports false once set.
-  var onBlurChange: ((_ blurred: Bool) -> Void)? = nil { didSet { onBlurChange?(false) } }
+  var onGuideLayout: ((_ layout: TextGuideLayout) -> Void)? = nil { didSet { emittedGuideLayout = nil; emitGuideLayout() } }
   var onError: ((_ error: ScannerFailure) -> Void)? = nil
 
   // Main only.
@@ -49,11 +54,15 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
   private var streaming = false
   private var generation = 0
   private var region = TextRegion(x: 0.1, y: 0.44, width: 0.8, height: 0.12)
-  private var reportedState: CameraState?
+  /// What the scan does, which the attached session publishes: iOS has no blur, lock or capture to show.
+  private var status: TextScanStatus = .off
   private var removePermissionListener: (() -> Void)?
   private var rotation: AVCaptureDevice.RotationCoordinator?
   private var rotationObservations: [NSKeyValueObservation] = []
   private var tapRevision = 0
+  /// The guide as last laid out, in points, and as last reported.
+  private var guideLayout: GuideRects?
+  private var emittedGuideLayout: GuideRects?
   /// Set while AVFoundation has interrupted the running session, such as in the background; the next frame clears it.
   private var interrupted = false
   /// Notification handlers for the current run only; the session queue alone changes them.
@@ -80,26 +89,38 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
   }
 
   func afterUpdate() {
+    syncSession()
     let clamped = clampedTextRegion(textRegion)
     if !sameTextRegion(clamped, region) {
       region = clamped
       aimFocus()
     }
-    MainActor.assumeIsolated { preview.overlay.update(region: region, color: Self.color(guideColor)) }
+    MainActor.assumeIsolated { preview.overlay.update(region: region, guide: guide) }
     if running, configuredPreset != preset() { stop() }
     evaluate()
     applyTorch()
   }
 
-  /// Capture for picking text is Android only for now.
-  func captureTextResult(timeoutMs: Double?) throws -> Promise<Variant_ScannerFailure_TextCapture> {
-    let promise = Promise<Variant_ScannerFailure_TextCapture>()
-    promise.resolve(withResult: .first(ScannerFailure(code: .featureUnsupported)))
-    return promise
+  /// Shows `requestedSession` when it changed; one another view shows is refused once.
+  private func syncSession() {
+    let next = requestedSession
+    if next === checkedSession { return }
+    checkedSession = next
+    attachedSession?.detach(self)
+    attachedSession = nil
+    guard let session = next as? HybridTextSession else { return }
+    guard session.attach(self) else {
+      onError?(ScannerFailure(code: .inputInvalid))
+      return
+    }
+    attachedSession = session
+    session.show(self, status: status)
   }
 
   func onDropView() {
     dropped = true
+    attachedSession?.detach(self)
+    attachedSession = nil
     stop()
     removePermissionListener?()
     removePermissionListener = nil
@@ -384,17 +405,40 @@ final class HybridTextCameraView: HybridTextCameraViewSpec, @unchecked Sendable 
 
   private func reportState() {
     guard !dropped else { return }
-    let state: CameraState = !running ? .suspended : streaming ? .ready : .starting
-    guard state != reportedState else { return }
-    reportedState = state
-    onCameraStateChange?(state)
+    let next: TextScanStatus = !running ? .off : streaming ? .ready : .starting
+    guard next != status else { return }
+    status = next
+    preview.overlay.show(next)
+    attachedSession?.show(self, status: next)
   }
 
-  private static func color(_ value: Double?) -> UIColor {
-    let argb = UInt32(truncatingIfNeeded: Int64(value ?? Double(0xFF61_E1CF)))
-    return UIColor(red: CGFloat((argb >> 16) & 0xFF) / 255, green: CGFloat((argb >> 8) & 0xFF) / 255,
-                   blue: CGFloat(argb & 0xFF) / 255, alpha: CGFloat((argb >> 24) & 0xFF) / 255)
+  /// Main: the overlay laid the guide out at `box` and `label`, in points.
+  private func guideLaidOut(box: CGRect, label: CGRect?) {
+    guideLayout = GuideRects(box: box, label: label)
+    emitGuideLayout()
   }
+
+  private func emitGuideLayout() {
+    guard !dropped, let layout = guideLayout, layout != emittedGuideLayout else { return }
+    emittedGuideLayout = layout
+    func frame(_ rect: CGRect) -> TextGuideFrame {
+      TextGuideFrame(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height)
+    }
+    onGuideLayout?(TextGuideLayout(box: frame(layout.box), label: layout.label.map(frame)))
+  }
+}
+
+/// The guide's box and label in points, compared before reporting since generated structs have no equality in Swift.
+private struct GuideRects: Equatable {
+  let box: CGRect
+  let label: CGRect?
+}
+
+/// An ARGB number as a colour, or `fallback` when unset.
+private func argbColor(_ value: Double?, _ fallback: UInt32) -> UIColor {
+  let argb = value.flatMap { $0.isFinite ? UInt32(truncatingIfNeeded: Int64($0)) : nil } ?? fallback
+  return UIColor(red: CGFloat((argb >> 16) & 0xFF) / 255, green: CGFloat((argb >> 8) & 0xFF) / 255,
+                 blue: CGFloat(argb & 0xFF) / 255, alpha: CGFloat((argb >> 24) & 0xFF) / 255)
 }
 
 private struct TextCameraBindError: Error {}
@@ -492,26 +536,81 @@ final class TextCameraPreviewView: UIView {
   }
 }
 
-/// Draws the box marking the region read, in the guide colour, with rounded corners.
+/// The guide, `TextGuide`: the box marking the region, and the `ready` label centred below or above it, as wide as the
+/// box at most and up to two lines. The label takes its direction from its text and is announced when it changes. A
+/// hidden guide draws nothing, but its box is still laid out and reported to `onLayout`.
 final class TextRegionOverlay: UIView {
+  /// The box, to its stroke's outer edge, and the label while one shows, in points, each time they are laid out.
+  var onLayout: ((_ box: CGRect, _ label: CGRect?) -> Void)?
   private let box = CAShapeLayer()
+  private let label = GuideLabel()
   private var region: TextRegion?
+  private var hidden = false
+  private var radius: CGFloat = 8
+  private var labelOffset: CGFloat = 12
+  private var labelAbove = false
+  private var guide: TextGuide?
+  private var status: TextScanStatus = .off
 
   override init(frame: CGRect) {
     super.init(frame: frame)
     backgroundColor = .clear
-    box.lineWidth = 2
     box.fillColor = nil
     layer.addSublayer(box)
+    label.numberOfLines = 2
+    label.lineBreakMode = .byTruncatingTail
+    label.textAlignment = .center
+    label.adjustsFontForContentSizeCategory = true
+    label.layer.masksToBounds = true
+    label.isHidden = true
+    addSubview(label)
   }
 
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
-  func update(region: TextRegion, color: UIColor) {
+  func update(region: TextRegion, guide: TextGuide?) {
     self.region = region
-    box.strokeColor = color.cgColor
+    self.guide = guide
+    hidden = guide?.hidden == true
+    radius = CGFloat(guide?.radius ?? 8)
+    labelOffset = CGFloat(guide?.labelOffset ?? 12)
+    labelAbove = guide?.labelPlacement == .top
+    box.isHidden = hidden
+    box.lineWidth = CGFloat(guide?.strokeWidth ?? 2)
+    box.strokeColor = argbColor(guide?.colors?.ready, 0xFF61_E1CF).cgColor
+    let style = guide?.labelStyle
+    let font = UIFont.systemFont(ofSize: CGFloat(style?.fontSize ?? 14), weight: style?.fontWeight == .bold ? .bold : .regular)
+    label.font = UIFontMetrics.default.scaledFont(for: font)
+    label.textColor = argbColor(style?.color, 0xFFFF_FFFF)
+    label.backgroundColor = argbColor(style?.backgroundColor, 0x9900_0000)
+    label.layer.cornerRadius = CGFloat(style?.radius ?? 6)
+    label.inset = CGFloat(style?.padding ?? 6)
+    applyLabel()
+  }
+
+  /// The camera's scan does `status`. iOS reports `off`, `starting` and `ready` only, so the box keeps the `ready`
+  /// colour and the label shows while ready.
+  func show(_ status: TextScanStatus) {
+    guard status != self.status else { return }
+    self.status = status
+    applyLabel()
+  }
+
+  private func applyLabel() {
+    let own = status == .ready ? guide?.labels?.ready : nil
+    let text = hidden ? nil : own.flatMap { $0.isEmpty ? nil : $0 }
+    if label.text != text {
+      label.text = text
+      if let text, window != nil { UIAccessibility.post(notification: .announcement, argument: text) }
+    }
+    label.isHidden = text == nil
     setNeedsLayout()
+  }
+
+  override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+    super.traitCollectionDidChange(previous)
+    if previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory { setNeedsLayout() }
   }
 
   override func layoutSubviews() {
@@ -526,6 +625,33 @@ final class TextRegionOverlay: UIView {
     box.frame = bounds
     let rect = CGRect(x: region.x * bounds.width, y: region.y * bounds.height,
                       width: region.width * bounds.width, height: region.height * bounds.height)
-    box.path = UIBezierPath(roundedRect: rect, cornerRadius: 8).cgPath
+    box.path = UIBezierPath(roundedRect: rect, cornerRadius: radius).cgPath
+    let half = hidden ? 0 : box.lineWidth / 2
+    let outer = rect.insetBy(dx: -half, dy: -half)
+    var labelFrame: CGRect?
+    if !label.isHidden {
+      let size = label.sizeThatFits(CGSize(width: rect.width, height: bounds.height))
+      let y = labelAbove ? outer.minY - labelOffset - size.height : outer.maxY + labelOffset
+      let x = outer.midX - size.width / 2
+      let frame = CGRect(x: min(max(x, 0), max(bounds.width - size.width, 0)),
+                         y: min(max(y, 0), max(bounds.height - size.height, 0)), width: size.width, height: size.height)
+      label.frame = frame
+      labelFrame = frame
+    }
+    onLayout?(outer, labelFrame)
+  }
+}
+
+/// A label padded by `inset` inside its background.
+private final class GuideLabel: UILabel {
+  var inset: CGFloat = 6 { didSet { setNeedsDisplay() } }
+
+  override func drawText(in rect: CGRect) {
+    super.drawText(in: rect.insetBy(dx: inset, dy: inset))
+  }
+
+  override func sizeThatFits(_ size: CGSize) -> CGSize {
+    let inner = super.sizeThatFits(CGSize(width: max(size.width - 2 * inset, 0), height: .greatestFiniteMagnitude))
+    return CGSize(width: min(inner.width + 2 * inset, size.width), height: inner.height + 2 * inset)
   }
 }

@@ -66,6 +66,8 @@ namespace margelo::nitro::documentscanner { class HybridPageThumbnailViewSpec; }
 namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
 // Forward declaration of `HybridTextCameraViewSpec` to properly resolve imports.
 namespace margelo::nitro::documentscanner { class HybridTextCameraViewSpec; }
+// Forward declaration of `HybridTextSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridTextSessionSpec; }
 // Forward declaration of `ImageCorrectionOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ImageCorrectionOptions; }
 // Forward declaration of `ImageFit` to properly resolve imports.
@@ -102,8 +104,30 @@ namespace margelo::nitro::documentscanner { struct SessionPdfOptions; }
 namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 // Forward declaration of `TextCapture` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextCapture; }
+// Forward declaration of `TextGuideColors` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideColors; }
+// Forward declaration of `TextGuideFontWeight` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextGuideFontWeight; }
+// Forward declaration of `TextGuideFrame` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideFrame; }
+// Forward declaration of `TextGuideLabelPlacement` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextGuideLabelPlacement; }
+// Forward declaration of `TextGuideLabelStyle` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLabelStyle; }
+// Forward declaration of `TextGuideLabels` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLabels; }
+// Forward declaration of `TextGuideLayout` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLayout; }
+// Forward declaration of `TextGuide` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuide; }
 // Forward declaration of `TextRegion` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextRegion; }
+// Forward declaration of `TextScanStatus` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextScanStatus; }
+// Forward declaration of `TextSessionObservation` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextSessionObservation; }
+// Forward declaration of `TextSessionSnapshot` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextSessionSnapshot; }
 // Forward declaration of `TextTorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
 // Forward declaration of `TextWord` to properly resolve imports.
@@ -141,6 +165,7 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "HybridPageThumbnailViewSpec.hpp"
 #include "HybridScanSessionSpec.hpp"
 #include "HybridTextCameraViewSpec.hpp"
+#include "HybridTextSessionSpec.hpp"
 #include "ImageCorrectionOptions.hpp"
 #include "ImageFit.hpp"
 #include "ImageOutputOptions.hpp"
@@ -159,7 +184,18 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "SessionPdfOptions.hpp"
 #include "TakePhotoOptions.hpp"
 #include "TextCapture.hpp"
+#include "TextGuide.hpp"
+#include "TextGuideColors.hpp"
+#include "TextGuideFontWeight.hpp"
+#include "TextGuideFrame.hpp"
+#include "TextGuideLabelPlacement.hpp"
+#include "TextGuideLabelStyle.hpp"
+#include "TextGuideLabels.hpp"
+#include "TextGuideLayout.hpp"
 #include "TextRegion.hpp"
+#include "TextScanStatus.hpp"
+#include "TextSessionObservation.hpp"
+#include "TextSessionSnapshot.hpp"
 #include "TextTorchMode.hpp"
 #include "TextWord.hpp"
 #include "TorchMode.hpp"
@@ -202,6 +238,8 @@ namespace ReactNativeDocumentScanner { class HybridPageThumbnailViewSpec_cxx; }
 namespace ReactNativeDocumentScanner { class HybridScanSessionSpec_cxx; }
 // Forward declaration of `HybridTextCameraViewSpec_cxx` to properly resolve imports.
 namespace ReactNativeDocumentScanner { class HybridTextCameraViewSpec_cxx; }
+// Forward declaration of `HybridTextSessionSpec_cxx` to properly resolve imports.
+namespace ReactNativeDocumentScanner { class HybridTextSessionSpec_cxx; }
 
 // Include Swift defined types
 #if __has_include("ReactNativeDocumentScanner-Swift.h")

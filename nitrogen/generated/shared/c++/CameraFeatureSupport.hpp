@@ -47,7 +47,9 @@ namespace margelo::nitro::documentscanner {
     explicit CameraFeatureSupport(bool lowLightBoostSupported, bool zeroShutterLagSupported): lowLightBoostSupported(lowLightBoostSupported), zeroShutterLagSupported(zeroShutterLagSupported) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const CameraFeatureSupport& lhs, const CameraFeatureSupport& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

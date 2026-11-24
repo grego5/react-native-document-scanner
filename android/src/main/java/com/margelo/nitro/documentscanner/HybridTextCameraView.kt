@@ -1,11 +1,8 @@
 package com.margelo.nitro.documentscanner
 
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.RectF
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -51,7 +48,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import com.margelo.nitro.core.Promise
 import com.margelo.nitro.documentscanner.processing.pagePoint
 import com.margelo.nitro.documentscanner.processing.pickPrintSpot
 import com.margelo.nitro.documentscanner.processing.EdgeWidth
@@ -64,7 +60,6 @@ import kotlin.math.abs
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import com.margelo.nitro.documentscanner.CameraState as ScannerCameraState
 
 private const val LOG_TAG = "RNDocumentScannerText"
 
@@ -105,10 +100,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     // unmeasured at 0x0 and never receive frames; lay them out on the next frame instead.
     override fun requestLayout() {
       super.requestLayout()
-      if (!layoutPosted) {
-        layoutPosted = true
-        post { layoutPosted = false; layoutChildren() }
-      }
+      postLayout(this)
     }
   }
   private var layoutPosted = false
@@ -128,7 +120,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       false
     }
   }
-  private val overlay = TextRegionOverlay(themedContext)
+  private val overlay = TextGuideOverlay(themedContext, { postLayout(container) }) { box, label -> guideLaidOut(box, label) }
   override val view: View = container
 
   init {
@@ -136,20 +128,23 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     container.addView(overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
   }
 
+  /** Main thread: the session as last set, and the one this view shows, which another view may hold instead. */
+  private var requestedSession: HybridTextSessionSpec? = null
+  private var attachedSession: HybridTextSession? = null
+  private var checkedSession: HybridTextSessionSpec? = null
+  override var session: HybridTextSessionSpec
+    get() = requestedSession ?: throw InvalidInputException("TextCamera requires a session.")
+    set(value) { requestedSession = value }
   override var active: Boolean? = null
   override var textRegion = TextRegion(0.1, 0.44, 0.8, 0.12)
-  override var guideColor: Double? = null
+  override var guide: TextGuide? = null
   override var tapToFocus: Boolean? = null
   override var torch: TextTorchMode? = null
   override var analysisFrameWidth: Double? = null
   override var focusLock: Boolean? = null
   override var zoom: Double? = null
-  override var onCameraStateChange: ((state: ScannerCameraState) -> Unit)? = null
-    set(value) { field = value; emittedState = null; updateCameraState() }
-  override var onAutofocusChange: ((state: AutofocusState) -> Unit)? = null
-    set(value) { field = value; emittedAutofocus = null; updateAutofocus() }
-  override var onBlurChange: ((blurred: Boolean) -> Unit)? = null
-    set(value) { field = value; emittedBlurred = null; emitBlurred() }
+  override var onGuideLayout: ((layout: TextGuideLayout) -> Unit)? = null
+    set(value) { field = value; emittedGuideLayout = null; emitGuideLayout() }
   override var onError: ((error: ScannerFailure) -> Unit)? = null
 
   // Main thread.
@@ -161,9 +156,15 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private var generation = 0L
   private var boundWidth = 0
   private var removePermission: (() -> Unit)? = null
-  private var emittedState: ScannerCameraState? = null
-  private var emittedAutofocus: AutofocusState? = null
-  private var emittedBlurred: Boolean? = null
+  /** Logging only: the autofocus state last logged. */
+  private var loggedAutofocus: AutofocusState? = null
+  /** Main thread: what the scan does, which the guide shows and the attached session publishes. */
+  private var status = TextScanStatus.OFF
+  /** Main thread: the guide as last laid out, in view points, and as last reported. */
+  private var guideLayout: TextGuideLayout? = null
+  private var emittedGuideLayout: TextGuideLayout? = null
+  /** Main thread: captures not yet resolved, which the guide shows as `capturing`. */
+  private var capturesWaiting = 0
   /** Main thread: the region's print is blurred ([BlurWatch]). */
   private var blurred = false
   /** Main thread, `focusLock`: when the camera's own locking scan runs, or null while continuous autofocus alone
@@ -218,15 +219,34 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private val zoomWatch = AtomicReference<TextZoom.Request?>(null)
   /** The newest capture result's autofocus state, for the camera's own autofocus; written on a camera thread. */
   @Volatile private var cameraAfState: Int? = null
-  private val streamObserver = Observer<PreviewView.StreamState> { updateCameraState() }
+  private val streamObserver = Observer<PreviewView.StreamState> { updateStatus() }
   /** Set when the bound camera closed or failed to open; captures stay unavailable until the first fresh frame. */
   private var interrupted = false
   /** The bound camera's state, observed for the current start only. */
   private var observedCameraState: LiveData<CameraState>? = null
   private var cameraStateObserver: Observer<CameraState>? = null
 
-  /** A capture waiting for a read frame, until [deadlineMs] of uptime. */
-  private class PendingCapture(val promise: Promise<Variant_ScannerFailure_TextCapture>, val deadlineMs: Long)
+  /** A capture waiting for a read frame until [deadline], in uptime milliseconds; [done] takes the capture or the failure, once,
+   * and [settled] follows it. */
+  private class PendingCapture(val deadline: Long, private val done: (TextCapture?, ScannerErrorCode?) -> Unit,
+    private val settled: () -> Unit) {
+    fun resolve(capture: TextCapture) {
+      done(capture, null)
+      settled()
+    }
+
+    fun fail(code: ScannerErrorCode) {
+      done(null, code)
+      settled()
+    }
+  }
+
+  /** What this view does for its session. */
+  private val sessionCamera = object : HybridTextSession.Camera {
+    override fun capture(timeout: Long, done: (TextCapture?, ScannerErrorCode?) -> Unit) {
+      mainHandler.post { startCapture(timeout, done) }
+    }
+  }
   /** A read frame: [crop] of [region], exposed at [sensorNs] in [focus], 0 for none, the [lines] recognized in it, and
    * its [edges] width in pixels, null when unmeasured. */
   private class TextShot(val crop: LumaCrop, val lines: List<RecognizedLine>, val focus: Long, val region: TextRegion,
@@ -248,9 +268,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private var shot: TextShot? = null
   /** Analysis thread: captures waiting for a read frame. */
   private val captures = mutableListOf<PendingCapture>()
-  /** Analysis thread: whether the waiting captures asked for a lock of their own, and the focus whose read they
+  /** Analysis thread: whether the waiting captures requested a lock of their own, and the focus whose read they
    * turned down for finding no text, so the lock's read, whatever it finds, is the one returned. */
-  private var captureLockAsked = false
+  private var captureLockRequested = false
   private var captureRejected: Long? = null
   /** Analysis thread: tells when the view moves or changes, which the motion sensors cannot see. */
   private val viewWatch = ViewWatch()
@@ -260,9 +280,8 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private val blurWatch = BlurWatch()
   /** Camera thread: continuous autofocus is sweeping the lens, which blurs the view on its way to focus. */
   @Volatile private var passiveScanning = false
-  /** Analysis thread: the newest frame's sensor time, which a shot's age is measured against, and its thumbnail. */
+  /** Analysis thread: the newest frame's sensor time, which a shot's age is measured against. */
   private var newestNs = 0L
-  private var newestThumb: FloatArray? = null
   /** Camera thread: the lens's latest focus distance in diopters, which tells a lock at its near limit. */
   @Volatile private var lensDiopters: Float? = null
   /** Written by main only, as a whole; the analyzer takes one per frame. */
@@ -273,7 +292,10 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   @Volatile private var availability = 0L
   /** Cleared by each unavailable transition and on reopening; the next counted frame reports itself to main. */
   private val frameSeen = AtomicBoolean(false)
+  /** Analysis thread: the snapshot revision the kept frames and the shot belong to, and its region, which a capture
+   * read from them shows. */
   private var countedRevision = -1L
+  private var keptRegion = snapshot.region
   // Analysis thread, logging only: what one report's frames cost and how many reached the analyzer.
   private var statFrames = 0
   private var statFirstNs = 0L
@@ -286,6 +308,14 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private var statCapturedFrom = 0L
   /** Analysis thread, logging only: the longest gap between analyzed frames in the report. */
   private var statLongestGapNs = 0L
+
+  /** Main thread: lays the children out on the next frame of [host], the container, once however often requested;
+   * it is passed in because the container requests it while it is still being built. */
+  private fun postLayout(host: View) {
+    if (layoutPosted) return
+    layoutPosted = true
+    host.post { layoutPosted = false; layoutChildren() }
+  }
 
   /** Main thread: fills the container with the preview and overlay; React Native's layout never measures them. */
   private fun layoutChildren() {
@@ -301,6 +331,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
 
   override fun afterUpdate() {
     super.afterUpdate()
+    syncSession()
     val region = clampedRegion(textRegion)
     if (region != snapshot.region) {
       snapshot = snapshot.copy(region = region, revision = snapshot.revision + 1, regionRevision = snapshot.regionRevision + 1)
@@ -313,7 +344,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       if (release == FocusController.Release.NONE) aimFocus()
       updateAutofocus()
     }
-    overlay.update(region, guideColor?.toLong()?.toInt() ?: DEFAULT_COLOR)
+    overlay.update(region, guide)
     val width = requestedWidth()
     if (controller != null && width != boundWidth) stopCamera("analysis width")
     if (active == false) stopCamera("inactive") else startCamera()
@@ -322,37 +353,59 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     syncTextFocus()
   }
 
-  override fun captureTextResult(timeoutMs: Double?): Promise<Variant_ScannerFailure_TextCapture> {
-    val promise = Promise<Variant_ScannerFailure_TextCapture>()
-    mainHandler.post {
-      if (controller == null || disposed || interrupted) {
-        promise.resolve(Variant_ScannerFailure_TextCapture.create(ScannerFailure(ScannerErrorCode.CAMERA_UNAVAILABLE)))
-        return@post
-      }
-      val waitMs = (timeoutMs ?: 2000.0).toLong().coerceIn(0, 30_000)
-      val pending = PendingCapture(promise, SystemClock.uptimeMillis() + waitMs)
-      val queued = runCatching { executor.execute { captures += pending; serveCaptures() } }.isSuccess
-      if (!queued) {
-        promise.resolve(Variant_ScannerFailure_TextCapture.create(ScannerFailure(ScannerErrorCode.CAMERA_UNAVAILABLE)))
-        return@post
-      }
-      // Past its deadline a capture reads the best frame so far, even when no frame arrives to serve it.
-      mainHandler.postDelayed({ runCatching { executor.execute { serveCaptures() } } }, waitMs)
+  /** Main thread: the session's capture, by the workflow of [serveCaptures]. */
+  private fun startCapture(timeout: Long, done: (TextCapture?, ScannerErrorCode?) -> Unit) {
+    if (controller == null || disposed || interrupted) {
+      done(null, ScannerErrorCode.CAMERA_UNAVAILABLE)
+      return
     }
-    return promise
+    val pending = PendingCapture(SystemClock.uptimeMillis() + timeout, done) {
+      mainHandler.post { capturesWaiting--; updateStatus() }
+    }
+    val queued = runCatching { executor.execute { captures += pending; serveCurrentCaptures() } }.isSuccess
+    if (!queued) {
+      done(null, ScannerErrorCode.CAMERA_UNAVAILABLE)
+      return
+    }
+    // Its settlement's decrement is posted behind this block, so it always follows.
+    capturesWaiting++
+    updateStatus()
+    // Past its deadline a capture reads the best frame so far, even when no frame arrives to serve it.
+    mainHandler.postDelayed({ runCatching { executor.execute { serveCurrentCaptures() } } }, timeout)
+  }
+
+  /** Main thread: shows [requestedSession] when it changed; one another view shows is refused once. */
+  private fun syncSession() {
+    val next = requestedSession
+    if (next === checkedSession) return
+    checkedSession = next
+    attachedSession?.let { previous ->
+      previous.detach(sessionCamera)
+      // Its waiting captures, all of them its own until the next session asks, settle now from what the camera kept
+      // while it showed them, rather than from frames of the next session's scan.
+      runCatching { executor.execute { settleCaptures() } }
+    }
+    attachedSession = null
+    val session = next as? HybridTextSession ?: return
+    if (!session.attach(sessionCamera)) {
+      log("text session shown by another camera")
+      onError?.invoke(ScannerFailure(ScannerErrorCode.INPUT_INVALID))
+      return
+    }
+    attachedSession = session
+    session.show(sessionCamera, status)
   }
 
   override fun onDropView() {
     disposed = true
     stopCamera("dropped")
+    attachedSession?.detach(sessionCamera)
+    attachedSession = null
     focus.close()
     removePermissionListener()
     gyroscope.stop()
-    executor.execute {
-      failCaptures(ScannerErrorCode.CAMERA_UNAVAILABLE)
-      clearFrames()
-      recognizer?.close()
-    }
+    // stopCamera queued the settlement of waiting captures and the frames' release ahead of this.
+    executor.execute { recognizer?.close() }
     executor.shutdown()
   }
 
@@ -382,7 +435,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     }
     val bindGeneration = ++generation
     startInFlight = true
-    updateCameraState()
+    updateStatus()
     val next = try { LifecycleCameraController(themedContext) } catch (error: Throwable) {
       startInFlight = false
       failStart(error)
@@ -446,13 +499,13 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         previewView.controller = null
         failStart(error)
       }
-      updateCameraState()
+      updateStatus()
     }, ContextCompat.getMainExecutor(themedContext))
   }
 
   private fun failStart(error: Throwable) {
     ScannerLog.e(LOG_TAG, "Text camera binding failed", error)
-    updateCameraState()
+    updateStatus()
     onError?.invoke(ScannerFailure(ScannerErrorCode.CAMERA_UNAVAILABLE))
   }
 
@@ -506,19 +559,19 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private fun onFreshFrame(bindGeneration: Long, token: Long) {
     if (bindGeneration != generation || token != availability || !cameraOpen) return
     interrupted = false
-    updateCameraState()
+    updateStatus()
   }
 
   /**
    * Main: the one transition that makes captures unavailable, for a stop, a camera error or the camera closing. Frames
-   * already queued no longer count, the kept frames go, and waiting captures fail with `camera/unavailable`.
+   * already queued no longer count, and waiting captures read the sharpest kept frame before the kept frames go.
    */
   private fun makeUnavailable() {
     availability++
     snapshot = snapshot.copy(revision = snapshot.revision + 1)
     frameSeen.set(false)
-    runCatching { executor.execute { failCaptures(ScannerErrorCode.CAMERA_UNAVAILABLE); clearFrames() } }
-    updateCameraState()
+    runCatching { executor.execute { settleCaptures(); clearFrames() } }
+    updateStatus()
   }
 
   private fun stopCamera(reason: String) {
@@ -567,10 +620,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         mainHandler.post { onFreshFrame(bindGeneration, token) }
       }
       val frame = snapshot
-      if (frame.revision != countedRevision) {
-        clearFrames()
-        lockAim = null
-        countedRevision = frame.revision
+      if (keepFor(frame)) {
         log("frames ${image.width}x${image.height} crop=${image.cropRect} rotation=${image.imageInfo.rotationDegrees}")
       }
       val sensorNs = image.imageInfo.timestamp
@@ -608,7 +658,6 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         mainHandler.post { if (bindGeneration == generation) onBlurred(now, edges?.median) }
       }
       newestNs = sensorNs
-      newestThumb = thumb
       if (frames.wants(sensorNs, score, inFocus)) frames.add(FrameRing.Entry(sensorNs, score, inFocus, cropUpright(image, box)))
       if (viewWatch.changed(inFocus, thumb, score)) {
         // The page moved, or the lens no longer suits the view, as after moving nearer or farther: the read no longer
@@ -626,17 +675,35 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   }
 
   /** Analysis thread: reads the sharpest kept frame of [focus] as its shot, which later frames, [thumb] showing the
-   * view now, are compared with; null without such a frame or a recognizer. */
-  private fun readFocused(focus: Long, region: TextRegion, thumb: FloatArray?): TextShot? {
-    val entry = frames.sharpest(focus) ?: return null
-    val lines = recognize(entry.image) ?: return null
+   * view now, are compared with; nothing without such a frame or a recognizer. */
+  private fun readFocused(focus: Long, region: TextRegion, thumb: FloatArray?) {
+    val entry = frames.sharpest(focus) ?: return
+    val lines = recognize(entry.image) ?: return
     val edges = edgesOf(entry.image)
     if (debugLogging) {
       log("text focused read: ${lines.size} lines, sharpness ${"%.0f".format(entry.sharpness)}, edges " +
         "${describe(edges)}${lensNote()}")
     }
     viewWatch.reference(focus, thumb, entry.sharpness)
-    return TextShot(entry.image, lines, focus, region, entry.sharpness, entry.sensorNs, edges?.median).also { shot = it }
+    shot = TextShot(entry.image, lines, focus, region, entry.sharpness, entry.sensorNs, edges?.median)
+  }
+
+  /** Analysis thread: forgets what was kept for an earlier revision of [frame], as for another region or zoom; true
+   * when it did. */
+  private fun keepFor(frame: AnalysisSnapshot): Boolean {
+    if (frame.revision == countedRevision) return false
+    clearFrames()
+    lockAim = null
+    countedRevision = frame.revision
+    keptRegion = frame.region
+    return true
+  }
+
+  /** Analysis thread: serves waiting captures from what is kept for the current revision only, so a press right after
+   * a new region or zoom, before a frame of it arrives, never reads the old crop. */
+  private fun serveCurrentCaptures() {
+    keepFor(snapshot)
+    serveCaptures()
   }
 
   /** Analysis thread: forgets the kept frames, the shot and the read count, as for a new region or binding. */
@@ -714,17 +781,16 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
    */
   private fun serveCaptures() {
     if (captures.isEmpty()) {
-      captureLockAsked = false
-      captureRejected = null
+      resetCaptureLock()
       return
     }
     val now = SystemClock.uptimeMillis()
     var how = "the focus's read"
     var result: TextShot? = null
-    if (!captureLockAsked) {
+    if (!captureLockRequested) {
       result = firstLook()
       if (result == null) {
-        captureLockAsked = true
+        captureLockRequested = true
         captureRejected = snapshot.focus
         if (debugLogging) log("text capture: nothing readable kept; locking")
         mainHandler.post { lockForCapture() }
@@ -732,37 +798,72 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         how = "the sharpest kept frame, read now"
       }
     } else {
-      result = shot?.takeIf { it.focus != captureRejected && it.focus != 0L && it.readable }
+      result = lockRead()
       how = "the capture's lock"
     }
     if (result == null) {
-      if (captures.none { now >= it.deadlineMs }) return
-      val entry = frames.sharpest()
-      val lines = entry?.let { runCatching { recognize(it.image) }.getOrNull() }
-      if (entry == null || lines == null) {
-        val expired = captures.filter { now >= it.deadlineMs }
+      if (captures.none { now >= it.deadline }) return
+      result = sharpestRead()
+      if (result == null) {
+        val expired = captures.filter { now >= it.deadline }
         captures.removeAll(expired)
-        val code = if (entry == null) ScannerErrorCode.CAPTURE_NOT_READY else ScannerErrorCode.CAPTURE_FAILED
-        expired.forEach { it.promise.resolve(Variant_ScannerFailure_TextCapture.create(ScannerFailure(code))) }
+        val code = if (frames.sharpest() == null) ScannerErrorCode.CAPTURE_NOT_READY else ScannerErrorCode.CAPTURE_FAILED
+        expired.forEach { it.fail(code) }
+        if (captures.isEmpty()) resetCaptureLock()
         return
       }
-      result = TextShot(entry.image, lines, entry.focus, snapshot.region, entry.sharpness, entry.sensorNs,
-        edgesOf(entry.image)?.median)
       how = "the sharpest kept frame, past the deadline"
     }
+    deliver(result, how)
+  }
+
+  /** Analysis thread: the camera stopped, or the session they came from left it, so waiting captures take what is
+   * kept now, as a press past its deadline does: the capture's lock's read when it came, else the sharpest kept frame,
+   * sharp or not. Without a frame they fail with `camera/unavailable`, and with `capture/failed` when it reads
+   * nothing. */
+  private fun settleCaptures() {
+    if (captures.isEmpty()) return
+    val result = lockRead() ?: sharpestRead()
+    if (result == null) {
+      failCaptures(if (frames.sharpest() == null) ScannerErrorCode.CAMERA_UNAVAILABLE else ScannerErrorCode.CAPTURE_FAILED)
+      return
+    }
+    deliver(result, "what was kept, on stop")
+  }
+
+  /** Analysis thread: the current focus's read, when readable and not the one the waiting captures turned down. */
+  private fun lockRead(): TextShot? = shot?.takeIf { it.focus != captureRejected && it.focus != 0L && it.readable }
+
+  /** Analysis thread: the sharpest kept frame, read now; null without a frame, or when the recognizer reads nothing. */
+  private fun sharpestRead(): TextShot? {
+    val entry = frames.sharpest() ?: return null
+    val lines = runCatching { recognize(entry.image) }.getOrNull() ?: return null
+    return TextShot(entry.image, lines, entry.focus, keptRegion, entry.sharpness, entry.sensorNs, edgesOf(entry.image)?.median)
+  }
+
+  /** Analysis thread: resolves every waiting capture with [result], got by [how], encoded once. */
+  private fun deliver(result: TextShot, how: String) {
     val waiting = captures.toList()
     captures.clear()
-    captureLockAsked = false
-    captureRejected = null
+    resetCaptureLock()
     val crop = result.crop
     val bitmap = bitmapOf(crop)
     val uri = try { captureUri(bitmap) } finally { bitmap.recycle() }
     if (debugLogging) log("text capture: ${result.lines.size} lines from $how, sharpness %.0f, ${if (result.focus != 0L) "in focus" else "out of focus"}, %d ms old".format(
       result.sharpness, (newestNs - result.sensorNs) / 1_000_000) + ", edges ${describe(edgesOf(crop))}")
-    val resolved = if (uri == null) Variant_ScannerFailure_TextCapture.create(ScannerFailure(ScannerErrorCode.CAPTURE_FAILED))
-    else Variant_ScannerFailure_TextCapture.create(TextCapture(uri, crop.width.toDouble(), crop.height.toDouble(),
-      result.region, captureWords(result.lines, crop.width.toFloat(), crop.height.toFloat())))
-    waiting.forEach { it.promise.resolve(resolved) }
+    if (uri == null) {
+      waiting.forEach { it.fail(ScannerErrorCode.CAPTURE_FAILED) }
+      return
+    }
+    val capture = TextCapture(uri, crop.width.toDouble(), crop.height.toDouble(), result.region,
+      captureWords(result.lines, crop.width.toFloat(), crop.height.toFloat()))
+    waiting.forEach { it.resolve(capture) }
+  }
+
+  /** Analysis thread: no capture waits, so the next press looks first again. */
+  private fun resetCaptureLock() {
+    captureLockRequested = false
+    captureRejected = null
   }
 
   /** Analysis thread: a press's first look: the current focus's read when it still stands, else the sharpest kept
@@ -779,14 +880,15 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     if (!BlurWatch.sharp(edges)) return null
     val lines = runCatching { recognize(best.image) }.getOrNull()
     if (lines.isNullOrEmpty()) return null
-    return TextShot(best.image, lines, best.focus, snapshot.region, best.sharpness, best.sensorNs, edges)
+    return TextShot(best.image, lines, best.focus, keptRegion, best.sharpness, best.sensorNs, edges)
   }
 
   /** Analysis thread: resolves every waiting capture with [code]. */
   private fun failCaptures(code: ScannerErrorCode) {
     val waiting = captures.toList()
     captures.clear()
-    waiting.forEach { it.promise.resolve(Variant_ScannerFailure_TextCapture.create(ScannerFailure(code))) }
+    resetCaptureLock()
+    waiting.forEach { it.fail(code) }
   }
 
   /** Analysis thread: [bitmap] as a JPEG data URI, for the selection's preview: nothing is written, so nothing needs
@@ -1045,7 +1147,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   }
 
   /**
-   * Each frame's autofocus state for `onAutofocusChange` and the background read, a lock's trigger and lock frames,
+   * Each frame's autofocus state for the status and the background read, a lock's trigger and lock frames,
    * and the zoom it shows; runs on a camera thread. Results of an older binding drop.
    */
   private fun frameStateCallback(bindGeneration: Long) = object : CameraCaptureSession.CaptureCallback() {
@@ -1138,8 +1240,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   }
 
   /**
-   * Main thread: the focus state for `onAutofocusChange`, and the focus frames are read in. A lock or a tap reports
-   * its scan as `scan` and its confirmed lock as `locked`; continuous autofocus reports its capture results' state.
+   * Main thread: the focus the frames are read in, and whether a lock's or a tap's scan runs, which the status shows as
+   * `focusing`. The autofocus state, logged on change, reads a lock or a tap as `scan` while its scan runs and `locked`
+   * once confirmed, and continuous autofocus by its capture results' state.
    * Frames count as in focus under a settled lock, the cycle's or a tap's, and while continuous autofocus reports
    * focus; at close range it reports focus it has not reached, which the print's edge width tells, so a read counts
    * only when sharp ([TextShot.readable]). Each new focus gets a new number, so its frames are ranked and read apart.
@@ -1171,9 +1274,10 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       snapshot = snapshot.copy(focus = if (holder == null) 0L else ++focusCount, focusFromNs = latestCaptureNs + 1)
     }
     if (scanning != snapshot.scanning) snapshot = snapshot.copy(scanning = scanning)
-    if (state == emittedAutofocus) return
-    emittedAutofocus = state
-    onAutofocusChange?.invoke(state)
+    updateStatus()
+    if (state == loggedAutofocus) return
+    loggedAutofocus = state
+    log("text autofocus $state")
   }
 
   /** Logging only: [edges] as a log fragment. */
@@ -1190,32 +1294,49 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     if (it > 0f) ", lens %.2f D (%.1f cm)".format(it, 100 / it) else ", lens at infinity"
   }.orEmpty()
 
-  /** Main thread: the region's print became blurred, at [edges] pixels, or sharp again: the box turns amber and
-   * `onBlurChange` tells the host, so the user moves back or holds still. */
+  /** Main thread: the region's print became blurred, at [edges] pixels, or sharp again, which the status shows, so
+   * the user moves back or holds still. */
   private fun onBlurred(now: Boolean, edges: Double?) {
     if (now == blurred) return
     blurred = now
     log("text print ${if (now) "blurred" else "sharp"}${edges?.let { ": edges %.2f px".format(it) }.orEmpty()}")
-    overlay.warn(now)
-    emitBlurred()
+    updateStatus()
   }
 
-  private fun emitBlurred() {
-    if (disposed || blurred == emittedBlurred) return
-    emittedBlurred = blurred
-    onBlurChange?.invoke(blurred)
-  }
-
-  private fun updateCameraState() {
+  /**
+   * Main thread: what the scan does, `TextScanStatus`, highest first: the camera suspended or starting, a waiting
+   * capture, blurred print, a lock's or a tap's scan. The guide shows it, and the attached session publishes it.
+   */
+  private fun updateStatus() {
     if (disposed) return
-    val state = when {
-      controller == null -> if (startInFlight) ScannerCameraState.STARTING else ScannerCameraState.SUSPENDED
-      interrupted || previewView.previewStreamState.value != PreviewView.StreamState.STREAMING -> ScannerCameraState.STARTING
-      else -> ScannerCameraState.READY
+    val next = when {
+      controller == null -> if (startInFlight) TextScanStatus.STARTING else TextScanStatus.OFF
+      interrupted || previewView.previewStreamState.value != PreviewView.StreamState.STREAMING -> TextScanStatus.STARTING
+      capturesWaiting > 0 -> TextScanStatus.CAPTURING
+      blurred -> TextScanStatus.BLURRED
+      snapshot.scanning -> TextScanStatus.FOCUSING
+      else -> TextScanStatus.READY
     }
-    if (state == emittedState) return
-    emittedState = state
-    onCameraStateChange?.invoke(state)
+    overlay.show(next)
+    if (next == status) return
+    status = next
+    attachedSession?.show(sessionCamera, next)
+  }
+
+  /** Main thread: the overlay laid the guide out at [box] and [label], in pixels. */
+  private fun guideLaidOut(box: RectF, label: RectF?) {
+    val density = themedContext.resources.displayMetrics.density
+    fun RectF.points() = TextGuideFrame((left / density).toDouble(), (top / density).toDouble(),
+      (width() / density).toDouble(), (height() / density).toDouble())
+    guideLayout = TextGuideLayout(box.points(), label?.points())
+    emitGuideLayout()
+  }
+
+  private fun emitGuideLayout() {
+    val layout = guideLayout
+    if (disposed || layout == null || layout == emittedGuideLayout) return
+    emittedGuideLayout = layout
+    onGuideLayout?.invoke(layout)
   }
 
   private fun log(message: String) {
@@ -1227,7 +1348,6 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
 
   private companion object {
     const val DEFAULT_ANALYSIS_WIDTH = 1280
-    const val DEFAULT_COLOR = 0xFF61E1CF.toInt()
     const val MIN_CROP_PX = 16
     /** The capture preview's JPEG quality: enough to see the print, small enough to pass as a data URI. */
     const val CAPTURE_QUALITY = 85
@@ -1270,49 +1390,5 @@ private class ZoomMetadata(private val ratioKey: Boolean, private val activeWidt
     if (ratioKey && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return result.get(CaptureResult.CONTROL_ZOOM_RATIO)
     val crop = result.get(CaptureResult.SCALER_CROP_REGION) ?: return null
     return if (activeWidth > 0 && crop.width() > 0) activeWidth.toFloat() / crop.width() else null
-  }
-}
-
-/** Draws the box marking the region read, with rounded corners: in the guide colour, or [WARNING_COLOR] while the
- * print is blurred. */
-private class TextRegionOverlay(context: Context) : View(context) {
-  private var region: TextRegion? = null
-  private var color = 0
-  private var warning = false
-  private val density = context.resources.displayMetrics.density
-  private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-    style = Paint.Style.STROKE
-    strokeWidth = STROKE_DP * density
-  }
-  private val rect = RectF()
-
-  fun update(region: TextRegion, color: Int) {
-    if (region == this.region && color == this.color) return
-    this.region = region
-    this.color = color
-    invalidate()
-  }
-
-  fun warn(warning: Boolean) {
-    if (warning == this.warning) return
-    this.warning = warning
-    invalidate()
-  }
-
-  override fun onDraw(canvas: Canvas) {
-    val region = region ?: return
-    if (width == 0 || height == 0) return
-    rect.set((region.x * width).toFloat(), (region.y * height).toFloat(),
-      ((region.x + region.width) * width).toFloat(), ((region.y + region.height) * height).toFloat())
-    val radius = RADIUS_DP * density
-    stroke.color = if (warning) WARNING_COLOR else color
-    canvas.drawRoundRect(rect, radius, radius, stroke)
-  }
-
-  private companion object {
-    const val STROKE_DP = 2f
-    const val RADIUS_DP = 8f
-    /** Amber: the print is blurred, a hint to move back or hold still rather than a failure. */
-    const val WARNING_COLOR = 0xFFFFB300.toInt()
   }
 }

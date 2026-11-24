@@ -36,6 +36,10 @@ abstract class HybridDocumentScannerProcessorSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun createTextSessionResult(): Variant_HybridTextSessionSpec_ScannerFailure
+  
+  @DoNotStrip
+  @Keep
   abstract fun waitForCornerDetectionModelResult(): Promise<Variant_Boolean_ScannerFailure>
   
   @DoNotStrip

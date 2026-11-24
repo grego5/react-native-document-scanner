@@ -15,6 +15,7 @@ import {
   DocumentScanner,
   useCameraPermission,
   type ScanSession as NativeScanSession,
+  type TextSession,
   type CameraRef,
   type CameraFeatureSupport,
   type CameraState,
@@ -118,7 +119,13 @@ export function ScanScreen({
   const capturing =
     captureState === 'waiting' || captureState === 'shooting' || captureState === 'saving';
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [textOpen, setTextOpen] = useState(false);
+  /** The open text scan: created when the panel opens and closed when it closes. */
+  const [textSession, setTextSession] = useState<TextSession>();
+  const textOpen = textSession !== undefined;
+  const closeText = () => {
+    void textSession?.close();
+    setTextSession(undefined);
+  };
   const [torchOverride, setTorchOverride] = useState<Extract<TorchMode, 'on'>>();
   const torch = torchOverride ?? tuning.torch;
   const [sampleFolder, setSampleFolder] = useState(() =>
@@ -149,7 +156,7 @@ export function ScanScreen({
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       // An export keeps the pager and its pages in place until it ends.
       if (session.working || capturing) return true;
-      if (textOpen) setTextOpen(false);
+      if (textOpen) closeText();
       else if (optionsOpen) setOptionsOpen(false);
       else if (view === 'review') {
         // Crop Cancel issues no native command.
@@ -348,7 +355,7 @@ export function ScanScreen({
                   label="Text"
                   accessibilityHint="Reads one line of text, such as a serial number."
                   disabled={busy}
-                  onPress={() => setTextOpen(true)}
+                  onPress={() => setTextSession(DocumentScanner.createTextSession())}
                 />
               </View>
               <View style={styles.shutterCenter}>
@@ -397,7 +404,7 @@ export function ScanScreen({
         rectangle={mode === 'photo'}
         onNewScan={() => confirmDiscard(session.reset)}
       />
-      {textOpen && <TextScanPanel granted={granted} onClose={() => setTextOpen(false)} />}
+      {textSession && <TextScanPanel session={textSession} granted={granted} onClose={closeText} />}
       <SheetModal visible={optionsOpen} onClose={() => setOptionsOpen(false)}>
         <OptionsPanel
           cameraFeatures={cameraFeatures}

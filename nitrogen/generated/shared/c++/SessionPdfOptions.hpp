@@ -56,7 +56,9 @@ namespace margelo::nitro::documentscanner {
     explicit SessionPdfOptions(std::string outputPath, std::optional<ImageFit> imageFit, std::optional<bool> autoRotateExif, std::optional<double> jpegQuality, std::optional<double> targetDpi, std::optional<double> pageWidth, std::optional<double> pageHeight, std::optional<double> pageAspectRatio): outputPath(outputPath), imageFit(imageFit), autoRotateExif(autoRotateExif), jpegQuality(jpegQuality), targetDpi(targetDpi), pageWidth(pageWidth), pageHeight(pageHeight), pageAspectRatio(pageAspectRatio) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const SessionPdfOptions& lhs, const SessionPdfOptions& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

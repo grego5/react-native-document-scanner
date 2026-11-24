@@ -13,6 +13,8 @@ namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
+// Forward declaration of `HybridTextSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridTextSessionSpec; }
 // Forward declaration of `SampleFolder` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct SampleFolder; }
 
@@ -25,6 +27,9 @@ namespace margelo::nitro::documentscanner { struct SampleFolder; }
 #include "JScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
 #include "JScannerErrorCode.hpp"
+#include "HybridTextSessionSpec.hpp"
+#include "JVariant_HybridTextSessionSpec_ScannerFailure.hpp"
+#include "JHybridTextSessionSpec.hpp"
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
 #include "JVariant_Boolean_ScannerFailure.hpp"
@@ -70,6 +75,11 @@ namespace margelo::nitro::documentscanner {
   // Methods
   std::variant<std::shared_ptr<HybridScanSessionSpec>, ScannerFailure> JHybridDocumentScannerProcessorSpec::createSessionResult() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JVariant_HybridScanSessionSpec_ScannerFailure>()>("createSessionResult");
+    auto __result = method(_javaPart);
+    return __result->toCpp();
+  }
+  std::variant<std::shared_ptr<HybridTextSessionSpec>, ScannerFailure> JHybridDocumentScannerProcessorSpec::createTextSessionResult() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JVariant_HybridTextSessionSpec_ScannerFailure>()>("createTextSessionResult");
     auto __result = method(_javaPart);
     return __result->toCpp();
   }

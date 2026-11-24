@@ -21,17 +21,16 @@ namespace margelo::nitro::documentscanner::views {
                                                        const HybridTextCameraViewProps& sourceProps,
                                                        const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
+    session(nitro::ReactProp<std::shared_ptr<HybridTextSessionSpec>>::fromRawValue("TextCameraView", "session", rawProps, sourceProps.session)),
     active(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextCameraView", "active", rawProps, sourceProps.active)),
     textRegion(nitro::ReactProp<TextRegion>::fromRawValue("TextCameraView", "textRegion", rawProps, sourceProps.textRegion)),
-    guideColor(nitro::ReactProp<std::optional<double>>::fromRawValue("TextCameraView", "guideColor", rawProps, sourceProps.guideColor)),
+    guide(nitro::ReactProp<std::optional<TextGuide>>::fromRawValue("TextCameraView", "guide", rawProps, sourceProps.guide)),
     tapToFocus(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextCameraView", "tapToFocus", rawProps, sourceProps.tapToFocus)),
     focusLock(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextCameraView", "focusLock", rawProps, sourceProps.focusLock)),
     zoom(nitro::ReactProp<std::optional<double>>::fromRawValue("TextCameraView", "zoom", rawProps, sourceProps.zoom)),
     torch(nitro::ReactProp<std::optional<TextTorchMode>>::fromRawValue("TextCameraView", "torch", rawProps, sourceProps.torch)),
     analysisFrameWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("TextCameraView", "analysisFrameWidth", rawProps, sourceProps.analysisFrameWidth)),
-    onCameraStateChange(nitro::ReactProp<std::optional<std::function<void(CameraState /* state */)>>>::fromRawValue("TextCameraView", "onCameraStateChange", rawProps, sourceProps.onCameraStateChange)),
-    onAutofocusChange(nitro::ReactProp<std::optional<std::function<void(AutofocusState /* state */)>>>::fromRawValue("TextCameraView", "onAutofocusChange", rawProps, sourceProps.onAutofocusChange)),
-    onBlurChange(nitro::ReactProp<std::optional<std::function<void(bool /* blurred */)>>>::fromRawValue("TextCameraView", "onBlurChange", rawProps, sourceProps.onBlurChange)),
+    onGuideLayout(nitro::ReactProp<std::optional<std::function<void(const TextGuideLayout& /* layout */)>>>::fromRawValue("TextCameraView", "onGuideLayout", rawProps, sourceProps.onGuideLayout)),
     onError(nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* error */)>>>::fromRawValue("TextCameraView", "onError", rawProps, sourceProps.onError)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridTextCameraViewSpec>& /* ref */)>>>::fromRawValue("TextCameraView", "hybridRef", rawProps, sourceProps.hybridRef)) {
 #ifdef ANDROID
@@ -41,17 +40,16 @@ namespace margelo::nitro::documentscanner::views {
 
   bool HybridTextCameraViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
+      case hashString("session"): return true;
       case hashString("active"): return true;
       case hashString("textRegion"): return true;
-      case hashString("guideColor"): return true;
+      case hashString("guide"): return true;
       case hashString("tapToFocus"): return true;
       case hashString("focusLock"): return true;
       case hashString("zoom"): return true;
       case hashString("torch"): return true;
       case hashString("analysisFrameWidth"): return true;
-      case hashString("onCameraStateChange"): return true;
-      case hashString("onAutofocusChange"): return true;
-      case hashString("onBlurChange"): return true;
+      case hashString("onGuideLayout"): return true;
       case hashString("onError"): return true;
       case hashString("hybridRef"): return true;
       default: return false;

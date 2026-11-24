@@ -18,6 +18,8 @@ namespace margelo::nitro::documentscanner { class HybridScanSessionSpec; }
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
+// Forward declaration of `HybridTextSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridTextSessionSpec; }
 // Forward declaration of `SampleFolder` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct SampleFolder; }
 
@@ -26,6 +28,7 @@ namespace margelo::nitro::documentscanner { struct SampleFolder; }
 #include "ScannerFailure.hpp"
 #include <variant>
 #include "ScannerErrorCode.hpp"
+#include "HybridTextSessionSpec.hpp"
 #include <NitroModules/Promise.hpp>
 #include "SampleFolder.hpp"
 #include <string>
@@ -83,6 +86,14 @@ namespace margelo::nitro::documentscanner {
     // Methods
     inline std::variant<std::shared_ptr<HybridScanSessionSpec>, ScannerFailure> createSessionResult() override {
       auto __result = _swiftPart.createSessionResult();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::variant<std::shared_ptr<HybridTextSessionSpec>, ScannerFailure> createTextSessionResult() override {
+      auto __result = _swiftPart.createTextSessionResult();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

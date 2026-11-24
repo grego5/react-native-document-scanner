@@ -98,6 +98,12 @@ using namespace margelo::nitro::documentscanner::views;
   if (hasTransactionPropChanges) {
     swiftPart.beforeUpdate();
 
+    // session: hybrid-object
+    if (oldViewProps == nullptr
+          ? newViewProps.session.isProvided()
+          : !newViewProps.session.hasSameValue(oldViewProps->session)) {
+      swiftPart.setSession(newViewProps.session.get());
+    }
     // active: optional
     if (oldViewProps == nullptr
           ? newViewProps.active.isProvided()
@@ -110,11 +116,11 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.textRegion.hasSameValue(oldViewProps->textRegion)) {
       swiftPart.setTextRegion(newViewProps.textRegion.get());
     }
-    // guideColor: optional
+    // guide: optional
     if (oldViewProps == nullptr
-          ? newViewProps.guideColor.isProvided()
-          : !newViewProps.guideColor.hasSameValue(oldViewProps->guideColor)) {
-      swiftPart.setGuideColor(newViewProps.guideColor.get());
+          ? newViewProps.guide.isProvided()
+          : !newViewProps.guide.hasSameValue(oldViewProps->guide)) {
+      swiftPart.setGuide(newViewProps.guide.get());
     }
     // tapToFocus: optional
     if (oldViewProps == nullptr
@@ -146,23 +152,11 @@ using namespace margelo::nitro::documentscanner::views;
           : !newViewProps.analysisFrameWidth.hasSameValue(oldViewProps->analysisFrameWidth)) {
       swiftPart.setAnalysisFrameWidth(newViewProps.analysisFrameWidth.get());
     }
-    // onCameraStateChange: optional
+    // onGuideLayout: optional
     if (oldViewProps == nullptr
-          ? newViewProps.onCameraStateChange.isProvided()
-          : !newViewProps.onCameraStateChange.hasSameValue(oldViewProps->onCameraStateChange)) {
-      swiftPart.setOnCameraStateChange(newViewProps.onCameraStateChange.get());
-    }
-    // onAutofocusChange: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.onAutofocusChange.isProvided()
-          : !newViewProps.onAutofocusChange.hasSameValue(oldViewProps->onAutofocusChange)) {
-      swiftPart.setOnAutofocusChange(newViewProps.onAutofocusChange.get());
-    }
-    // onBlurChange: optional
-    if (oldViewProps == nullptr
-          ? newViewProps.onBlurChange.isProvided()
-          : !newViewProps.onBlurChange.hasSameValue(oldViewProps->onBlurChange)) {
-      swiftPart.setOnBlurChange(newViewProps.onBlurChange.get());
+          ? newViewProps.onGuideLayout.isProvided()
+          : !newViewProps.onGuideLayout.hasSameValue(oldViewProps->onGuideLayout)) {
+      swiftPart.setOnGuideLayout(newViewProps.onGuideLayout.get());
     }
     // onError: optional
     if (oldViewProps == nullptr

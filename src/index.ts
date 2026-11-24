@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { nativeProcessor } from './Processor';
 import { ScannerError, scannerOperation, scannerValue, unwrapScannerResult } from './ScannerError';
 import { createScanSession } from './ScanSession';
+import { createTextSession as createTextSessionStore } from './TextSession';
 export type { ImportImageOptions, SessionPdfOptions } from './ScanSession.nitro';
 export type { ImportImageOutcome, LibraryImportOptions, ScanSession, ScanSessionSnapshot, ScanPageMetadata } from './ScanSession';
 
@@ -10,8 +11,21 @@ export type { ScannerErrorCode } from './ScannerFailure';
 
 export { Camera } from './DocumentScanner';
 export { TextCamera, DEFAULT_TEXT_REGION } from './TextCamera';
-export type { TextCameraProps, TextCameraRef } from './TextCamera';
-export type { TextCapture, TextRegion, TextTorchMode, TextWord } from './TextCamera.nitro';
+export type { TextCameraProps, TextGuide, TextGuideLabelStyle } from './TextCamera';
+export type { TextSession, TextSessionSnapshot } from './TextSession';
+export type {
+  TextCapture,
+  TextGuideFontWeight,
+  TextGuideFrame,
+  TextGuideLabelPlacement,
+  TextGuideLabels,
+  TextGuideLayout,
+  TextGuideState,
+  TextRegion,
+  TextScanStatus,
+  TextTorchMode,
+  TextWord,
+} from './TextCamera.nitro';
 export { TextSelection, selectedText, wordsInBox } from './TextSelection';
 export type { TextSelectionProps } from './TextSelection';
 export { CameraPermission, useCameraPermission } from './CameraPermission';
@@ -62,9 +76,17 @@ function createSession() {
     'processor/unavailable',
   );
 }
+/** A text scan for `TextCamera`, created when the scan starts, outside render, and closed when it ends. */
+function createTextSession() {
+  return scannerValue(
+    () => createTextSessionStore(unwrapScannerResult(nativeProcessor.createTextSessionResult())),
+    'processor/unavailable',
+  );
+}
 /** Public operations reject with ScannerError or ScannerCancellation; native failure payloads stay behind this facade. */
 export const DocumentScanner = {
   createSession,
+  createTextSession,
   /** See `DocumentScannerProcessor.waitForCornerDetectionModelResult`. */
   waitForCornerDetectionModel: () =>
     scannerOperation(() => nativeProcessor.waitForCornerDetectionModelResult(), 'model/load-failed'),

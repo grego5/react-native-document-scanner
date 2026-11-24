@@ -1,13 +1,12 @@
-import { useRef, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  type AutofocusState,
   DocumentScanner,
   TextCamera,
-  type TextCameraRef,
-  type TextCapture,
+  type TextGuide,
   type TextRegion,
+  type TextSession,
   TextSelection,
 } from 'react-native-document-scanner';
 import { ActionButton } from './ActionButton';
@@ -26,32 +25,40 @@ const REGIONS: Record<'line' | 'code', TextRegion> = {
 const ZOOMS = [1, 1.5, 2];
 /** Capture, zoom and the focus report are Android only. */
 const ANDROID = Platform.OS === 'android';
+/** Drawn natively under the box, per state. */
+const GUIDE: TextGuide = {
+  labels: {
+    ready: 'Hold the text inside the box, then capture.',
+    focusing: 'Focusing…',
+    blurred: 'Blurred: move the phone back or hold still.',
+    capturing: 'Hold still…',
+  },
+};
 
 /** Captures the boxed region and lets the user pick words from it by tap or by dragging a box; the picked text can be
  * edited and copied. */
-export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose: () => void }) {
+export function TextScanPanel({ session, granted, onClose }: {
+  session: TextSession;
+  granted: boolean;
+  onClose: () => void;
+}) {
   const insets = useSafeAreaInsets();
-  const camera = useRef<TextCameraRef>(null);
+  const capture = useSyncExternalStore(session.subscribe, () => session.getSnapshot().capture);
   const [region, setRegion] = useState<keyof typeof REGIONS>('line');
   const [torch, setTorch] = useState<'off' | 'on'>('off');
   const [zoom, setZoom] = useState(1);
-  const [focus, setFocus] = useState<AutofocusState>('inactive');
-  const [blurred, setBlurred] = useState(false);
   const [value, setValue] = useState<string>();
-  const [capture, setCapture] = useState<TextCapture>();
   const [message, setMessage] = useState('');
 
   const dismiss = () => {
     setValue(undefined);
-    setCapture(undefined);
+    session.clearCapture();
   };
 
   const shoot = async () => {
     setMessage('');
     try {
-      const shot = await camera.current?.captureText();
-      if (!shot) return;
-      setCapture(shot);
+      await session.capture();
       setValue('');
     } catch (error) {
       setMessage(errorMessage(error, 'Could not capture the text.'));
@@ -62,24 +69,17 @@ export function TextScanPanel({ granted, onClose }: { granted: boolean; onClose:
     <View style={[StyleSheet.absoluteFill, styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.cameraStage}>
         <TextCamera
-          ref={camera}
+          session={session}
           style={StyleSheet.absoluteFill}
           active={value === undefined}
           textRegion={REGIONS[region]}
           torch={torch}
           zoom={zoom}
-          onAutofocusChange={setFocus}
-          onBlurChange={setBlurred}
+          guide={GUIDE}
           onError={(error) => setMessage(errorMessage(error, 'Could not start the text camera.'))}
         />
         <View style={styles.cameraNotices} pointerEvents="none">
           {!granted && <Text style={styles.notice}>Allow camera access on the scanner screen first.</Text>}
-          {value === undefined && (
-            <Text style={styles.notice}>
-              {blurred ? 'Blurred: move the phone back or hold still.' : 'Hold the text inside the box, then capture.'}
-              {ANDROID ? ` · focus ${focus}` : ''}
-            </Text>
-          )}
           {!!message && <Text style={styles.notice}>{message}</Text>}
         </View>
       </View>

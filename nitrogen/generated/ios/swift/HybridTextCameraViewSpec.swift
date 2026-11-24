@@ -10,21 +10,20 @@ import NitroModules
 /// See ``HybridTextCameraViewSpec``
 public protocol HybridTextCameraViewSpec_protocol: HybridObject, HybridView {
   // Properties
+  var session: (any HybridTextSessionSpec) { get set }
   var active: Bool? { get set }
   var textRegion: TextRegion { get set }
-  var guideColor: Double? { get set }
+  var guide: TextGuide? { get set }
   var tapToFocus: Bool? { get set }
   var focusLock: Bool? { get set }
   var zoom: Double? { get set }
   var torch: TextTorchMode? { get set }
   var analysisFrameWidth: Double? { get set }
-  var onCameraStateChange: ((_ state: CameraState) -> Void)? { get set }
-  var onAutofocusChange: ((_ state: AutofocusState) -> Void)? { get set }
-  var onBlurChange: ((_ blurred: Bool) -> Void)? { get set }
+  var onGuideLayout: ((_ layout: TextGuideLayout) -> Void)? { get set }
   var onError: ((_ error: ScannerFailure) -> Void)? { get set }
 
   // Methods
-  func captureTextResult(timeoutMs: Double?) throws -> Promise<Variant_ScannerFailure_TextCapture>
+  
 }
 
 public extension HybridTextCameraViewSpec_protocol {

@@ -56,7 +56,9 @@ namespace margelo::nitro::documentscanner {
     explicit TextCapture(std::string uri, double width, double height, TextRegion region, std::vector<TextWord> words): uri(uri), width(width), height(height), region(region), words(words) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const TextCapture& lhs, const TextCapture& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

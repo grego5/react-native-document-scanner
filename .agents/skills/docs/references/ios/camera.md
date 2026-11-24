@@ -1,29 +1,25 @@
 # iOS camera
 
-## Owners
+## Ownership and recovery
 
-- `CameraRef.getCameraFeatures()` reads support from the bound configuration without opening a camera. It returns undefined before configuration. AVFoundation decides when automatic low-light boost engages. Auto torch uses exposure Ã— ISO and latches once lit. `onLowLightBoostActiveChange` reports observed engagement separately from support. Changes wait for capture settlement.
-
-- The camera view owns admission and the capture phase. `AVCameraSession` owns device commands, focus observations and acknowledgements on its session queue. Frames arrive on a separate serial queue with late-frame discard. UIKit publication runs on main. Run IDs retire stale callbacks.
-- Camera use requires an active, visible and sized view, foreground and permission. First-frame readiness is armed after the previous run drains. Square framing uses delivered buffer dimensions and can change without restarting. Overlay placement maps detection corners through raw frame space into the preview's framing.
-- The detector owns its live inference lease for the run. Model generation changes invalidate live guide evidence. See [Processing](processing.md) for selection ownership.
-- An AVFoundation interruption disarms the frame stream and invalidates focus, command acknowledgements and live guide evidence. The first frame after interruption end restores readiness. A resumed run reapplies settings after any submitted still settles. Auto torch keeps an established light decision on interruption and restarts partial darkness evidence. A full stop resets the decision.
-- A media-services reset retires the pipeline. An eligible view tries to rebuild it once before the next first frame, after any physical still settles. Other runtime failures suspend the camera until an eligibility or request change retries it.
-
-## Text camera
-
-- A dedicated `AVCaptureSession` owns the preview and a video output whose frames only report readiness. The overlay draws the box marking the region. Capturing text to pick from is not implemented on iOS: `captureTextResult` reports `feature/unsupported`.
-- Stop, interruption and startup failure make the camera unavailable. Runtime or configuration failure stops the camera. A fresh frame after interruption restores readiness.
-- [Host integration](../integration.md#text-reading) owns text options and capture semantics.
+- The view owns capture admission and UIKit publication. `AVCameraSession` owns device commands, observations and acknowledgements on its session queue. Frames arrive on a separate serial queue with late-frame discard. Run IDs retire stale callbacks.
+- Camera use requires an active, visible, sized foreground view and permission. First-frame readiness is armed after the previous run drains. The detector owns its inference lease for the run. Model replacement invalidates guide evidence. See [iOS processing](processing.md).
+- An interruption disarms frames and invalidates focus, command acknowledgements and guide evidence. The first frame after interruption restores readiness. Settings are reapplied after any submitted still settles. Auto torch retains its latched decision through interruption and resets on full stop.
+- A media-services reset can rebuild an eligible pipeline once after any physical still settles. Other runtime failures suspend it until eligibility or configuration changes.
+- `getCameraFeatures()` reports the bound configuration without opening a camera. AVFoundation controls boost engagement, reported separately by `onLowLightBoostActiveChange`. Auto torch uses exposure × ISO and latches when lit. Light changes can defer until capture settlement.
 
 ## Capture
 
-- One admitted request moves through waiting, exposing and saving. Waiting cancellation releases the slot immediately. A cancelled physical capture retains the slot until its delegate and writer settle. The view borrows its session and never closes it.
-- Camera reconfiguration and torch, exposure and frame-rate prop changes can defer until the capture finishes. Orientation changes while waiting invalidate steady evidence. The still uses shutter framing; the seed requires matching guide framing. A thumbnail frame with a different orientation stays upright and uncropped by that guide.
-- Focus observations and command acknowledgements are ordered by the session queue. AVFoundation reports lens motion and scan settlement, with no success signal. Capture readiness uses subsequent frame evidence, with focus after page arrival when a page is required. The gate consumes optical-flow evidence; iOS has no gyro fallback or CameraX buffer-readiness check.
-- Video presentation timestamps use the capture session clock. Exposure-bias completion uses the video input clock and identifies the first affected buffer. The adapter converts both to host time before comparison. If the bias timestamp cannot be converted, readiness uses the command acknowledgement as the cutoff.
-- The gate controls when to request the still. AVFoundation owns the delivered exposure, including ZSL selection. The package accepts the delivered still without a post-capture timestamp check.
-- Capture stages follow the admitted request. Focus scans stay in waiting, the still request starts shooting, and AVFoundation's exposure-complete callback reports captured. A subsequent camera or write error can report failed, and so does an interruption or runtime failure of the camera run; an invalidated request reports nothing after that. Feedback controls drawing and haptics independently of stage delivery.
-- The bounded shutter sample supplies the camera freeze and seeds the native page viewer. A camera that stays active clears its freeze when the shot settles; an inactive one keeps it until the viewer installs the thumbnail or the camera stops. The viewer uses the retained sample when one exists, but the freeze covers the switch to review only when the host sets `active={false}` before settlement. The sample is best-effort, and the writer may proceed without one. The session releases its recent preview when the viewer installs the current thumbnail, a newer capture's sample replaces it, the page is removed, or the session closes. A displayed view holds its own image reference. Detach and session replacement invalidate the camera's presentation while the physical shot keeps its slot until settlement.
+- One admitted request owns the waiting, exposing and saving slot. Waiting cancellation frees it immediately. Once submitted, the slot remains until the camera delegate and writer settle. The view borrows its session.
+- Orientation changes during waiting invalidate steady evidence. The still uses shutter framing. The guide seed is used only with matching framing. See [Shared engine](../engine.md#live-guidance-and-capture) for gate behavior.
+- AVFoundation reports lens motion and scan settlement, without a focus-success signal. Readiness uses later frame evidence and requires focus after page arrival when a page is required. The gate uses optical flow for motion evidence.
+- Video presentation timestamps and exposure-bias completion start on different clocks. The adapter converts both to host time to identify the first affected frame. If conversion fails, the command acknowledgement is the cutoff.
+- The gate decides when to request the still. AVFoundation owns exposure selection, including ZSL. No post-capture timestamp check rejects its delivered exposure. Exposure completion reports `captured`, while subsequent camera or write failure can still report `failed`.
+- The bounded shutter sample can freeze preview and seed the page viewer. An active view clears the freeze at settlement. An inactive view can retain it until the viewer installs the thumbnail or the camera stops. For a freeze through review, the host must make the camera inactive before settlement. The sample is best-effort.
+- The session releases the retained sample when the current thumbnail installs, a newer sample replaces it, the page is removed or the session closes. A displayed view retains its own image reference.
 
-See [Shared engine](../engine.md) for gate and guide contracts and [iOS setup](setup.md) for validation.
+## Text camera
+
+The view runs a separate `AVCaptureSession`. Video frames establish readiness and native autofocus aims at the region. The guide and session follow [Host integration](../integration.md#text-reading). Interruptions clear readiness until a fresh frame arrives. Configuration or runtime failure stops the pipeline.
+
+See [iOS setup](setup.md#permission-and-validation) for validation.

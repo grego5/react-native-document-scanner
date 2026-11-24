@@ -47,7 +47,9 @@ namespace margelo::nitro::documentscanner {
     explicit PaperSize(double width, double height): width(width), height(height) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const PaperSize& lhs, const PaperSize& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

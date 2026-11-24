@@ -147,6 +147,28 @@ open class HybridDocumentScannerProcessorSpec_cxx {
   }
   
   @inline(__always)
+  public final func createTextSessionResult() -> bridge.Result_std__variant_std__shared_ptr_HybridTextSessionSpec___ScannerFailure__ {
+    do {
+      let __result = try self.__implementation.createTextSessionResult()
+      let __resultCpp = { () -> bridge.std__variant_std__shared_ptr_HybridTextSessionSpec___ScannerFailure_ in
+        switch __result {
+          case .first(let __value):
+            return bridge.create_std__variant_std__shared_ptr_HybridTextSessionSpec___ScannerFailure_({ () -> bridge.std__shared_ptr_HybridTextSessionSpec_ in
+              let __cxxWrapped = __value.getCxxWrapper()
+              return __cxxWrapped.getCxxPart()
+            }())
+          case .second(let __value):
+            return bridge.create_std__variant_std__shared_ptr_HybridTextSessionSpec___ScannerFailure_(__value)
+        }
+      }().variant
+      return bridge.create_Result_std__variant_std__shared_ptr_HybridTextSessionSpec___ScannerFailure__(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__variant_std__shared_ptr_HybridTextSessionSpec___ScannerFailure__(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func waitForCornerDetectionModelResult() -> bridge.Result_std__shared_ptr_Promise_std__variant_bool__ScannerFailure____ {
     do {
       let __result = try self.__implementation.waitForCornerDetectionModelResult()

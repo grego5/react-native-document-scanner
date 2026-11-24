@@ -28,6 +28,9 @@ class HybridDocumentScannerProcessor(
     Variant_HybridScanSessionSpec_ScannerFailure.create(scannerFailure(error, ScannerErrorCode.PROCESSOR_UNAVAILABLE))
   }
 
+  override fun createTextSessionResult(): Variant_HybridTextSessionSpec_ScannerFailure =
+    Variant_HybridTextSessionSpec_ScannerFailure.create(HybridTextSession())
+
   override fun waitForCornerDetectionModelResult(): Promise<Variant_Boolean_ScannerFailure> {
     val promise = Promise<Variant_Boolean_ScannerFailure>()
     try {

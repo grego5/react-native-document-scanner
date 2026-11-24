@@ -52,7 +52,9 @@ namespace margelo::nitro::documentscanner {
     explicit ImageOutputOptions(std::optional<double> jpegQuality, std::optional<DocumentImageFormat> format, std::optional<double> width, std::optional<double> height, std::optional<double> dpi): jpegQuality(jpegQuality), format(format), width(width), height(height), dpi(dpi) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const ImageOutputOptions& lhs, const ImageOutputOptions& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

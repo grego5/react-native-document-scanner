@@ -4,17 +4,16 @@
   "bubblingEventTypes": {},
   "directEventTypes": {},
   "validAttributes": {
+    "session": true,
     "active": true,
     "textRegion": true,
-    "guideColor": true,
+    "guide": true,
     "tapToFocus": true,
     "focusLock": true,
     "zoom": true,
     "torch": true,
     "analysisFrameWidth": true,
-    "onCameraStateChange": true,
-    "onAutofocusChange": true,
-    "onBlurChange": true,
+    "onGuideLayout": true,
     "onError": true,
     "hybridRef": true
   }

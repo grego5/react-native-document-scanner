@@ -17,6 +17,7 @@
 #include "HybridPageThumbnailViewSpecSwift.hpp"
 #include "HybridScanSessionSpecSwift.hpp"
 #include "HybridTextCameraViewSpecSwift.hpp"
+#include "HybridTextSessionSpecSwift.hpp"
 #include "ReactNativeDocumentScanner-Swift-Cxx-Umbrella.hpp"
 #include <NitroModules/NitroDefines.hpp>
 
@@ -214,6 +215,22 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return swiftPart.toUnsafe();
   }
   
+  // pragma MARK: std::shared_ptr<HybridTextSessionSpec>
+  std::shared_ptr<HybridTextSessionSpec> create_std__shared_ptr_HybridTextSessionSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    ReactNativeDocumentScanner::HybridTextSessionSpec_cxx swiftPart = ReactNativeDocumentScanner::HybridTextSessionSpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::documentscanner::HybridTextSessionSpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridTextSessionSpec_(std__shared_ptr_HybridTextSessionSpec_ cppType) {
+    std::shared_ptr<margelo::nitro::documentscanner::HybridTextSessionSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::documentscanner::HybridTextSessionSpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridTextSessionSpec\" is not implemented in Swift!");
+    }
+    #endif
+    ReactNativeDocumentScanner::HybridTextSessionSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
+  }
+  
   // pragma MARK: std::function<void(const std::variant<ScannerFailure, SampleFolder>& /* result */)>
   Func_void_std__variant_ScannerFailure__SampleFolder_ create_Func_void_std__variant_ScannerFailure__SampleFolder_(void* NON_NULL swiftClosureWrapper) noexcept {
     auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_ScannerFailure__SampleFolder_::fromUnsafe(swiftClosureWrapper);
@@ -318,11 +335,11 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     };
   }
   
-  // pragma MARK: std::function<void(const std::variant<ScannerFailure, TextCapture>& /* result */)>
-  Func_void_std__variant_ScannerFailure__TextCapture_ create_Func_void_std__variant_ScannerFailure__TextCapture_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_ScannerFailure__TextCapture_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::variant<ScannerFailure, TextCapture>& result) mutable -> void {
-      swiftClosure.call(result);
+  // pragma MARK: std::function<void(const TextGuideLayout& /* layout */)>
+  Func_void_TextGuideLayout create_Func_void_TextGuideLayout(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_TextGuideLayout::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const TextGuideLayout& layout) mutable -> void {
+      swiftClosure.call(layout);
     };
   }
   
@@ -340,6 +357,22 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     #endif
     ReactNativeDocumentScanner::HybridTextCameraViewSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
     return swiftPart.toUnsafe();
+  }
+  
+  // pragma MARK: std::function<void(const std::variant<ScannerFailure, TextSessionSnapshot>& /* result */)>
+  Func_void_std__variant_ScannerFailure__TextSessionSnapshot_ create_Func_void_std__variant_ScannerFailure__TextSessionSnapshot_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_std__variant_ScannerFailure__TextSessionSnapshot_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::variant<ScannerFailure, TextSessionSnapshot>& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const TextSessionSnapshot& /* snapshot */)>
+  Func_void_TextSessionSnapshot create_Func_void_TextSessionSnapshot(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeDocumentScanner::Func_void_TextSessionSnapshot::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const TextSessionSnapshot& snapshot) mutable -> void {
+      swiftClosure.call(snapshot);
+    };
   }
 
 } // namespace margelo::nitro::documentscanner::bridge::swift

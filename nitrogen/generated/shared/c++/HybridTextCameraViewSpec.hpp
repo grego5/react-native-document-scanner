@@ -13,29 +13,28 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `HybridTextSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridTextSessionSpec; }
 // Forward declaration of `TextRegion` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextRegion; }
+// Forward declaration of `TextGuide` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuide; }
 // Forward declaration of `TextTorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
-// Forward declaration of `CameraState` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class CameraState; }
-// Forward declaration of `AutofocusState` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class AutofocusState; }
+// Forward declaration of `TextGuideLayout` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLayout; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
-// Forward declaration of `TextCapture` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct TextCapture; }
 
+#include <memory>
+#include "HybridTextSessionSpec.hpp"
 #include <optional>
 #include "TextRegion.hpp"
+#include "TextGuide.hpp"
 #include "TextTorchMode.hpp"
-#include "CameraState.hpp"
+#include "TextGuideLayout.hpp"
 #include <functional>
-#include "AutofocusState.hpp"
 #include "ScannerFailure.hpp"
-#include "TextCapture.hpp"
-#include <variant>
-#include <NitroModules/Promise.hpp>
 
 namespace margelo::nitro::documentscanner {
 
@@ -64,12 +63,14 @@ namespace margelo::nitro::documentscanner {
 
     public:
       // Properties
+      virtual std::shared_ptr<HybridTextSessionSpec> getSession() = 0;
+      virtual void setSession(const std::shared_ptr<HybridTextSessionSpec>& session) = 0;
       virtual std::optional<bool> getActive() = 0;
       virtual void setActive(std::optional<bool> active) = 0;
       virtual TextRegion getTextRegion() = 0;
       virtual void setTextRegion(const TextRegion& textRegion) = 0;
-      virtual std::optional<double> getGuideColor() = 0;
-      virtual void setGuideColor(std::optional<double> guideColor) = 0;
+      virtual std::optional<TextGuide> getGuide() = 0;
+      virtual void setGuide(const std::optional<TextGuide>& guide) = 0;
       virtual std::optional<bool> getTapToFocus() = 0;
       virtual void setTapToFocus(std::optional<bool> tapToFocus) = 0;
       virtual std::optional<bool> getFocusLock() = 0;
@@ -80,18 +81,14 @@ namespace margelo::nitro::documentscanner {
       virtual void setTorch(std::optional<TextTorchMode> torch) = 0;
       virtual std::optional<double> getAnalysisFrameWidth() = 0;
       virtual void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) = 0;
-      virtual std::optional<std::function<void(CameraState /* state */)>> getOnCameraStateChange() = 0;
-      virtual void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) = 0;
-      virtual std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() = 0;
-      virtual void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) = 0;
-      virtual std::optional<std::function<void(bool /* blurred */)>> getOnBlurChange() = 0;
-      virtual void setOnBlurChange(const std::optional<std::function<void(bool /* blurred */)>>& onBlurChange) = 0;
+      virtual std::optional<std::function<void(const TextGuideLayout& /* layout */)>> getOnGuideLayout() = 0;
+      virtual void setOnGuideLayout(const std::optional<std::function<void(const TextGuideLayout& /* layout */)>>& onGuideLayout) = 0;
       virtual std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() = 0;
       virtual void setOnError(const std::optional<std::function<void(const ScannerFailure& /* error */)>>& onError) = 0;
 
     public:
       // Methods
-      virtual std::shared_ptr<Promise<std::variant<ScannerFailure, TextCapture>>> captureTextResult(std::optional<double> timeoutMs) = 0;
+      
 
     protected:
       // Hybrid Setup

@@ -68,7 +68,9 @@ namespace margelo::nitro::documentscanner {
     explicit ScanPageMetadata(std::string id, double revision, std::optional<double> readyRevision, bool analyzing, bool rendering, bool ready, std::optional<DocumentAnalysis> analysis, DocumentCorners corners, DocumentRenderOptions options, std::optional<ScannerFailure> analysisFailure, std::optional<ScannerFailure> renderFailure): id(id), revision(revision), readyRevision(readyRevision), analyzing(analyzing), rendering(rendering), ready(ready), analysis(analysis), corners(corners), options(options), analysisFailure(analysisFailure), renderFailure(renderFailure) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const ScanPageMetadata& lhs, const ScanPageMetadata& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

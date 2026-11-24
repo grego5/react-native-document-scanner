@@ -10,7 +10,7 @@ Rebuild the host app after installation. Expo requires a development build.
 
 The package ships no corner detection model. Document scanning needs a float32 TFLite model; without one the camera reports the scanner unavailable, and `mode="photo"` works without it.
 
-`TextCamera` reads one line of text, such as a serial number, inside a configurable region of the preview. It uses Vision on iOS and bundled ML Kit on Android, and needs no model.
+`TextCamera` shows a configurable region of the preview on Android and iOS. On Android, a text session captures the region and its recognized words using bundled ML Kit. Text capture needs no corner detection model.
 
 For Expo prebuild, add `['react-native-document-scanner', { cornerDetectionModel: './path/to/model.tflite' }]` to your app's `plugins` array before `expo-build-properties` if you use it. The plugin registers the bundled OpenCV pod on iOS and copies the model into both apps, where `Camera` and imports use it by default. Without the plugin, pass a model through the camera's `cornerDetectionModel` prop.
 

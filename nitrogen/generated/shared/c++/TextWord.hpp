@@ -55,7 +55,9 @@ namespace margelo::nitro::documentscanner {
     explicit TextWord(std::string text, TextRegion bounds, DocumentCorners corners, double line, double confidence): text(text), bounds(bounds), corners(corners), line(line), confidence(confidence) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const TextWord& lhs, const TextWord& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

@@ -17,14 +17,15 @@
 
 #include <string>
 
+#include <memory>
+#include "HybridTextSessionSpec.hpp"
 #include <optional>
 #include "TextRegion.hpp"
+#include "TextGuide.hpp"
 #include "TextTorchMode.hpp"
-#include "CameraState.hpp"
+#include "TextGuideLayout.hpp"
 #include <functional>
-#include "AutofocusState.hpp"
 #include "ScannerFailure.hpp"
-#include <memory>
 #include "HybridTextCameraViewSpec.hpp"
 
 namespace margelo::nitro::documentscanner::views {
@@ -47,50 +48,47 @@ namespace margelo::nitro::documentscanner::views {
                               const react::RawProps& rawProps);
 
   public:
+    nitro::ReactProp<std::shared_ptr<HybridTextSessionSpec>> session;
     nitro::ReactProp<std::optional<bool>> active;
     nitro::ReactProp<TextRegion> textRegion;
-    nitro::ReactProp<std::optional<double>> guideColor;
+    nitro::ReactProp<std::optional<TextGuide>> guide;
     nitro::ReactProp<std::optional<bool>> tapToFocus;
     nitro::ReactProp<std::optional<bool>> focusLock;
     nitro::ReactProp<std::optional<double>> zoom;
     nitro::ReactProp<std::optional<TextTorchMode>> torch;
     nitro::ReactProp<std::optional<double>> analysisFrameWidth;
-    nitro::ReactProp<std::optional<std::function<void(CameraState /* state */)>>> onCameraStateChange;
-    nitro::ReactProp<std::optional<std::function<void(AutofocusState /* state */)>>> onAutofocusChange;
-    nitro::ReactProp<std::optional<std::function<void(bool /* blurred */)>>> onBlurChange;
+    nitro::ReactProp<std::optional<std::function<void(const TextGuideLayout& /* layout */)>>> onGuideLayout;
     nitro::ReactProp<std::optional<std::function<void(const ScannerFailure& /* error */)>>> onError;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridTextCameraViewSpec>& /* ref */)>>> hybridRef;
 
     [[nodiscard]]
     bool hasSameProps(const HybridTextCameraViewProps& other) const noexcept {
-      return active.hasSameValue(other.active) &&
+      return session.hasSameValue(other.session) &&
+             active.hasSameValue(other.active) &&
              textRegion.hasSameValue(other.textRegion) &&
-             guideColor.hasSameValue(other.guideColor) &&
+             guide.hasSameValue(other.guide) &&
              tapToFocus.hasSameValue(other.tapToFocus) &&
              focusLock.hasSameValue(other.focusLock) &&
              zoom.hasSameValue(other.zoom) &&
              torch.hasSameValue(other.torch) &&
              analysisFrameWidth.hasSameValue(other.analysisFrameWidth) &&
-             onCameraStateChange.hasSameValue(other.onCameraStateChange) &&
-             onAutofocusChange.hasSameValue(other.onAutofocusChange) &&
-             onBlurChange.hasSameValue(other.onBlurChange) &&
+             onGuideLayout.hasSameValue(other.onGuideLayout) &&
              onError.hasSameValue(other.onError) &&
              hybridRef.hasSameValue(other.hybridRef);
     }
 
     [[nodiscard]]
     bool hasAnyProvidedProps() const noexcept {
-      return active.isProvided() ||
+      return session.isProvided() ||
+             active.isProvided() ||
              textRegion.isProvided() ||
-             guideColor.isProvided() ||
+             guide.isProvided() ||
              tapToFocus.isProvided() ||
              focusLock.isProvided() ||
              zoom.isProvided() ||
              torch.isProvided() ||
              analysisFrameWidth.isProvided() ||
-             onCameraStateChange.isProvided() ||
-             onAutofocusChange.isProvided() ||
-             onBlurChange.isProvided() ||
+             onGuideLayout.isProvided() ||
              onError.isProvided() ||
              hybridRef.isProvided();
     }

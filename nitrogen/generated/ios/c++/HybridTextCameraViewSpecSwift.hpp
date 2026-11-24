@@ -12,43 +12,50 @@
 // Forward declaration of `HybridTextCameraViewSpec_cxx` to properly resolve imports.
 namespace ReactNativeDocumentScanner { class HybridTextCameraViewSpec_cxx; }
 
+// Forward declaration of `HybridTextSessionSpec` to properly resolve imports.
+namespace margelo::nitro::documentscanner { class HybridTextSessionSpec; }
 // Forward declaration of `TextRegion` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TextRegion; }
+// Forward declaration of `TextGuide` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuide; }
+// Forward declaration of `TextGuideColors` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideColors; }
+// Forward declaration of `TextGuideLabels` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLabels; }
+// Forward declaration of `TextGuideLabelStyle` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLabelStyle; }
+// Forward declaration of `TextGuideFontWeight` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextGuideFontWeight; }
+// Forward declaration of `TextGuideLabelPlacement` to properly resolve imports.
+namespace margelo::nitro::documentscanner { enum class TextGuideLabelPlacement; }
 // Forward declaration of `TextTorchMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class TextTorchMode; }
-// Forward declaration of `CameraState` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class CameraState; }
-// Forward declaration of `AutofocusState` to properly resolve imports.
-namespace margelo::nitro::documentscanner { enum class AutofocusState; }
+// Forward declaration of `TextGuideLayout` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideLayout; }
+// Forward declaration of `TextGuideFrame` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct TextGuideFrame; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 // Forward declaration of `ScannerErrorCode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class ScannerErrorCode; }
-// Forward declaration of `TextCapture` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct TextCapture; }
-// Forward declaration of `TextWord` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct TextWord; }
-// Forward declaration of `DocumentCorners` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentCorners; }
-// Forward declaration of `DocumentPoint` to properly resolve imports.
-namespace margelo::nitro::documentscanner { struct DocumentPoint; }
 
+#include <memory>
+#include "HybridTextSessionSpec.hpp"
 #include <optional>
 #include "TextRegion.hpp"
+#include "TextGuide.hpp"
+#include "TextGuideColors.hpp"
+#include "TextGuideLabels.hpp"
+#include <string>
+#include "TextGuideLabelStyle.hpp"
+#include "TextGuideFontWeight.hpp"
+#include "TextGuideLabelPlacement.hpp"
 #include "TextTorchMode.hpp"
-#include "CameraState.hpp"
+#include "TextGuideLayout.hpp"
 #include <functional>
-#include "AutofocusState.hpp"
+#include "TextGuideFrame.hpp"
 #include "ScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
-#include "TextCapture.hpp"
-#include <variant>
-#include <NitroModules/Promise.hpp>
-#include <string>
-#include "TextWord.hpp"
-#include <vector>
-#include "DocumentCorners.hpp"
-#include "DocumentPoint.hpp"
 
 #include "ReactNativeDocumentScanner-Swift-Cxx-Umbrella.hpp"
 
@@ -96,6 +103,13 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Properties
+    inline std::shared_ptr<HybridTextSessionSpec> getSession() noexcept override {
+      auto __result = _swiftPart.getSession();
+      return __result;
+    }
+    inline void setSession(const std::shared_ptr<HybridTextSessionSpec>& session) noexcept override {
+      _swiftPart.setSession(session);
+    }
     inline std::optional<bool> getActive() noexcept override {
       auto __result = _swiftPart.getActive();
       return __result;
@@ -109,12 +123,12 @@ namespace margelo::nitro::documentscanner {
     inline void setTextRegion(const TextRegion& textRegion) noexcept override {
       _swiftPart.setTextRegion(std::forward<decltype(textRegion)>(textRegion));
     }
-    inline std::optional<double> getGuideColor() noexcept override {
-      auto __result = _swiftPart.getGuideColor();
+    inline std::optional<TextGuide> getGuide() noexcept override {
+      auto __result = _swiftPart.getGuide();
       return __result;
     }
-    inline void setGuideColor(std::optional<double> guideColor) noexcept override {
-      _swiftPart.setGuideColor(guideColor);
+    inline void setGuide(const std::optional<TextGuide>& guide) noexcept override {
+      _swiftPart.setGuide(guide);
     }
     inline std::optional<bool> getTapToFocus() noexcept override {
       auto __result = _swiftPart.getTapToFocus();
@@ -151,26 +165,12 @@ namespace margelo::nitro::documentscanner {
     inline void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) noexcept override {
       _swiftPart.setAnalysisFrameWidth(analysisFrameWidth);
     }
-    inline std::optional<std::function<void(CameraState /* state */)>> getOnCameraStateChange() noexcept override {
-      auto __result = _swiftPart.getOnCameraStateChange();
+    inline std::optional<std::function<void(const TextGuideLayout& /* layout */)>> getOnGuideLayout() noexcept override {
+      auto __result = _swiftPart.getOnGuideLayout();
       return __result;
     }
-    inline void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) noexcept override {
-      _swiftPart.setOnCameraStateChange(onCameraStateChange);
-    }
-    inline std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() noexcept override {
-      auto __result = _swiftPart.getOnAutofocusChange();
-      return __result;
-    }
-    inline void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) noexcept override {
-      _swiftPart.setOnAutofocusChange(onAutofocusChange);
-    }
-    inline std::optional<std::function<void(bool /* blurred */)>> getOnBlurChange() noexcept override {
-      auto __result = _swiftPart.getOnBlurChange();
-      return __result;
-    }
-    inline void setOnBlurChange(const std::optional<std::function<void(bool /* blurred */)>>& onBlurChange) noexcept override {
-      _swiftPart.setOnBlurChange(onBlurChange);
+    inline void setOnGuideLayout(const std::optional<std::function<void(const TextGuideLayout& /* layout */)>>& onGuideLayout) noexcept override {
+      _swiftPart.setOnGuideLayout(onGuideLayout);
     }
     inline std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() noexcept override {
       auto __result = _swiftPart.getOnError();
@@ -182,14 +182,7 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Methods
-    inline std::shared_ptr<Promise<std::variant<ScannerFailure, TextCapture>>> captureTextResult(std::optional<double> timeoutMs) override {
-      auto __result = _swiftPart.captureTextResult(timeoutMs);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
+    
 
   private:
     ReactNativeDocumentScanner::HybridTextCameraViewSpec_cxx _swiftPart;

@@ -121,6 +121,24 @@ open class HybridTextCameraViewSpec_cxx {
   }
 
   // Properties
+  public final var session: bridge.std__shared_ptr_HybridTextSessionSpec_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__shared_ptr_HybridTextSessionSpec_ in
+        let __cxxWrapped = self.__implementation.session.getCxxWrapper()
+        return __cxxWrapped.getCxxPart()
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.session = { () -> any HybridTextSessionSpec in
+        let __unsafePointer = bridge.get_std__shared_ptr_HybridTextSessionSpec_(newValue)
+        let __instance = HybridTextSessionSpec_cxx.fromUnsafe(__unsafePointer)
+        return __instance.getHybridTextSessionSpec()
+      }()
+    }
+  }
+  
   public final var active: bridge.std__optional_bool_ {
     @inline(__always)
     get {
@@ -156,12 +174,12 @@ open class HybridTextCameraViewSpec_cxx {
     }
   }
   
-  public final var guideColor: bridge.std__optional_double_ {
+  public final var guide: bridge.std__optional_TextGuide_ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_double_ in
-        if let __unwrappedValue = self.__implementation.guideColor {
-          return bridge.create_std__optional_double_(__unwrappedValue)
+      return { () -> bridge.std__optional_TextGuide_ in
+        if let __unwrappedValue = self.__implementation.guide {
+          return bridge.create_std__optional_TextGuide_(__unwrappedValue)
         } else {
           return .init()
         }
@@ -169,14 +187,7 @@ open class HybridTextCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.guideColor = { () -> Double? in
-        if bridge.has_value_std__optional_double_(newValue) {
-          let __unwrapped = bridge.get_std__optional_double_(newValue)
-          return __unwrapped
-        } else {
-          return nil
-        }
-      }()
+      self.__implementation.guide = newValue.value
     }
   }
   
@@ -293,14 +304,14 @@ open class HybridTextCameraViewSpec_cxx {
     }
   }
   
-  public final var onCameraStateChange: bridge.std__optional_std__function_void_CameraState____state______ {
+  public final var onGuideLayout: bridge.std__optional_std__function_void_const_TextGuideLayout_____layout______ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_std__function_void_CameraState____state______ in
-        if let __unwrappedValue = self.__implementation.onCameraStateChange {
-          return bridge.create_std__optional_std__function_void_CameraState____state______({ () -> bridge.Func_void_CameraState in
-            let __closureWrapper = Func_void_CameraState(__unwrappedValue)
-            return bridge.create_Func_void_CameraState(__closureWrapper.toUnsafe())
+      return { () -> bridge.std__optional_std__function_void_const_TextGuideLayout_____layout______ in
+        if let __unwrappedValue = self.__implementation.onGuideLayout {
+          return bridge.create_std__optional_std__function_void_const_TextGuideLayout_____layout______({ () -> bridge.Func_void_TextGuideLayout in
+            let __closureWrapper = Func_void_TextGuideLayout(__unwrappedValue)
+            return bridge.create_Func_void_TextGuideLayout(__closureWrapper.toUnsafe())
           }())
         } else {
           return .init()
@@ -309,77 +320,13 @@ open class HybridTextCameraViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.onCameraStateChange = { () -> ((_ state: CameraState) -> Void)? in
-        if bridge.has_value_std__optional_std__function_void_CameraState____state______(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__function_void_CameraState____state______(newValue)
-          return { () -> (CameraState) -> Void in
-            let __wrappedFunction = bridge.wrap_Func_void_CameraState(__unwrapped)
-            return { (__state: CameraState) -> Void in
-              __wrappedFunction.call(__state.rawValue)
-            }
-          }()
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
-  public final var onAutofocusChange: bridge.std__optional_std__function_void_AutofocusState____state______ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_std__function_void_AutofocusState____state______ in
-        if let __unwrappedValue = self.__implementation.onAutofocusChange {
-          return bridge.create_std__optional_std__function_void_AutofocusState____state______({ () -> bridge.Func_void_AutofocusState in
-            let __closureWrapper = Func_void_AutofocusState(__unwrappedValue)
-            return bridge.create_Func_void_AutofocusState(__closureWrapper.toUnsafe())
-          }())
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.onAutofocusChange = { () -> ((_ state: AutofocusState) -> Void)? in
-        if bridge.has_value_std__optional_std__function_void_AutofocusState____state______(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__function_void_AutofocusState____state______(newValue)
-          return { () -> (AutofocusState) -> Void in
-            let __wrappedFunction = bridge.wrap_Func_void_AutofocusState(__unwrapped)
-            return { (__state: AutofocusState) -> Void in
-              __wrappedFunction.call(__state.rawValue)
-            }
-          }()
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
-  public final var onBlurChange: bridge.std__optional_std__function_void_bool____blurred______ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_std__function_void_bool____blurred______ in
-        if let __unwrappedValue = self.__implementation.onBlurChange {
-          return bridge.create_std__optional_std__function_void_bool____blurred______({ () -> bridge.Func_void_bool in
-            let __closureWrapper = Func_void_bool(__unwrappedValue)
-            return bridge.create_Func_void_bool(__closureWrapper.toUnsafe())
-          }())
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.onBlurChange = { () -> ((_ blurred: Bool) -> Void)? in
-        if bridge.has_value_std__optional_std__function_void_bool____blurred______(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__function_void_bool____blurred______(newValue)
-          return { () -> (Bool) -> Void in
-            let __wrappedFunction = bridge.wrap_Func_void_bool(__unwrapped)
-            return { (__blurred: Bool) -> Void in
-              __wrappedFunction.call(__blurred)
+      self.__implementation.onGuideLayout = { () -> ((_ layout: TextGuideLayout) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_const_TextGuideLayout_____layout______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_const_TextGuideLayout_____layout______(newValue)
+          return { () -> (TextGuideLayout) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_TextGuideLayout(__unwrapped)
+            return { (__layout: TextGuideLayout) -> Void in
+              __wrappedFunction.call(__layout)
             }
           }()
         } else {
@@ -422,39 +369,6 @@ open class HybridTextCameraViewSpec_cxx {
   }
 
   // Methods
-  @inline(__always)
-  public final func captureTextResult(timeoutMs: bridge.std__optional_double_) -> bridge.Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture____ {
-    do {
-      let __result = try self.__implementation.captureTextResult(timeoutMs: { () -> Double? in
-        if bridge.has_value_std__optional_double_(timeoutMs) {
-          let __unwrapped = bridge.get_std__optional_double_(timeoutMs)
-          return __unwrapped
-        } else {
-          return nil
-        }
-      }())
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture___ in
-        let __promise = bridge.create_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture___()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture___(__promise)
-        __result
-          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__variant_ScannerFailure__TextCapture_ in
-              switch __result {
-                case .first(let __value):
-                  return bridge.create_std__variant_ScannerFailure__TextCapture_(__value)
-                case .second(let __value):
-                  return bridge.create_std__variant_ScannerFailure__TextCapture_(__value)
-              }
-            }().variant) })
-          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
-        return __promise
-      }()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture____(__resultCpp)
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_std__variant_ScannerFailure__TextCapture____(__exceptionPtr)
-    }
-  }
-  
   public final func getView() -> UnsafeMutableRawPointer {
     return Unmanaged.passRetained(__implementation.view).toOpaque()
   }

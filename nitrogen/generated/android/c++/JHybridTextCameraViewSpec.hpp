@@ -50,12 +50,14 @@ namespace margelo::nitro::documentscanner {
 
   public:
     // Properties
+    std::shared_ptr<HybridTextSessionSpec> getSession() override;
+    void setSession(const std::shared_ptr<HybridTextSessionSpec>& session) override;
     std::optional<bool> getActive() override;
     void setActive(std::optional<bool> active) override;
     TextRegion getTextRegion() override;
     void setTextRegion(const TextRegion& textRegion) override;
-    std::optional<double> getGuideColor() override;
-    void setGuideColor(std::optional<double> guideColor) override;
+    std::optional<TextGuide> getGuide() override;
+    void setGuide(const std::optional<TextGuide>& guide) override;
     std::optional<bool> getTapToFocus() override;
     void setTapToFocus(std::optional<bool> tapToFocus) override;
     std::optional<bool> getFocusLock() override;
@@ -66,18 +68,14 @@ namespace margelo::nitro::documentscanner {
     void setTorch(std::optional<TextTorchMode> torch) override;
     std::optional<double> getAnalysisFrameWidth() override;
     void setAnalysisFrameWidth(std::optional<double> analysisFrameWidth) override;
-    std::optional<std::function<void(CameraState /* state */)>> getOnCameraStateChange() override;
-    void setOnCameraStateChange(const std::optional<std::function<void(CameraState /* state */)>>& onCameraStateChange) override;
-    std::optional<std::function<void(AutofocusState /* state */)>> getOnAutofocusChange() override;
-    void setOnAutofocusChange(const std::optional<std::function<void(AutofocusState /* state */)>>& onAutofocusChange) override;
-    std::optional<std::function<void(bool /* blurred */)>> getOnBlurChange() override;
-    void setOnBlurChange(const std::optional<std::function<void(bool /* blurred */)>>& onBlurChange) override;
+    std::optional<std::function<void(const TextGuideLayout& /* layout */)>> getOnGuideLayout() override;
+    void setOnGuideLayout(const std::optional<std::function<void(const TextGuideLayout& /* layout */)>>& onGuideLayout) override;
     std::optional<std::function<void(const ScannerFailure& /* error */)>> getOnError() override;
     void setOnError(const std::optional<std::function<void(const ScannerFailure& /* error */)>>& onError) override;
 
   public:
     // Methods
-    std::shared_ptr<Promise<std::variant<ScannerFailure, TextCapture>>> captureTextResult(std::optional<double> timeoutMs) override;
+    
 
   private:
     jni::global_ref<JHybridTextCameraViewSpec::JavaPart> _javaPart;

@@ -20,6 +20,10 @@ class HybridDocumentScannerProcessor: HybridDocumentScannerProcessorSpec {
     } catch { return .second(ScannerCodeError.failure(error, fallback: .processorUnavailable)) }
   }
 
+  func createTextSessionResult() throws -> Variant__any_HybridTextSessionSpec__ScannerFailure {
+    .first(HybridTextSession())
+  }
+
   func waitForCornerDetectionModelResult() throws -> Promise<Variant_Bool_ScannerFailure> {
     let promise = Promise<Variant_Bool_ScannerFailure>()
     models.startDefault()

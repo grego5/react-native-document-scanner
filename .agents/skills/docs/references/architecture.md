@@ -1,30 +1,27 @@
-# Session architecture
+# Document session architecture
 
 ```text
-React host → JS ScanSession → Nitro → native ScanSessionState
-   camera / import ── admits original ──────┘
-   image views ── borrow page sources ──────┘
-                        state → analysis → render → ready artifact
-                        state → frozen export snapshot → host destination
-                        state → versioned events → JS snapshot → React
+React host → JS ScanSession → native ScanSessionState
+                  ↑                    ├─ original → analysis → render
+          versioned snapshots          └─ export snapshot → host destination
+                                       ↑
+                                  camera / import
 ```
 
-## Ownership and publication
+## Admission and revisions
 
-- The processor creates sessions and exposes sample controls. Native state owns ordered membership, settings, analysis, render revisions and files. The host owns the session lifetime. Views borrow it.
-- Camera captures and gallery imports share one admission path, on the session's image worker. An import has no frame or live corners. Library picks reach admission natively and are never handed to JS. Each `importFromLibrary` call is one session-scoped import operation. Each platform picker request owns its presentation, dismissal and the one-picker slot, and reports at most once. The operation owns the call's defaults, the picks it is handed, ordered admission and the result. Its close registration decides who settles: a normal outcome claims it before resolving, and once close has taken it only the close cancellation settles, with `processor/disposed`. A call presents only while it holds the registration, and close waits until its picker request has freed the slot. An import reserves only an original, never a frame output. Android reserves, writes and commits it on the session's image worker, so a large selection does no filesystem work on main. Android reads the picker's `content://` grant directly. iOS clones each pick into a temporary file, deletes it after admission, and admits picks in picked order. If analysis finds no page, the page keeps the full image for the crop editor.
-- Admission freezes page defaults. A capture freezes the camera's model selection, and its analysis precedes the initial render. Explicit crop edits win over later automatic corners; filter and shadow edits keep a page eligible.
-- Each session observes the app-wide model status from creation to close. Import admission reads it and the observer scans waiting pages under the session lock, so no readiness is missed. An import admitted while the model is ready is analyzed like a capture. One admitted while it loads waits: its full frame renders and accepts edits, and analysis is submitted with the selection once the model is ready. Absent or failed analyzes waiting and new imports without a model, which finds no page. A completed analysis stays final across later model changes. Removal and close drop waiting pages; late callbacks for them are ignored. Only the current revision publishes readiness or failure. The last displayable artifact stays available during replacement and after a failed render.
-- The shared image worker serializes session processing across sessions. Cleanup has a separate owner. A worker must not block waiting for work queued behind itself.
-- Native registration takes an initial snapshot atomically with subscription. Ordered events carry changed and removed page IDs and a version. JS reconciles gaps from a full snapshot and coalesces background changes to animation-frame publications. Successful awaited commands synchronize the snapshot before resolving. Snapshots are immutable to consumers, with runtime freezing in development.
-- `close()` rejects new work, cancels queued work and waits for running work, leases, claimed export publications and the cleanup its close cancellations return before cleanup. It takes every close registration in one step under the session lock and runs their cancellations outside it. Native registration protects owned storage through cleanup. Originals are immutable. Retired files stop granting leases immediately and are deleted after the last pin releases.
+- Native state owns page order, defaults, analysis, render revisions and files. The host owns session lifetime. Views borrow the session.
+- Camera and gallery operations admit originals on the image worker. Admission freezes page defaults. A capture also freezes its model selection. Library picks stay native.
+- The picker request owns presentation and the one-picker slot. The import operation owns ordered admission and settlement. Close claims the outstanding call and waits for the picker slot to clear. See [Host integration](integration.md#document-workflow) for cancellation and partial admission.
+- An import admitted during model load renders the full image and can be edited. Admission and the model observer coordinate under the session lock so pending analysis runs when the model becomes ready. Absent or failed selection leaves the full image. Completed analysis stays final across model changes.
+- Explicit crop edits win over later automatic corners. Filter and shadow edits keep the page eligible for analysis. Only the current revision publishes a render outcome. The last displayable artifact remains available during rendering or after failure.
 
-## Images and export
+## Publication and lifetime
 
-- Image views use session/page IDs. `SessionPageBinding` owns source deduplication and missing-page classification. A known page disappearing clears the image. An unknown ID reports `input/invalid`. A decode holds its own lease and may finish after removal.
-- The pager follows session order by default. A complete host order can update the session. A crop editor owns its draft until submit. In rectangle mode the draft stays upright.
-- Export freezes selected order and effective settings at admission, with duplicates preserved. It pins source data and publishes to a host destination outside protected storage. Automatic geometry waits only for analysis queued ahead of the export; an import still waiting for the model exports its current geometry. Pending work can be cancelled before publication. Published exports survive session close.
-- Native result unions carry stable failure codes. JS maps superseded work to `ScannerCancellation` (`AbortError`) and other failures to `ScannerError`.
-- React wrappers supply concrete native defaults where removing a prop would otherwise send a null that Nitro rejects. Public APIs use document, corners and guide terminology. Persisted compatibility fields keep their own schema.
+- Native registration takes the initial snapshot and subscription atomically. JS reconciles version gaps with a full snapshot and groups background changes by animation frame. Awaited mutations synchronize the snapshot before resolving.
+- Close rejects new work, cancels waiting work and waits for active work, leases and claimed publications before cleaning owned storage. It claims registrations under the lock and invokes cancellations outside it. Retired immutable originals stop granting leases and are deleted after the last pin releases.
+- The shared image worker serializes image work across sessions. Cleanup has a separate owner. A worker must never wait for work queued behind itself.
+- Image views bind session/page IDs. Removed pages clear their image. Unknown IDs report `input/invalid`. A decode holds its own lease. The crop editor owns a draft until submission.
+- Export freezes effective settings and page order, including duplicates, and pins the sources. It waits for automatic geometry only when analysis is already queued. A page waiting for a model exports its current geometry. Published files live at the host destination and survive session close.
 
-See [Integration](integration.md) for host usage and [Shared engine](engine.md) for coordinates.
+See [Text reading](integration.md#text-reading) for the separate text session.

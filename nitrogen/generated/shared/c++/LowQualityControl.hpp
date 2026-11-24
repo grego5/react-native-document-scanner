@@ -48,7 +48,9 @@ namespace margelo::nitro::documentscanner {
     explicit LowQualityControl(std::optional<bool> enabled, std::optional<double> captureBlurPercent, std::optional<bool> requireFocus): enabled(enabled), captureBlurPercent(captureBlurPercent), requireFocus(requireFocus) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const LowQualityControl& lhs, const LowQualityControl& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner

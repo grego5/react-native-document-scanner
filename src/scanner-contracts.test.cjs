@@ -60,7 +60,7 @@ test('utility facade keeps typed sample controls separate from explicit session 
     'react-native': { Platform: { OS: 'android' } },
     './Processor': { nativeProcessor: native },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {}, './TextSession': {},
   })
   DocumentScanner.setSampleFolder('file:///samples')
   DocumentScanner.setSampleCollection(true)
@@ -73,7 +73,7 @@ test('utility facade keeps typed sample controls separate from explicit session 
   assert.deepEqual(await DocumentScanner.exportDiagnostics(), { uri: 'file:///diagnostics.txt' })
   assert.deepEqual(calls, [['folder', 'file:///samples'], ['collect', true], ['copy', 'SN-42'], ['diagnostics', true]])
   assert.deepEqual(Object.keys(DocumentScanner).sort(), [
-    'clearSampleFolder', 'copyText', 'createSession', 'exportDiagnostics', 'getSampleFolder', 'pickSampleFolder',
+    'clearSampleFolder', 'copyText', 'createSession', 'createTextSession', 'exportDiagnostics', 'getSampleFolder', 'pickSampleFolder',
     'setDiagnosticsEnabled', 'setSampleCollection', 'setSampleFolder', 'waitForCornerDetectionModel',
   ].sort())
 })
@@ -84,7 +84,7 @@ test('the module waits for the shared corner model with typed results', async ()
     'react-native': { Platform: { OS: 'android' } },
     './Processor': { nativeProcessor: { waitForCornerDetectionModelResult: async () => result } },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {}, './TextSession': {},
   })
   result = true
   assert.equal(await DocumentScanner.waitForCornerDetectionModel(), true)
@@ -111,7 +111,7 @@ test('iOS defers sample collection with stable typed failures and idempotent dis
     'react-native': { Platform: { OS: 'ios' } },
     './Processor': { nativeProcessor: native },
     './ScannerError': errors, './ScanSession': sessionAdapter,
-    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {},
+    './DocumentScanner': {}, './DocumentCropEditor': {}, './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {}, './TextSession': {},
   })
   const unsupported = (error) => error instanceof errors.ScannerError && error.code === 'feature/unsupported'
   assert.throws(() => DocumentScanner.setSampleFolder('file:///samples'), unsupported)
@@ -1082,7 +1082,7 @@ test('the public session factory wraps admission, registration failure and stabl
     './ScannerError': errors,
     './ScanSession': { createScanSession: (native) => sessionAdapter.createScanSession(native, fixture.frames) },
     './DocumentScanner': {}, './DocumentCropEditor': {},
-    './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {},
+    './ImageViewer': {}, './ImagePager': {}, './PageThumbnail': {}, './CameraPermission': {}, './TextCamera': {}, './TextSelection': {}, './TextSession': {},
   })
   const session = DocumentScanner.createSession()
   const { getSession, subscribe, setDocumentCrop } = session
@@ -1428,68 +1428,153 @@ test('superseded operations reject as cancellation, separately from scanner fail
     error => error instanceof errors.ScannerCancellation)
 })
 
-test('text camera sends concrete defaults', async () => {
-  const ref = {}
-  let refreshHandlers = () => {}
-  const { TextCamera, DEFAULT_TEXT_REGION } = load('src/TextCamera.tsx', {
+function loadTextCamera(processColor, refresh = () => {}) {
+  return load('src/TextCamera.tsx', {
     'react': {
-      forwardRef: (render) => render,
-      useLayoutEffect: (effect) => { refreshHandlers = effect },
+      useLayoutEffect: refresh,
       useMemo: (create) => create(),
       useRef: (value) => ({ current: value }),
-      useImperativeHandle: (target, create) => { target.current = create() },
     },
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
-    'react-native': { processColor: (value) => (value === 'red' ? 0xffff0000 : null) },
+    'react-native': { processColor },
     'react-native-nitro-modules': { callback: (fn) => fn, getHostComponent: () => 'NativeTextCamera' },
     '../nitrogen/generated/shared/json/TextCameraViewConfig.json': {},
     './ScannerError': errors,
+    './TextSession': { getNativeTextSession: (session) => session.native },
   })
-  const view = TextCamera({ guideColor: 'red' }, ref)
+}
+
+test('text camera sends concrete defaults', async () => {
+  let refreshHandlers = () => {}
+  const { TextCamera, DEFAULT_TEXT_REGION } = loadTextCamera(
+    (value) => (value === 'red' ? 0xffff0000 : null), (effect) => { refreshHandlers = effect })
+  const session = { native: { id: 'native' } }
+  const view = TextCamera({ session, guideColor: 'red' })
   refreshHandlers()
   assert.equal(view.type, 'NativeTextCamera')
+  assert.equal(view.props.session, session.native)
   assert.equal(view.props.textRegion, DEFAULT_TEXT_REGION)
-  assert.equal(view.props.guideColor, 0xffff0000)
+  assert.equal('guideColor' in view.props, false)
+  assert.equal(view.props.guide.colors.ready, 0xffff0000)
+  const styled = TextCamera({
+    session,
+    guide: { colors: { blurred: 'red', focusing: 'nope' }, labels: { ready: 'Hold' }, labelStyle: { color: 'red', fontSize: 16 } },
+  })
+  assert.equal(styled.props.guide.colors.blurred, 0xffff0000)
+  assert.equal(styled.props.guide.colors.focusing, undefined)
+  assert.deepEqual(styled.props.guide.labels, { ready: 'Hold' })
+  assert.equal(styled.props.guide.labelStyle.color, 0xffff0000)
+  assert.equal(styled.props.guide.labelStyle.fontSize, 16)
+  assert.deepEqual(TextCamera({ session, guide: false }).props.guide, { hidden: true })
+  const layouts = []
+  const custom = TextCamera({ session, onGuideLayout: (layout) => layouts.push(layout) })
+  refreshHandlers()
+  custom.props.onGuideLayout({ box: { x: 1, y: 2, width: 3, height: 4 } })
+  assert.deepEqual(layouts, [{ box: { x: 1, y: 2, width: 3, height: 4 } }])
   assert.equal(view.props.analysisFrameWidth, 1280)
   assert.equal(view.props.torch, 'off')
   assert.equal(view.props.focusLock, true)
   assert.equal(view.props.zoom, 1)
-  const blurs = []
-  const watched = TextCamera({ onBlurChange: (value) => blurs.push(value) }, {})
-  refreshHandlers()
-  watched.props.onBlurChange(true)
-  assert.deepEqual(blurs, [true])
-  for (const removed of ['textGuide', 'textHighlight', 'allowedCharacters', 'textPattern', 'minLength', 'recognitionRate', 'onTextChange', 'onTooCloseChange']) {
+  for (const removed of ['textGuide', 'textHighlight', 'allowedCharacters', 'textPattern', 'minLength', 'recognitionRate', 'onTextChange', 'onTooCloseChange', 'onGuideStateChange', 'hybridRef', 'onCameraStateChange', 'onAutofocusChange', 'onBlurChange']) {
     assert.equal(removed in view.props, false, removed)
   }
-  assert.equal('readText' in ref.current, false)
 })
 
-test('text capture rejects typed failures and defaults its wait', async () => {
-  const ref = {}
-  const { TextCamera } = load('src/TextCamera.tsx', {
-    'react': {
-      forwardRef: (render) => render,
-      useLayoutEffect: () => {},
-      useMemo: (create) => create(),
-      useRef: (value) => ({ current: value }),
-      useImperativeHandle: (target, create) => { target.current = create() },
+/** A native text session: snapshots by version, observers called on demand, captures answered by [answer]. Each
+ * delivery copies the capture, as the bridge builds a new object for every snapshot. */
+function fakeTextSession(answer) {
+  let snapshot = { version: 0, closed: false, status: 'off' }
+  const observers = new Set()
+  const delivered = () => (snapshot.capture ? { ...snapshot, capture: { ...snapshot.capture } } : { ...snapshot })
+  const native = {
+    waits: [],
+    unsubscribed: 0,
+    publish(change) {
+      snapshot = { ...snapshot, ...change, version: snapshot.version + 1 }
+      for (const observer of [...observers]) observer(delivered())
+      return snapshot
     },
-    'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
-    'react-native': { processColor: () => null },
-    'react-native-nitro-modules': { callback: (fn) => fn, getHostComponent: () => 'NativeTextCamera' },
-    '../nitrogen/generated/shared/json/TextCameraViewConfig.json': {},
-    './ScannerError': errors,
-  })
-  const view = TextCamera({}, ref)
-  await assert.rejects(ref.current.captureText(), (error) => error.code === 'camera/unavailable')
-  const waits = []
-  let next = { code: 'feature/unsupported' }
-  view.props.hybridRef({ captureTextResult: async (timeoutMs) => { waits.push(timeoutMs); return next } })
-  await assert.rejects(ref.current.captureText(), (error) => error.code === 'feature/unsupported')
-  next = { uri: 'file:///capture.jpg', width: 100, height: 20, region: { x: 0, y: 0, width: 1, height: 1 }, words: [] }
-  assert.equal((await ref.current.captureText({ timeoutMs: 500 })).uri, 'file:///capture.jpg')
-  assert.deepEqual(waits, [2000, 500])
+    observeResult(onChange) {
+      observers.add(onChange)
+      return { snapshot: delivered(), unsubscribe: () => { native.unsubscribed++; observers.delete(onChange) } }
+    },
+    getSnapshot: delivered,
+    async captureResult(timeout) {
+      native.waits.push(timeout)
+      const next = answer()
+      if ('code' in next) return next
+      snapshot = { ...snapshot, capture: next, version: snapshot.version + 1 }
+      // Its own snapshot, taken before the observers run, as native takes it under its lock.
+      const own = delivered()
+      for (const observer of [...observers]) observer(delivered())
+      return own
+    },
+    clearCapture() { native.publish({ capture: undefined }) },
+    async closeResult() { native.publish({ closed: true, capture: undefined, status: 'off' }); return true },
+  }
+  return native
+}
+
+test('text session publishes newer snapshots and captures into itself', async () => {
+  const { createTextSession, getNativeTextSession } = load('src/TextSession.ts', { './ScannerError': errors })
+  let next = { code: 'camera/unavailable' }
+  const native = fakeTextSession(() => next)
+  const session = createTextSession(native)
+  assert.equal(getNativeTextSession(session), native)
+  assert.throws(() => getNativeTextSession({}), (error) => error.code === 'input/invalid')
+  const first = session.getSnapshot()
+  assert.deepEqual(first, { version: 0, closed: false, status: 'off' })
+  let notified = 0
+  const unsubscribe = session.subscribe(() => { notified++ })
+  native.publish({ status: 'blurred' })
+  assert.equal(session.getSnapshot().status, 'blurred')
+  assert.equal(notified, 1)
+  await assert.rejects(session.capture(), (error) => error.code === 'camera/unavailable')
+  next = { uri: 'data:image/jpeg;base64,', width: 10, height: 2, region: { x: 0, y: 0, width: 1, height: 1 }, words: [] }
+  const captured = await session.capture({ timeout: 500 })
+  assert.equal(captured, session.getSnapshot())
+  assert.deepEqual(captured.capture, next)
+  assert.deepEqual(native.waits, [2000, 500])
+  // A status change brings a new copy of the same still; the published capture stays the same object, so a selection
+  // over it stays.
+  native.publish({ status: 'ready' })
+  assert.equal(session.getSnapshot().status, 'ready')
+  assert.equal(session.getSnapshot().capture, captured.capture)
+  session.clearCapture()
+  assert.equal('capture' in session.getSnapshot(), false)
+  unsubscribe()
+  const seen = notified
+  native.publish({ status: 'ready' })
+  assert.equal(notified, seen)
+  await session.close()
+  assert.equal(session.getSnapshot().closed, true)
+  assert.equal(native.unsubscribed, 1)
+  assert.equal(session.close(), session.close())
+})
+
+test('text session capture resolves with its own capture when a listener clears it meanwhile', async () => {
+  const { createTextSession } = load('src/TextSession.ts', { './ScannerError': errors })
+  const still = { uri: 'file:///still.jpg', width: 10, height: 2, region: { x: 0, y: 0, width: 1, height: 1 }, words: [] }
+  const native = fakeTextSession(() => still)
+  const session = createTextSession(native)
+  session.subscribe(() => { if (session.getSnapshot().capture) session.clearCapture() })
+  const captured = await session.capture()
+  assert.deepEqual(captured.capture, still)
+  assert.equal('capture' in session.getSnapshot(), false)
+  assert.ok(session.getSnapshot().version > captured.version)
+})
+
+test('text session ignores versions older than the one it published', () => {
+  const { createTextSession } = load('src/TextSession.ts', { './ScannerError': errors })
+  let deliver
+  const native = {
+    observeResult(onChange) { deliver = onChange; return { snapshot: { version: 3, closed: false, status: 'ready' }, unsubscribe() {} } },
+  }
+  const session = createTextSession(native)
+  deliver({ version: 5, closed: false, status: 'capturing' })
+  deliver({ version: 4, closed: false, status: 'focusing' })
+  assert.equal(session.getSnapshot().version, 5)
+  assert.equal(session.getSnapshot().status, 'capturing')
 })
 
 test('text selection joins words by line and picks boxes in reading order', () => {
@@ -1512,4 +1597,22 @@ test('text selection joins words by line and picks boxes in reading order', () =
   assert.ok(Math.abs(shape.length - Math.hypot(50, 50)) < 1e-9)
   assert.ok(Math.abs(shape.thickness - Math.hypot(10, 10)) < 1e-9)
   assert.ok(Math.abs(shape.x - 20) < 1e-9 && Math.abs(shape.y - 30) < 1e-9)
+})
+
+test('text selection drags from the press point and places its image anywhere in the view', () => {
+  const selection = load('src/TextSelection.tsx', {
+    'react': {}, 'react/jsx-runtime': {}, 'react-native': { StyleSheet: { create: (styles) => styles } },
+  })
+  const start = { x: 100, y: 200 }
+  // Down and right: nothing until the lifted corner passes the press point, then the box starts exactly there.
+  assert.equal(selection.dragBox(start, { x: 160, y: 240 }, 48), null)
+  assert.deepEqual(selection.dragBox(start, { x: 160, y: 260 }, 48), { x: 100, y: 200, width: 60, height: 12 })
+  // Up: it opens at once without a jump, its corner reaching the full lift above the finger.
+  assert.deepEqual(selection.dragBox(start, { x: 160, y: 190 }, 48), { x: 100, y: 180, width: 60, height: 20 })
+  assert.deepEqual(selection.dragBox(start, { x: 40, y: 100 }, 48), { x: 40, y: 52, width: 60, height: 148 })
+  // A full-screen view with its image at the bottom, above 100 points of controls.
+  assert.deepEqual(selection.fitImage({ width: 400, height: 800 }, 1000, 200, { y: 1 }, { bottom: 100 }),
+    { left: 0, top: 620, width: 400, height: 80 })
+  assert.deepEqual(selection.fitImage({ width: 400, height: 800 }, 1000, 200),
+    { left: 0, top: 360, width: 400, height: 80 })
 })

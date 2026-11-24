@@ -42,7 +42,10 @@
 #include "JHybridScanSessionSpec.hpp"
 #include "JFunc_void_ScanSessionChange.hpp"
 #include "JHybridTextCameraViewSpec.hpp"
+#include "JFunc_void_TextGuideLayout.hpp"
 #include "views/JHybridTextCameraViewStateUpdater.hpp"
+#include "JHybridTextSessionSpec.hpp"
+#include "JFunc_void_TextSessionSnapshot.hpp"
 #include <NitroModules/DefaultConstructableObject.hpp>
 
 namespace margelo::nitro::documentscanner {
@@ -158,7 +161,10 @@ void registerAllNatives() {
   margelo::nitro::documentscanner::JHybridScanSessionSpec::CxxPart::registerNatives();
   margelo::nitro::documentscanner::JFunc_void_ScanSessionChange_cxx::registerNatives();
   margelo::nitro::documentscanner::JHybridTextCameraViewSpec::CxxPart::registerNatives();
+  margelo::nitro::documentscanner::JFunc_void_TextGuideLayout_cxx::registerNatives();
   margelo::nitro::documentscanner::views::JHybridTextCameraViewStateUpdater::registerNatives();
+  margelo::nitro::documentscanner::JHybridTextSessionSpec::CxxPart::registerNatives();
+  margelo::nitro::documentscanner::JFunc_void_TextSessionSnapshot_cxx::registerNatives();
 
   // Register Nitro Hybrid Objects
   HybridObjectRegistry::registerHybridObjectConstructor(

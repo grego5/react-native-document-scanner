@@ -13,7 +13,7 @@ import com.facebook.proguard.annotations.DoNotStrip
 
 
 /**
- * Represents the JavaScript callback `(blurred: boolean) => void`.
+ * Represents the JavaScript callback `(zoomed: boolean) => void`.
  * This can be either implemented in C++ (in which case it might be a callback coming from JS),
  * or in Kotlin/Java (in which case it is a native callback).
  */
@@ -27,11 +27,11 @@ fun interface Func_void_bool: (Boolean) -> Unit {
    */
   @DoNotStrip
   @Keep
-  override fun invoke(blurred: Boolean): Unit
+  override fun invoke(zoomed: Boolean): Unit
 }
 
 /**
- * Represents the JavaScript callback `(blurred: boolean) => void`.
+ * Represents the JavaScript callback `(zoomed: boolean) => void`.
  * This is implemented in C++, via a `std::function<...>`.
  * The callback might be coming from JS.
  */
@@ -55,14 +55,14 @@ class Func_void_bool_cxx: Func_void_bool {
 
   @DoNotStrip
   @Keep
-  override fun invoke(blurred: Boolean): Unit
-    = invoke_cxx(blurred)
+  override fun invoke(zoomed: Boolean): Unit
+    = invoke_cxx(zoomed)
 
-  private external fun invoke_cxx(blurred: Boolean): Unit
+  private external fun invoke_cxx(zoomed: Boolean): Unit
 }
 
 /**
- * Represents the JavaScript callback `(blurred: boolean) => void`.
+ * Represents the JavaScript callback `(zoomed: boolean) => void`.
  * This is implemented in Java/Kotlin, via a `(Boolean) -> Unit`.
  * The callback is always coming from native.
  */
@@ -72,7 +72,7 @@ class Func_void_bool_cxx: Func_void_bool {
 class Func_void_bool_java(private val function: (Boolean) -> Unit): Func_void_bool {
   @DoNotStrip
   @Keep
-  override fun invoke(blurred: Boolean): Unit {
-    return this.function(blurred)
+  override fun invoke(zoomed: Boolean): Unit {
+    return this.function(zoomed)
   }
 }

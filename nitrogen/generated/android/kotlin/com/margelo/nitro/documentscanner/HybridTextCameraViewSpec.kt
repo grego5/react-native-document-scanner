@@ -11,7 +11,6 @@ import androidx.annotation.Keep
 import com.facebook.jni.HybridData
 import com.facebook.proguard.annotations.DoNotStrip
 import dalvik.annotation.optimization.FastNative
-import com.margelo.nitro.core.Promise
 import com.margelo.nitro.core.HybridObject
 import com.margelo.nitro.views.HybridView
 
@@ -32,6 +31,12 @@ abstract class HybridTextCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
+  abstract var session: HybridTextSessionSpec
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
   abstract var active: Boolean?
   
   @get:DoNotStrip
@@ -44,7 +49,7 @@ abstract class HybridTextCameraViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var guideColor: Double?
+  abstract var guide: TextGuide?
   
   @get:DoNotStrip
   @get:Keep
@@ -76,46 +81,18 @@ abstract class HybridTextCameraViewSpec: HybridView() {
   @set:Keep
   abstract var analysisFrameWidth: Double?
   
-  abstract var onCameraStateChange: ((state: CameraState) -> Unit)?
+  abstract var onGuideLayout: ((layout: TextGuideLayout) -> Unit)?
   
-  private var onCameraStateChange_cxx: Func_void_CameraState?
+  private var onGuideLayout_cxx: Func_void_TextGuideLayout?
     @Keep
     @DoNotStrip
     get() {
-      return onCameraStateChange?.let { Func_void_CameraState_java(it) }
+      return onGuideLayout?.let { Func_void_TextGuideLayout_java(it) }
     }
     @Keep
     @DoNotStrip
     set(value) {
-      onCameraStateChange = value?.let { it }
-    }
-  
-  abstract var onAutofocusChange: ((state: AutofocusState) -> Unit)?
-  
-  private var onAutofocusChange_cxx: Func_void_AutofocusState?
-    @Keep
-    @DoNotStrip
-    get() {
-      return onAutofocusChange?.let { Func_void_AutofocusState_java(it) }
-    }
-    @Keep
-    @DoNotStrip
-    set(value) {
-      onAutofocusChange = value?.let { it }
-    }
-  
-  abstract var onBlurChange: ((blurred: Boolean) -> Unit)?
-  
-  private var onBlurChange_cxx: Func_void_bool?
-    @Keep
-    @DoNotStrip
-    get() {
-      return onBlurChange?.let { Func_void_bool_java(it) }
-    }
-    @Keep
-    @DoNotStrip
-    set(value) {
-      onBlurChange = value?.let { it }
+      onGuideLayout = value?.let { it }
     }
   
   abstract var onError: ((error: ScannerFailure) -> Unit)?
@@ -133,9 +110,7 @@ abstract class HybridTextCameraViewSpec: HybridView() {
     }
 
   // Methods
-  @DoNotStrip
-  @Keep
-  abstract fun captureTextResult(timeoutMs: Double?): Promise<Variant_ScannerFailure_TextCapture>
+  
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

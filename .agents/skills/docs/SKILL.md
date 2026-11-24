@@ -10,10 +10,11 @@ Read only the references relevant to the task.
 | Topic | Reference |
 | --- | --- |
 | Public API, host integration, text reading and example ownership | [Integration](references/integration.md) |
-| Session lifecycle, revisions, native views and export | [Architecture](references/architecture.md) |
-| Coordinates, processing, guidance and capture parity | [Shared engine](references/engine.md) |
+| Document session ownership, revisions and export | [Architecture](references/architecture.md) |
+| Coordinates, model tensors, processing and capture parity | [Shared engine](references/engine.md) |
 | Routine checks, generation and parity fixtures | [Development](references/development.md) |
-| CameraX, focus, light, capture and samples | [Android camera](references/android/camera.md) |
+| CameraX document capture, shared focus controller, light and samples | [Android document camera](references/android/camera.md) |
+| Android text frames, OCR, focus policy and capture selection | [Android text camera](references/android/text-camera.md) |
 | Gradle, device validation and guide traces | [Android validation](references/android/validation.md) |
 | CocoaPods, permissions and simulator validation | [iOS setup](references/ios/setup.md) |
 | AVFoundation, guidance, capture and clocks | [iOS camera](references/ios/camera.md) |

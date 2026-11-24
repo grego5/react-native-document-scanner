@@ -11,7 +11,11 @@
 - An imported original is downscaled to the smallest upright size that still covers the export paper at its dpi, in the image's own orientation. Without a paper size, the cap is the 4096 px render limit. It is never enlarged. A page that fills only part of the image renders below the target dpi. Transparency becomes white paper. Android keeps a fitting JPEG's bytes and EXIF, and re-encodes other images upright. iOS always re-encodes upright through ImageIO.
 - Shared geometry and filters render from original pixels. Warp precedes shadow removal and the selected filter. The shared PDF writer owns placement and eligible compressed payload reuse. Platform adapters own fallback encoding and file publication.
 - Keep `format: auto` as page policy through filter edits. It resolves to four-bit gray PNG for black-and-white and JPEG otherwise. Explicit PNG requires a grayscale or black-and-white filter.
-- Hosts supply the [corner model](integration.md#corner-detection-model). Shared preprocessing applies crop and orientation before resize and interprets model geometry separately from score acceptance. Platform model owners serialize interpreter use.
+## Corner model
+
+- Native validation requires one float32 RGB input `[1, H, W, 3]` and one float32 output `[1, 9]`. Preprocessing applies crop and orientation before resizing to the model's dimensions. RGB normalization uses ImageNet mean `(0.485, 0.456, 0.406)` and deviation `(0.229, 0.224, 0.225)`.
+- The output contains TL/TR/BR/BL corners normalized to the model input, followed by a score. Geometry must be a clockwise convex quad inside the unit rectangle. Score acceptance is a separate threshold check. Platform model owners serialize inference. See [Host integration](integration.md#corner-detection-model) for model sources and load failures.
+
 ## Live guidance and capture
 
 - Shared flow measures regional motion. Missing evidence stays unknown. Platform adapters correlate clocks before combining sensor and camera evidence.

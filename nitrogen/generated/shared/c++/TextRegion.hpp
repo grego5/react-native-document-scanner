@@ -49,7 +49,9 @@ namespace margelo::nitro::documentscanner {
     explicit TextRegion(double x, double y, double width, double height): x(x), y(y), width(width), height(height) {}
 
   public:
+    #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
     friend bool operator==(const TextRegion& lhs, const TextRegion& rhs) = default;
+    #endif
   };
 
 } // namespace margelo::nitro::documentscanner
