@@ -32,7 +32,9 @@ internal class StandaloneCameraTrace : LiveGuideTraceObserver {
   override fun onFrame(sample: LiveFrameSample) {
     record("analysis", sample.sensorTimestampNs,
       "inference=${sample.analyzed} reason=${sample.inferenceReason} flow=${sample.flow?.status} " +
-        "reliable=${sample.flowReliable} lostRegions=${sample.flow?.lostRegions} doubt=${sample.adaptiveDoubt} blur=${sample.blur}")
+        "reliable=${sample.flowReliable} lostRegions=${sample.flow?.lostRegions} doubt=${sample.adaptiveDoubt} blur=${sample.blur} " +
+        "edges=${sample.edges?.let { "${it.median},${it.rows ?: "-"},${it.columns ?: "-"},${it.edges}" }} " +
+        "edgeArea=${if (sample.edgesOnPage) "page" else "guide"}")
   }
 
   override fun onObservation(observation: LiveDocumentObservation) {

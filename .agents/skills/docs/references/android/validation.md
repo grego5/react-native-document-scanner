@@ -10,6 +10,7 @@
 - Call `DocumentScanner.setDiagnosticsEnabled(true)` before mounting a camera. `exportDiagnostics()` returns a cache `file://` URI for host sharing. The example enables diagnostics at launch and exposes **Share log** on both camera screens. Exports contain recent log lines and mounted document cameras' last 15 s of trace. They contain no pixels, but text logs can contain recognized text. iOS reports `feature/unsupported`.
 - Match Camera2 results and detector decisions by sensor timestamp. A one-shot CameraX request can fall outside the repeating callback. App commands and guide expiry use elapsed device time.
 - Use `LiveGuideTraceRecordingTest` with `-Measure` for pixel-free TSV. Enable `liveGuideCapture` only with a human-tapped shutter. Pull `files/live-guide-traces` into ignored `.local/`. Replay with `LiveGuideTraceReplayTest` and `-Argument liveGuideTrace=<device-path>`. Use the current schema and matching config for exact guide comparisons. Replay consumes recorded flow, so tracking and actual page boundaries require device validation.
+- Document frames record the print's edge width (median, rows, columns, edge count) over the tracked page, or the guide area without one, in the trace's `edges` and `edgeArea` columns, the diagnostics export and the `RNDocumentScannerLive` debug log. It is measured only while one of them is on, and nothing decides by it yet.
 
 ## Focus and OCR checks
 

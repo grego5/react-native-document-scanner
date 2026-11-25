@@ -1284,9 +1284,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   }
 
   /** Logging only: [edges] as a log fragment. */
-  private fun describe(edges: EdgeWidth?): String = edges?.let {
-    "%.2f px (rows %.2f, columns %.2f, %d edges)".format(it.median, it.rows, it.columns, it.edges)
-  } ?: "unmeasured"
+  private fun describe(edges: EdgeWidth?): String = edges?.toString() ?: "unmeasured"
 
   /** Logging only: the edge width of an upright crop. */
   private fun edgesOf(crop: LumaCrop): EdgeWidth? =

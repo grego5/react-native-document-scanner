@@ -59,7 +59,10 @@ internal data class LiveFrameSample(
   val focusing: Boolean = false,
   val provisional: Boolean = false,
   val blur: Double? = null,
-
+  /** The print's edge width over the page, or over the guide area while [edgesOnPage] is false; null without enough
+   * edges to measure. Diagnostics only: nothing decides by it yet. */
+  val edges: EdgeWidth? = null,
+  val edgesOnPage: Boolean = false,
 )
 
 /** The capture gate's final evaluation: `takePicture` was called ([fired]) or the steady wait ran out. Times are on the

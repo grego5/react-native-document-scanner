@@ -15,6 +15,8 @@ import androidx.camera.view.transform.OutputTransform
 import com.margelo.nitro.documentscanner.DocumentCandidate
 import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.DocumentPoint
+import com.margelo.nitro.documentscanner.TextRegion
+import com.margelo.nitro.documentscanner.regionInBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
@@ -223,6 +225,9 @@ internal class LiveDocumentDetector(
   private var totalChecksNs = 0L
   private var totalCameraMs = 0.0
   private var peakBlur: Double? = null
+  /** Logging only: the latest frame's edge width, and whether it was measured over the page or the guide area. */
+  private var lastEdges: EdgeWidth? = null
+  private var lastEdgesOnPage = false
   private var gated = 0
   private var unmatched = 0
   private var lastWidth = 0
@@ -435,7 +440,15 @@ internal class LiveDocumentDetector(
     try {
       received++
       if (moving) gated++
-      traceObserver?.takeIf { it.frameSamplesEnabled }?.onFrame(frameSample(sensorTimestampNs, startedAt, frame, token != null, flow).copy(
+      val predicted = flowRegion?.takeIf { matchingGeometry }?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) }
+      val sampling = traceObserver?.frameSamplesEnabled == true
+      // Diagnostics only, so measured only while something reads it.
+      val edges = if (sampling || debugLogging) edgeWidth(image, predicted) else null
+      if (debugLogging) {
+        lastEdges = edges
+        lastEdgesOnPage = predicted != null
+      }
+      if (sampling) traceObserver?.onFrame(frameSample(sensorTimestampNs, startedAt, frame, token != null, flow).copy(
         inferenceReason = when {
           boundGeneration != binding -> "binding changed"
           token != null -> "inference"
@@ -446,6 +459,7 @@ internal class LiveDocumentDetector(
         inferenceGapNs = gap ?: Long.MAX_VALUE, flowReliable = reliable,
         predictedCorners = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) },
         adaptiveDoubt = doubt, focusing = frame?.outOfFocus == true, blur = blur,
+        edges = edges, edgesOnPage = predicted != null,
       ))
       if (token == null) {
         dropped++
@@ -615,6 +629,24 @@ internal class LiveDocumentDetector(
         flow?.estimate, recordedMotion, gyroSpeed, peakAcceleration, inferenceFinished)
       logWindow(System.nanoTime())
     }
+  }
+
+  /** Diagnostics only: the print's edge width ([regionEdgeWidth]) over the box around [page], upright frame
+   * fractions, else over the guide area ([GUIDE_AREA]), where the page usually lies before it is found; null without
+   * enough print edges to measure. */
+  private fun edgeWidth(image: ImageProxy, page: DocumentCorners?): EdgeWidth? {
+    val area = page ?: GUIDE_AREA
+    val points = listOf(area.topLeft, area.topRight, area.bottomRight, area.bottomLeft)
+    val left = points.minOf { it.x }
+    val top = points.minOf { it.y }
+    val crop = image.cropRect
+    val box = regionInBuffer(TextRegion(left, top, points.maxOf { it.x } - left, points.maxOf { it.y } - top),
+      image.imageInfo.rotationDegrees, crop.left, crop.top, crop.width(), crop.height())
+    val plane = image.planes[0]
+    val x0 = box[0].coerceIn(0, image.width)
+    val y0 = box[1].coerceIn(0, image.height)
+    return regionEdgeWidth(plane.buffer, plane.rowStride, plane.pixelStride, x0, y0,
+      box[2].coerceIn(x0, image.width), box[3].coerceIn(y0, image.height))
   }
 
   /** Rotation blur across [frame]'s exposure, which starts its first row at [sensorTimestampNs] and its last row one
@@ -812,7 +844,7 @@ internal class LiveDocumentDetector(
     val frames = inferred.coerceAtLeast(1)
     if (debugLogging) {
       ScannerLog.d("RNDocumentScannerLive", "rate=${inferred / seconds}Hz received=$received inferred=$inferred skipped=$dropped meanAnalysisMs=${totalLatencyMs / frames} " +
-        "maxRecordGapMs=${maxRecordGapNs / 1_000_000}")
+        "maxRecordGapMs=${maxRecordGapNs / 1_000_000} edges=${lastEdges ?: "unmeasured"} over ${if (lastEdgesOnPage) "page" else "guide"}")
       maxRecordGapNs = 0L
     }
     if (listener != null) {

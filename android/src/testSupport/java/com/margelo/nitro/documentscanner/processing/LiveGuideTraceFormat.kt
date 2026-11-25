@@ -73,6 +73,8 @@ internal object LiveGuideTraceFormat {
     "flowTransform", "flowTransformProcessingNs",
     "guideEligible",
     "trackingOnly",
+    "edges",
+    "edgeArea",
   )
 
   fun write(trace: LiveGuideTrace, out: Appendable) {
@@ -202,6 +204,10 @@ internal object LiveGuideTraceFormat {
           flow = parseFlow(row),
           flowAgeNs = parseOptionalLong(row.getValue("flowAgeNs")),
           flowProcessingNs = parseOptionalLong(row.getValue("flowProcessingNs")),
+          edges = row.getValue("edges").takeIf { it != MISSING }?.split(',')?.let {
+            EdgeWidth(it[0].toDouble(), parseOptionalDouble(it[1]), parseOptionalDouble(it[2]), it[3].toInt())
+          },
+          edgesOnPage = row.getValue("edgeArea") == "page",
         ))
         "gyro" -> {
           val rates = row.getValue("rates").split(',').map { it.toDouble() }
@@ -270,6 +276,9 @@ internal object LiveGuideTraceFormat {
       "analyzed" -> f.analyzed.toString()
       "flowAgeNs" -> f.flowAgeNs?.toString() ?: MISSING
       "flowProcessingNs" -> f.flowProcessingNs?.toString() ?: MISSING
+      // Median, rows, columns, then the edge count.
+      "edges" -> f.edges?.let { "${it.median},${it.rows ?: MISSING},${it.columns ?: MISSING},${it.edges}" } ?: MISSING
+      "edgeArea" -> if (f.edges == null) MISSING else if (f.edgesOnPage) "page" else "guide"
       else -> flowField(column, f.flow) ?: MISSING
     }
   }

@@ -142,9 +142,16 @@ internal fun regionThumbnail(
 
 /**
  * A frame's print edges: the [median] width in pixels over which the luma turns from paper to ink, the medians of the
- * edges met along buffer rows, [rows], and columns, [columns], which part under motion blur, and the [edges] measured.
+ * edges met along buffer rows, [rows], and columns, [columns], which part under motion blur, each null when no edge
+ * crossed that way, and the [edges] measured.
  */
-internal data class EdgeWidth(val median: Double, val rows: Double, val columns: Double, val edges: Int)
+internal data class EdgeWidth(val median: Double, val rows: Double?, val columns: Double?, val edges: Int) {
+  /** For logs: the widths in analysis pixels and how many edges gave them. */
+  override fun toString() =
+    "%.2f px (rows %s, columns %s, %d edges)".format(median, rows.width(), columns.width(), edges)
+
+  private fun Double?.width() = this?.let { "%.2f".format(it) } ?: "none"
+}
 
 /**
  * The buffer rectangle [left], [top] to [right], [bottom]'s edge width: how far the luma takes to turn across its
@@ -176,7 +183,7 @@ internal fun regionEdgeWidth(
   }
   val all = rows + columns
   if (all.size < EDGE_MIN) return null
-  return EdgeWidth(median(all), median(rows), median(columns), all.size)
+  return EdgeWidth(median(all) ?: return null, median(rows), median(columns), all.size)
 }
 
 /** The widths of the edges along the first [n] values of [line], added to [out]. */
@@ -214,8 +221,9 @@ private fun crossing(line: IntArray, a: Int, b: Int, level: Double): Double {
   return b.toDouble()
 }
 
-private fun median(values: List<Double>): Double {
-  if (values.isEmpty()) return Double.NaN
+/** The median of [values]; null when there are none. */
+private fun median(values: List<Double>): Double? {
+  if (values.isEmpty()) return null
   val sorted = values.sorted()
   return sorted[sorted.size / 2]
 }

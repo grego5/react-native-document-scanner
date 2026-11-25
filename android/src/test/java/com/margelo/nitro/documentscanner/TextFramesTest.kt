@@ -207,7 +207,7 @@ class TextFramesTest {
     assertEquals(blurred.median, edges(stripes(period = 16, ramp = 6)).median, .3)
     assertEquals(blurred.median, edges(stripes(period = 8, ramp = 6, dark = 90, light = 170)).median, .3)
     // Vertical stripes cross only the rows.
-    assertTrue(blurred.columns.isNaN())
+    assertNull(blurred.columns)
     // A plain view has no edges.
     assertNull(regionEdgeWidth(ByteBuffer.allocate(width * height), width, 1, 0, 0, width, height))
   }
