@@ -243,8 +243,8 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
 
   /** What this view does for its session. */
   private val sessionCamera = object : HybridTextSession.Camera {
-    override fun capture(timeout: Long, done: (TextCapture?, ScannerErrorCode?) -> Unit) {
-      mainHandler.post { startCapture(timeout, done) }
+    override fun capture(session: HybridTextSession, timeout: Long, done: (TextCapture?, ScannerErrorCode?) -> Unit) {
+      mainHandler.post { startCapture(session, timeout, done) }
     }
   }
   /** A read frame: [crop] of [region], exposed at [sensorNs] in [focus], 0 for none, the [lines] recognized in it, and
@@ -353,9 +353,10 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     syncTextFocus()
   }
 
-  /** Main thread: the session's capture, by the workflow of [serveCaptures]. */
-  private fun startCapture(timeout: Long, done: (TextCapture?, ScannerErrorCode?) -> Unit) {
-    if (controller == null || disposed || interrupted) {
+  /** Main thread: [session]'s capture, by the workflow of [serveCaptures]. */
+  private fun startCapture(session: HybridTextSession, timeout: Long, done: (TextCapture?, ScannerErrorCode?) -> Unit) {
+    // A session this view no longer shows, as after a swap the press crossed on its way here, is refused.
+    if (controller == null || disposed || interrupted || attachedSession !== session) {
       done(null, ScannerErrorCode.CAMERA_UNAVAILABLE)
       return
     }
@@ -812,7 +813,10 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         if (captures.isEmpty()) resetCaptureLock()
         return
       }
-      how = "the sharpest kept frame, past the deadline"
+      // Only the presses whose time is up take a frame that may show no text; the others keep waiting for a readable
+      // read.
+      deliver(result, "the sharpest kept frame, past the deadline", captures.filter { now >= it.deadline })
+      return
     }
     deliver(result, how)
   }
@@ -841,11 +845,10 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     return TextShot(entry.image, lines, entry.focus, keptRegion, entry.sharpness, entry.sensorNs, edgesOf(entry.image)?.median)
   }
 
-  /** Analysis thread: resolves every waiting capture with [result], got by [how], encoded once. */
-  private fun deliver(result: TextShot, how: String) {
-    val waiting = captures.toList()
-    captures.clear()
-    resetCaptureLock()
+  /** Analysis thread: resolves [waiting], every waiting capture by default, with [result], got by [how], encoded once. */
+  private fun deliver(result: TextShot, how: String, waiting: List<PendingCapture> = captures.toList()) {
+    captures.removeAll(waiting)
+    if (captures.isEmpty()) resetCaptureLock()
     val crop = result.crop
     val bitmap = bitmapOf(crop)
     val uri = try { captureUri(bitmap) } finally { bitmap.recycle() }

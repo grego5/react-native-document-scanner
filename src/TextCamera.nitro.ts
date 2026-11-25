@@ -32,7 +32,7 @@ export type TextGuideState = 'ready' | 'focusing' | 'blurred' | 'capturing'
  *   nothing found for focus, and a capture waits for a sharp one until its deadline.
  * - `focusing`: a lock's or a tap's scan runs.
  * - `ready`: frames arrive in focus, or continuous autofocus follows the region.
- * iOS reports `off`, `starting` and `ready` only.
+ * iOS reports `off`, `starting`, `capturing` and `ready` only.
  */
 export type TextScanStatus = 'off' | 'starting' | 'ready' | 'focusing' | 'blurred' | 'capturing'
 

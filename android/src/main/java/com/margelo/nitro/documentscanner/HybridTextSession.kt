@@ -11,9 +11,9 @@ import com.margelo.nitro.core.Promise
 class HybridTextSession : HybridTextSessionSpec() {
   /** What the attached camera does for the session. */
   internal interface Camera {
-    /** Takes a capture within [timeout] milliseconds, calling [done] once with it, or with the failure's code. Any
-     * thread. */
-    fun capture(timeout: Long, done: (TextCapture?, ScannerErrorCode?) -> Unit)
+    /** Takes a capture for [session] within [timeout] milliseconds, calling [done] once with it, or with the failure's
+     * code. Any thread. */
+    fun capture(session: HybridTextSession, timeout: Long, done: (TextCapture?, ScannerErrorCode?) -> Unit)
   }
 
   private val lock = Any()
@@ -64,7 +64,7 @@ class HybridTextSession : HybridTextSessionSpec() {
     } ?: return promise
     // Milliseconds.
     val wait = (timeout ?: 2000.0).toLong().coerceIn(0, 30_000)
-    camera.capture(wait) { taken, code ->
+    camera.capture(this, wait) { taken, code ->
       var settled: TextSessionSnapshot? = null
       val delivery = synchronized(lock) {
         if (!waiting.remove(promise)) return@capture

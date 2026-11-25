@@ -22,4 +22,8 @@
 
 The view runs a separate `AVCaptureSession`. Video frames establish readiness and native autofocus aims at the region. The guide and session follow [Host integration](../integration.md#text-reading). Interruptions clear readiness until a fresh frame arrives. Configuration or runtime failure stops the pipeline.
 
+- Video buffers keep the sensor's orientation. On main, region, layout and rotation changes map the crop through the preview layer. Rotation also re-aims autofocus and exposure. Only frames exposed since the current crop began count toward readiness and capture. The four sharpest crops of the last second are kept as upright grayscale images. A new crop drops them.
+- `TextCaptureWork` serves captures on the video queue. A press reads the sharpest kept frame not yet read with Vision's accurate recognizer, without language correction, then each new frame while it waits. The first read that finds text serves it. At timeout (default 2 s) the sharpest kept frame serves it, even with no words. Only presses past their own deadline take that fallback; a read with text serves every waiting press. No frame yields `capture/not-ready`, and a recognizer failure `capture/failed`.
+- When the camera stops or the view is given another session, waiting captures take the sharpest frame kept for the crop at that moment, or fail with `camera/unavailable`; frames kept for a newer crop stay. Presses read the current crop on the video queue. A press that reaches the view after its session was swapped out is refused with `camera/unavailable`. There is no focus lock, blur measure or zoom yet; `status` is `capturing` while a capture waits.
+
 See [iOS setup](setup.md#permission-and-validation) for validation.

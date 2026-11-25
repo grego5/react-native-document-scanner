@@ -25,9 +25,10 @@ export interface TextSession {
    * Captures with the attached camera into the session; resolves with the snapshot holding the capture, already
    * published. Rejects with `camera/unavailable` without a running camera, `capture/not-ready` when the timeout passes
    * before the camera kept any frame, `capture/failed` when the frame cannot be read or encoded, `processor/disposed`
-   * once closed, and `feature/unsupported` on iOS. A camera that stops meanwhile, as when its view unmounts, reads
-   * the sharpest frame it kept, and rejects with `camera/unavailable` without one. How Android picks the frame:
-   * `.agents/skills/docs/references/android/text-camera.md#capture-selection`.
+   * once closed. A camera that stops meanwhile, as when its view unmounts, reads the sharpest frame it kept, and
+   * rejects with `camera/unavailable` without one. How the frame is picked:
+   * `.agents/skills/docs/references/android/text-camera.md#capture-selection` and
+   * `.agents/skills/docs/references/ios/camera.md#text-camera`.
    */
   capture(options?: {
     /** How long the capture may wait for a readable frame, in milliseconds; defaults to 2000. */

@@ -25,12 +25,13 @@ export interface TextSessionObservation {
  */
 export interface TextSession extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   /**
-   * Captures with the attached camera into the session, and resolves with the snapshot holding it, as the camera's
-   * capture rules give it: a recent readable read at once, else a lock and its read, else past `timeout`, in milliseconds
-   * (defaults to 2000), the sharpest frame kept. A camera that stops meanwhile, as when its view unmounts, reads the
-   * sharpest frame it kept. Fails with `camera/unavailable` without a running camera, or once stopped without a kept
-   * frame; `capture/not-ready` when the timeout passes before any frame was kept; `capture/failed` when the frame
-   * cannot be read or encoded; `processor/disposed` once closed; and `feature/unsupported` on iOS.
+   * Captures with the attached camera and resolves with the snapshot holding the capture. The timeout is in
+   * milliseconds and defaults to 2000. A camera that stops while a capture waits uses its retained frames.
+   * Fails with `camera/unavailable` without a running camera or when stopped without a retained frame.
+   * Fails with `capture/not-ready` when the deadline passes without a frame, `capture/failed` when the frame
+   * cannot be read or encoded, and `processor/disposed` once closed.
+   * See `.agents/skills/docs/references/android/text-camera.md#capture-selection` and
+   * `.agents/skills/docs/references/ios/camera.md#text-camera` for platform selection rules.
    */
   captureResult(timeout?: number): Promise<TextSessionSnapshot | ScannerFailure>
   /** Drops the capture, for a retake. */
