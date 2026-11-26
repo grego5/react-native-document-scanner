@@ -28,6 +28,20 @@ export interface ImportImageOptions {
   autoCrop?: boolean
 }
 
+/**
+ * How a camera page's photo turned out, so the app can offer a retake. Android document captures only: absent for
+ * imports and on iOS.
+ */
+export interface CaptureQuality {
+  /** The focus cycle ended without confirming focus, and the photo used the focus the lens held. */
+  readonly focusUnconfirmed: boolean
+  /**
+   * The photo's own print measured soft around the page's print spot; false when too little print could be measured.
+   * Measured after the page arrives, off the capture's path, and absent until then: a later session change carries it.
+   */
+  readonly soft?: boolean
+}
+
 /** Native metadata only. Image files and render caches remain outside transport. */
 export interface ScanPageMetadata {
   readonly id: string
@@ -41,6 +55,8 @@ export interface ScanPageMetadata {
   readonly options: DocumentRenderOptions
   readonly analysisFailure?: ScannerFailure
   readonly renderFailure?: ScannerFailure
+  /** Set at capture; `soft` follows once measured. */
+  readonly capture?: CaptureQuality
 }
 
 /** Full immutable source state; sourceVersion sequences native changes, not JS frame publications. */

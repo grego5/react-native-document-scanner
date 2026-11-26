@@ -75,6 +75,9 @@ internal object LiveGuideTraceFormat {
     "trackingOnly",
     "edges",
     "edgeArea",
+    "focus",
+    "drift",
+    "acceleration",
   )
 
   fun write(trace: LiveGuideTrace, out: Appendable) {
@@ -208,6 +211,11 @@ internal object LiveGuideTraceFormat {
             EdgeWidth(it[0].toDouble(), parseOptionalDouble(it[1]), parseOptionalDouble(it[2]), it[3].toInt())
           },
           edgesOnPage = row.getValue("edgeArea") == "page",
+          focus = row.getValue("focus").takeIf { it != MISSING }?.split(',')?.let {
+            FocusReading(FocusVerdict.valueOf(it[0].uppercase()), it[1].toDouble())
+          },
+          drift = parseOptionalDouble(row.getValue("drift")),
+          acceleration = parseOptionalDouble(row.getValue("acceleration")),
         ))
         "gyro" -> {
           val rates = row.getValue("rates").split(',').map { it.toDouble() }
@@ -279,6 +287,9 @@ internal object LiveGuideTraceFormat {
       // Median, rows, columns, then the edge count.
       "edges" -> f.edges?.let { "${it.median},${it.rows ?: MISSING},${it.columns ?: MISSING},${it.edges}" } ?: MISSING
       "edgeArea" -> if (f.edges == null) MISSING else if (f.edgesOnPage) "page" else "guide"
+      "focus" -> f.focus?.let { "${it.verdict.name.lowercase()},${it.floor}" } ?: MISSING
+      "drift" -> f.drift?.toString() ?: MISSING
+      "acceleration" -> f.acceleration?.toString() ?: MISSING
       else -> flowField(column, f.flow) ?: MISSING
     }
   }

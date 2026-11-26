@@ -88,7 +88,7 @@ struct PageMetadata: Equatable {
       analyzing: analyzing, rendering: rendering, ready: readyRevision == revision, analysis: analysis?.nitro,
       corners: SessionCorners.corners(corners), options: settings.options,
       analysisFailure: analysisFailure.map { ScannerFailure(code: $0) },
-      renderFailure: renderFailure.map { ScannerFailure(code: $0) })
+      renderFailure: renderFailure.map { ScannerFailure(code: $0) }, capture: nil)
   }
 }
 

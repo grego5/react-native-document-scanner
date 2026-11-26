@@ -33,8 +33,10 @@ internal class StandaloneCameraTrace : LiveGuideTraceObserver {
     record("analysis", sample.sensorTimestampNs,
       "inference=${sample.analyzed} reason=${sample.inferenceReason} flow=${sample.flow?.status} " +
         "reliable=${sample.flowReliable} lostRegions=${sample.flow?.lostRegions} doubt=${sample.adaptiveDoubt} blur=${sample.blur} " +
+        "drift=${sample.drift} acceleration=${sample.acceleration} " +
         "edges=${sample.edges?.let { "${it.median},${it.rows ?: "-"},${it.columns ?: "-"},${it.edges}" }} " +
-        "edgeArea=${if (sample.edgesOnPage) "page" else "guide"}")
+        "edgeArea=${if (sample.edgesOnPage) "page" else "guide"} " +
+        "focus=${sample.focus?.let { "${it.verdict.name.lowercase()},${it.floor}" }}")
   }
 
   override fun onObservation(observation: LiveDocumentObservation) {

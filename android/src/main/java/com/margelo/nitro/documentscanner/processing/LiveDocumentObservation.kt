@@ -59,10 +59,15 @@ internal data class LiveFrameSample(
   val focusing: Boolean = false,
   val provisional: Boolean = false,
   val blur: Double? = null,
+  /** The phone's net turn over the span before the frame, as frame widths, and the accelerometer's peak over the frame
+   * interval, m/s², which the capture's framing check judges ([FrameRecord.gyroDrift]); null without the sensor. */
+  val drift: Double? = null,
+  val acceleration: Double? = null,
   /** The print's edge width over the page, or over the guide area while [edgesOnPage] is false; null without enough
-   * edges to measure. Diagnostics only: nothing decides by it yet. */
+   * edges to measure. [focus] is the frame's focus judged by it. */
   val edges: EdgeWidth? = null,
   val edgesOnPage: Boolean = false,
+  val focus: FocusReading? = null,
 )
 
 /** The capture gate's final evaluation: `takePicture` was called ([fired]) or the steady wait ran out. Times are on the

@@ -50,7 +50,10 @@ data class ScanPageMetadata(
   val analysisFailure: ScannerFailure?,
   @DoNotStrip
   @Keep
-  val renderFailure: ScannerFailure?
+  val renderFailure: ScannerFailure?,
+  @DoNotStrip
+  @Keep
+  val capture: CaptureQuality?
 ) {
   /* primary constructor */
 
@@ -68,6 +71,7 @@ data class ScanPageMetadata(
       && Objects.deepEquals(this.options, other.options)
       && Objects.deepEquals(this.analysisFailure, other.analysisFailure)
       && Objects.deepEquals(this.renderFailure, other.renderFailure)
+      && Objects.deepEquals(this.capture, other.capture)
   }
 
   override fun hashCode(): Int {
@@ -82,7 +86,8 @@ data class ScanPageMetadata(
       corners,
       options,
       analysisFailure,
-      renderFailure
+      renderFailure,
+      capture
     ).contentDeepHashCode()
   }
 
@@ -94,8 +99,8 @@ data class ScanPageMetadata(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(id: String, revision: Double, readyRevision: Double?, analyzing: Boolean, rendering: Boolean, ready: Boolean, analysis: DocumentAnalysis?, corners: DocumentCorners, options: DocumentRenderOptions, analysisFailure: ScannerFailure?, renderFailure: ScannerFailure?): ScanPageMetadata {
-      return ScanPageMetadata(id, revision, readyRevision, analyzing, rendering, ready, analysis, corners, options, analysisFailure, renderFailure)
+    private fun fromCpp(id: String, revision: Double, readyRevision: Double?, analyzing: Boolean, rendering: Boolean, ready: Boolean, analysis: DocumentAnalysis?, corners: DocumentCorners, options: DocumentRenderOptions, analysisFailure: ScannerFailure?, renderFailure: ScannerFailure?, capture: CaptureQuality?): ScanPageMetadata {
+      return ScanPageMetadata(id, revision, readyRevision, analyzing, rendering, ready, analysis, corners, options, analysisFailure, renderFailure, capture)
     }
   }
 }

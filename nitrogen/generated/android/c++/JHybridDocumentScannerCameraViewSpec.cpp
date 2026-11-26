@@ -59,6 +59,8 @@ namespace margelo::nitro::documentscanner { struct DocumentPoint; }
 namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
 // Forward declaration of `PaperSize` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct PaperSize; }
+// Forward declaration of `CaptureQuality` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CaptureQuality; }
 // Forward declaration of `TakePhotoOptions` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 
@@ -132,6 +134,8 @@ namespace margelo::nitro::documentscanner { struct TakePhotoOptions; }
 #include "JDocumentRenderOptions.hpp"
 #include "PaperSize.hpp"
 #include "JPaperSize.hpp"
+#include "CaptureQuality.hpp"
+#include "JCaptureQuality.hpp"
 #include "TakePhotoOptions.hpp"
 #include "JTakePhotoOptions.hpp"
 

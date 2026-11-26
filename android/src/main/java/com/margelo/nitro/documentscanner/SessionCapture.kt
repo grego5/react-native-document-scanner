@@ -19,10 +19,14 @@ internal class SessionCapture private constructor(
   fun invalidate() { invalidated = true }
 
   /** Call only after original/frame saving and the view generation's publication claim succeed. */
-  fun publish(frameResource: SessionResources.Resource?, liveCorners: DocumentCorners?, autoCrop: Boolean = true): String {
+  fun publish(
+    frameResource: SessionResources.Resource?, liveCorners: DocumentCorners?, autoCrop: Boolean = true,
+    capture: CaptureQuality? = null, photo: PhotoSample? = null,
+  ): String {
     check(!ended && !kept)
     if (invalidated) throw ScannerException(ScannerErrorCode.PROCESSOR_SUPERSEDED)
-    session.admit(pageId, original.resource, frameResource, liveCorners, options, selection, autoCrop, normalized = true)
+    session.admit(pageId, original.resource, frameResource, liveCorners, options, selection, autoCrop, normalized = true,
+      capture = capture, photo = photo)
     kept = true
     return pageId
   }

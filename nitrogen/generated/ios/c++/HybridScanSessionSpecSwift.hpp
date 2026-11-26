@@ -46,6 +46,8 @@ namespace margelo::nitro::documentscanner { struct DocumentCandidate; }
 namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
 // Forward declaration of `PaperSize` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct PaperSize; }
+// Forward declaration of `CaptureQuality` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CaptureQuality; }
 // Forward declaration of `ScanSessionObservation` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScanSessionObservation; }
 // Forward declaration of `ScanSessionChange` to properly resolve imports.
@@ -74,6 +76,7 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include "DocumentCandidate.hpp"
 #include "DocumentRenderOptions.hpp"
 #include "PaperSize.hpp"
+#include "CaptureQuality.hpp"
 #include "ScanSessionObservation.hpp"
 #include <functional>
 #include "ScanSessionChange.hpp"

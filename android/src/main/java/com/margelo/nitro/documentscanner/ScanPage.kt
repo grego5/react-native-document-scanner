@@ -7,7 +7,12 @@ internal class ScanPage(
   val frame: SessionResources.Resource?,
   var options: DocumentRenderOptions,
   val liveCorners: DocumentCorners? = null,
+  /** How the camera's photo turned out; null for imports. Its softness is set once measured. */
+  var capture: CaptureQuality? = null,
 ) {
+  /** Where the camera's photo is measured, queued once analysis requests the first render; null once queued, and for
+   * imports. */
+  var photo: PhotoSample? = null
   data class RenderKey(val corners: DocumentCorners, val options: DocumentRenderOptions)
   data class Artifact(
     val image: SessionResources.Resource,
@@ -29,6 +34,7 @@ internal class ScanPage(
     val options: DocumentRenderOptions,
     val analysisFailure: ScannerFailure?,
     val renderFailure: ScannerFailure?,
+    val capture: CaptureQuality?,
   )
 
   var corners = fullFrame()
@@ -55,7 +61,7 @@ internal class ScanPage(
   val renderWaitsForAnalysis get() = analyzing && analysisGatesRender
   fun metadata() = Metadata(id, requestedRevision, readyRevision, analyzing || awaitingModel,
     !renderWaitsForAnalysis && readyRevision != requestedRevision && renderFailure == null,
-    analysis, corners, options, analysisFailure, renderFailure)
+    analysis, corners, options, analysisFailure, renderFailure, capture)
 
   companion object {
     fun fullFrame() = DocumentCorners(DocumentPoint(0.0, 0.0), DocumentPoint(1.0, 0.0),

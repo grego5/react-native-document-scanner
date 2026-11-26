@@ -32,6 +32,11 @@ internal class GyroHistory(private val capacity: Int = 512) {
 
   @Synchronized fun peakRate(fromNs: Long, toNs: Long): Double? = query(fromNs, toNs, 1)?.first()
 
+  /** How far the device turned from [fromNs] to [toNs], in radians: the angle of [rotation], so a tremor that turns
+   * back and forth within the span nets little. Null when samples do not cover the span. */
+  fun turn(fromNs: Long, toNs: Long): Double? = rotation(fromNs, toNs)
+    ?.let { r -> kotlin.math.acos(((r[0] + r[4] + r[8] - 1) / 2).coerceIn(-1.0, 1.0)) }
+
   /** Whether samples reach both ends of [fromNs]..[toNs] within [MAX_EXTRAPOLATION_NS], so a peak over it saw it all. */
   @Synchronized fun covers(fromNs: Long, toNs: Long): Boolean =
     count > 0 && times[index(0)] <= fromNs + MAX_EXTRAPOLATION_NS && times[index(count - 1)] >= toNs - MAX_EXTRAPOLATION_NS

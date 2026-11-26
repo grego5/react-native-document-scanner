@@ -41,6 +41,8 @@
 #include "JDocumentImageFormat.hpp"
 #include "PaperSize.hpp"
 #include "JPaperSize.hpp"
+#include "CaptureQuality.hpp"
+#include "JCaptureQuality.hpp"
 
 namespace margelo::nitro::documentscanner {
 

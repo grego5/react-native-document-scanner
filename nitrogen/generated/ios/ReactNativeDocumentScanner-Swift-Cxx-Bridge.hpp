@@ -24,6 +24,8 @@ namespace margelo::nitro::documentscanner { struct CameraPermissionValue; }
 namespace margelo::nitro::documentscanner { enum class CameraState; }
 // Forward declaration of `CaptureMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureMode; }
+// Forward declaration of `CaptureQuality` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CaptureQuality; }
 // Forward declaration of `CaptureStage` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
 // Forward declaration of `CaptureWaitReason` to properly resolve imports.
@@ -158,6 +160,7 @@ namespace ReactNativeDocumentScanner { class HybridTextSessionSpec_cxx; }
 #include "CameraPermissionValue.hpp"
 #include "CameraState.hpp"
 #include "CaptureMode.hpp"
+#include "CaptureQuality.hpp"
 #include "CaptureStage.hpp"
 #include "CaptureWaitReason.hpp"
 #include "CropDraftPreset.hpp"
@@ -1114,6 +1117,21 @@ namespace margelo::nitro::documentscanner::bridge::swift {
     return optional.has_value();
   }
   inline ScannerFailure get_std__optional_ScannerFailure_(const std::optional<ScannerFailure>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<CaptureQuality>
+  /**
+   * Specialized version of `std::optional<CaptureQuality>`.
+   */
+  using std__optional_CaptureQuality_ = std::optional<CaptureQuality>;
+  inline std::optional<CaptureQuality> create_std__optional_CaptureQuality_(const CaptureQuality& value) noexcept {
+    return std::optional<CaptureQuality>(value);
+  }
+  inline bool has_value_std__optional_CaptureQuality_(const std::optional<CaptureQuality>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline CaptureQuality get_std__optional_CaptureQuality_(const std::optional<CaptureQuality>& optional) noexcept {
     return optional.value();
   }
   

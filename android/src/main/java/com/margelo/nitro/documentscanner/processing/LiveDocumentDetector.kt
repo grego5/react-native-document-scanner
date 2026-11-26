@@ -225,9 +225,14 @@ internal class LiveDocumentDetector(
   private var totalChecksNs = 0L
   private var totalCameraMs = 0.0
   private var peakBlur: Double? = null
-  /** Logging only: the latest frame's edge width, and whether it was measured over the page or the guide area. */
+  /** Logging only: the latest frame's edge width, whether it was measured over the page or the guide area, and its
+   * focus reading. */
   private var lastEdges: EdgeWidth? = null
   private var lastEdgesOnPage = false
+  private var lastFocus: FocusReading? = null
+  /** Each frame's focus by its print edges, learned per binding: [focusBinding] is the binding it learned under. */
+  private val focusEvidence = FocusEvidence()
+  private var focusBinding = -1L
   private var gated = 0
   private var unmatched = 0
   private var lastWidth = 0
@@ -312,7 +317,8 @@ internal class LiveDocumentDetector(
   /** Stores this frame's analysis result for its binding, then notifies main that new results are available. */
   private fun recordFrameAnalysis(
     boundGeneration: Long, frameGeneration: Long, sensorTimestampNs: Long, arrivalNs: Long, realtime: Boolean, frame: CameraFrameState?,
-    flow: FlowMotionEstimate?, motion: GateMotion?, gyroSpeed: Double?, acceleration: Double?, inferenceFinished: Boolean,
+    flow: FlowMotionEstimate?, motion: GateMotion?, gyroDrift: Double?, acceleration: Double?, inferenceFinished: Boolean,
+    focus: FocusReading?,
   ) {
     synchronized(bindingLock) {
       if (boundGeneration != binding || frameGeneration != flowGeneration || !flowActive) return
@@ -322,10 +328,10 @@ internal class LiveDocumentDetector(
       }
       frameHistory.append { sequence ->
         FrameRecord(sequence, sensorTimestampNs, sensorTimestampNs.takeIf { realtime }, arrivalNs, frame, flow,
-          motion, gyroSpeed, acceleration,
+          motion, gyroDrift, acceleration,
           captureGuide?.takeIf {
             state.guidanceEnabled() && (captureGuideDeadlineNs == 0L || arrivalNs < captureGuideDeadlineNs)
-          }, inferenceFinished)
+          }, inferenceFinished, focus)
       }
     }
     if (frameAnalysisListener == null) return
@@ -384,6 +390,13 @@ internal class LiveDocumentDetector(
     val gyroBlur = frame?.let { gyroBlur(optics, sensorTimestampNs, it) }
     val motion = gyroBlur?.let { GateMotion(it, MotionSource.GYRO) }
     val blur = gyroBlur
+    // The framing drift is the phone's net turn over the span before this frame, as frame widths.
+    val gyroDrift = if (gyro == null || optics == null) null
+      else gyro.turn(sensorTimestampNs - DRIFT_SPAN_NS, sensorTimestampNs)
+        ?.let { it * optics.focalLengthPx / optics.activeWidth }
+    // The accelerometer's peak over the frame interval before it: the gyroscope sees rotation, not a move along or
+    // toward the page.
+    val peakAcceleration = acceleration?.peak(sensorTimestampNs - SPEED_SPAN_NS - GYRO_MARGIN_NS, sensorTimestampNs)
     if (blur != null) peakBlur = maxOf(peakBlur ?: 0.0, blur)
     val adaptive = inferenceThrottling && pacingEnabled
     if (adaptive != adaptiveWasEnabled) {
@@ -437,16 +450,25 @@ internal class LiveDocumentDetector(
     }
     if (wanted && token != null) inferenceWanted = false
     var inferenceFinished = false
+    var focusReading: FocusReading? = null
     try {
       received++
       if (moving) gated++
       val predicted = flowRegion?.takeIf { matchingGeometry }?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) }
       val sampling = traceObserver?.frameSamplesEnabled == true
-      // Diagnostics only, so measured only while something reads it.
-      val edges = if (sampling || debugLogging) edgeWidth(image, predicted) else null
+      val edges = edgeWidth(image, predicted)
+      if (focusBinding != boundGeneration) {
+        focusBinding = boundGeneration
+        focusEvidence.reset()
+      }
+      // The result often lands while the frame is analyzed; a frame still without one reads unknown.
+      val focusFrame = frame ?: frames.at(sensorTimestampNs)
+      focusReading = focusEvidence.judge(edges, maxOf(image.width, image.height), focusFrame,
+        if (focusFrame != null && frame == null) gyroBlur(optics, sensorTimestampNs, focusFrame) else blur)
       if (debugLogging) {
         lastEdges = edges
         lastEdgesOnPage = predicted != null
+        lastFocus = focusReading
       }
       if (sampling) traceObserver?.onFrame(frameSample(sensorTimestampNs, startedAt, frame, token != null, flow).copy(
         inferenceReason = when {
@@ -458,8 +480,9 @@ internal class LiveDocumentDetector(
         },
         inferenceGapNs = gap ?: Long.MAX_VALUE, flowReliable = reliable,
         predictedCorners = flowRegion?.let { pageMotion.warp(it, trackedRegionSensorNs, sensorTimestampNs) },
-        adaptiveDoubt = doubt, focusing = frame?.outOfFocus == true, blur = blur,
-        edges = edges, edgesOnPage = predicted != null,
+        adaptiveDoubt = doubt, focusing = frame?.outOfFocus == true, blur = blur, drift = gyroDrift,
+        acceleration = peakAcceleration,
+        edges = edges, edgesOnPage = predicted != null, focus = focusReading,
       ))
       if (token == null) {
         dropped++
@@ -614,24 +637,17 @@ internal class LiveDocumentDetector(
       }
     } finally {
       image.close()
-      // The framing speed is the gyroscope's peak rate over the frame interval before this frame, as frame widths per
-      // second.
-      val gyroSpeed = if (gyro == null || optics == null) null
-        else gyro.peakRate(sensorTimestampNs - SPEED_SPAN_NS - GYRO_MARGIN_NS, sensorTimestampNs)
-          ?.let { it * optics.focalLengthPx / optics.activeWidth }
-      // The accelerometer's peak over the same span: the gyroscope sees rotation, not a move along or toward the page.
-      val peakAcceleration = acceleration?.peak(sensorTimestampNs - SPEED_SPAN_NS - GYRO_MARGIN_NS, sensorTimestampNs)
       // The result often lands while the frame is analyzed; look again so the record carries it.
       val recorded = frame ?: frames.at(sensorTimestampNs)
       val recordedMotion = if (frame != null || recorded == null) motion
         else gyroBlur(optics, sensorTimestampNs, recorded)?.let { GateMotion(it, MotionSource.GYRO) }
       recordFrameAnalysis(boundGeneration, frameGeneration, sensorTimestampNs, startedAt, optics != null, recorded,
-        flow?.estimate, recordedMotion, gyroSpeed, peakAcceleration, inferenceFinished)
+        flow?.estimate, recordedMotion, gyroDrift, peakAcceleration, inferenceFinished, focusReading)
       logWindow(System.nanoTime())
     }
   }
 
-  /** Diagnostics only: the print's edge width ([regionEdgeWidth]) over the box around [page], upright frame
+  /** The print's edge width ([regionEdgeWidth]) over the box around [page], upright frame
    * fractions, else over the guide area ([GUIDE_AREA]), where the page usually lies before it is found; null without
    * enough print edges to measure. */
   private fun edgeWidth(image: ImageProxy, page: DocumentCorners?): EdgeWidth? {
@@ -844,7 +860,7 @@ internal class LiveDocumentDetector(
     val frames = inferred.coerceAtLeast(1)
     if (debugLogging) {
       ScannerLog.d("RNDocumentScannerLive", "rate=${inferred / seconds}Hz received=$received inferred=$inferred skipped=$dropped meanAnalysisMs=${totalLatencyMs / frames} " +
-        "maxRecordGapMs=${maxRecordGapNs / 1_000_000} edges=${lastEdges ?: "unmeasured"} over ${if (lastEdgesOnPage) "page" else "guide"}")
+        "maxRecordGapMs=${maxRecordGapNs / 1_000_000} edges=${lastEdges ?: "unmeasured"} over ${if (lastEdgesOnPage) "page" else "guide"} focus=${lastFocus ?: "unjudged"}")
       maxRecordGapNs = 0L
     }
     if (listener != null) {

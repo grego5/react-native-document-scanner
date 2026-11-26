@@ -31,7 +31,8 @@ class LiveGuideTraceFormatTest {
       LiveFrameSample(93, 100, 10_000_000, 33_000_000, 2, true, 4.5, analyzed = true,
         flow = FlowMotionEstimate(FlowMotionStatus.MEASURED, 4.0, 320, 60, 93, 0.95, 20,
           transform = FlowTransform(1.0, -.02, .03, 1.0, .01, -.01, .002, -.001), transformProcessingNs = 12345), flowAgeNs = 4,
-        flowProcessingNs = 1_500_000, edges = EdgeWidth(2.25, 2.0, 2.5, 40), edgesOnPage = true),
+        flowProcessingNs = 1_500_000, edges = EdgeWidth(2.25, 2.0, 2.5, 40), edgesOnPage = true,
+        focus = FocusReading(FocusVerdict.SHARP, 1.6), drift = .004, acceleration = .7),
       LiveFrameSample(126, 133, null, null, null, null, null, analyzed = false, edges = EdgeWidth(6.2, null, 6.2, 21)),
     ))
     val text = StringBuilder().also { LiveGuideTraceFormat.write(trace, it) }.toString()

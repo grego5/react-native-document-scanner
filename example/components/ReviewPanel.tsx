@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ScanReview } from '../hooks/useScanReview';
 import { usePhotoActions } from '../hooks/usePhotoActions';
+import { cyclePhotoMark, diagnosticsAvailable, photoMark } from '../lib/diagnostics';
 import { errorMessage } from '../lib/errorMessage';
 import { MAX_PAGES } from '../lib/scanSession';
 import { styles } from '../styles';
@@ -66,6 +67,9 @@ function PreviewMode({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const { pageIds, page, working } = session;
+  // Marks live outside React; read on each render so the label follows the selected page, and bumped after a tap.
+  const [, bumpMarks] = useState(0);
+  const mark = page ? photoMark(page.id) : undefined;
   const closeExport = useCallback(() => {
     if (!working) setExportOpen(false);
   }, [working]);
@@ -177,6 +181,16 @@ function PreviewMode({
           />
         </View>
         <View style={styles.reviewTools}>
+          {diagnosticsAvailable && page?.capture && (
+            <ActionButton
+              label={`Photo · ${mark === 'blurry' ? 'Blurry' : mark === 'sharp' ? 'Sharp' : 'Unmarked'}`}
+              style={styles.reviewTool}
+              onPress={() => {
+                cyclePhotoMark(page.id);
+                bumpMarks((n) => n + 1);
+              }}
+            />
+          )}
           <ActionButton label="Delete" style={styles.reviewTool} disabled={working} onPress={confirmDelete} />
           <ActionButton
             label="Crop"

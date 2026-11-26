@@ -10,6 +10,7 @@
 #include <fbjni/fbjni.h>
 #include "ScanSessionObservation.hpp"
 
+#include "CaptureQuality.hpp"
 #include "DocumentAnalysis.hpp"
 #include "DocumentCandidate.hpp"
 #include "DocumentCorners.hpp"
@@ -17,6 +18,7 @@
 #include "DocumentImageFormat.hpp"
 #include "DocumentPoint.hpp"
 #include "DocumentRenderOptions.hpp"
+#include "JCaptureQuality.hpp"
 #include "JDocumentAnalysis.hpp"
 #include "JDocumentCandidate.hpp"
 #include "JDocumentCorners.hpp"

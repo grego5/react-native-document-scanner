@@ -24,6 +24,8 @@ namespace margelo::nitro::documentscanner { struct CameraPermissionValue; }
 namespace margelo::nitro::documentscanner { enum class CameraState; }
 // Forward declaration of `CaptureMode` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureMode; }
+// Forward declaration of `CaptureQuality` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CaptureQuality; }
 // Forward declaration of `CaptureStage` to properly resolve imports.
 namespace margelo::nitro::documentscanner { enum class CaptureStage; }
 // Forward declaration of `CaptureWaitReason` to properly resolve imports.
@@ -144,6 +146,7 @@ namespace margelo::nitro::documentscanner { enum class TorchMode; }
 #include "CameraPermissionValue.hpp"
 #include "CameraState.hpp"
 #include "CaptureMode.hpp"
+#include "CaptureQuality.hpp"
 #include "CaptureStage.hpp"
 #include "CaptureWaitReason.hpp"
 #include "CropDraftPreset.hpp"

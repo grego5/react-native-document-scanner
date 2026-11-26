@@ -29,7 +29,7 @@ class CaptureStabilityTest {
     val stability = CaptureStability()
     for (i in 1..3) stability.observe(frame(i), requireDocument = true, BLUR_LIMIT)
     // 6% of the width per second: little smear at a short exposure, but the framing is moving.
-    assertFalse(stability.observe(frame(4, speedFraction = .06), requireDocument = true, BLUR_LIMIT))
+    assertFalse(stability.observe(frame(4, drift = .06), requireDocument = true, BLUR_LIMIT))
     assertEquals(0, stability.count)
     assertEquals(StabilityBreak.MOVING, stability.lastBreak)
   }
@@ -61,7 +61,7 @@ class CaptureStabilityTest {
 
   @Test
   fun aFrameWithoutItsResultStillChecksSpeedAndThePage() {
-    for (bad in listOf(frame(2, speedFraction = .06, result = false), frame(2, guide = null, result = false))) {
+    for (bad in listOf(frame(2, drift = .06, result = false), frame(2, guide = null, result = false))) {
       val stability = CaptureStability()
       stability.observe(frame(1), requireDocument = true, BLUR_LIMIT)
       stability.observe(bad, requireDocument = true, BLUR_LIMIT)
@@ -114,7 +114,7 @@ class CaptureStabilityTest {
 
   @Test
   fun aMissingReadingOfARunningSensorIsUnknownMotion() {
-    for (missing in listOf(frame(2, acceleration = null), frame(2, speedFraction = null))) {
+    for (missing in listOf(frame(2, acceleration = null), frame(2, drift = null))) {
       val stability = CaptureStability()
       stability.observe(frame(1), requireDocument = true, BLUR_LIMIT, motionSensors = true)
       assertFalse(stability.observe(missing, requireDocument = true, BLUR_LIMIT, motionSensors = true))
@@ -125,8 +125,8 @@ class CaptureStabilityTest {
   @Test
   fun withoutTheGyroscopeFramingIsNotJudged() {
     val stability = CaptureStability()
-    for (i in 1..3) stability.observe(frame(i, speedFraction = null), requireDocument = true, BLUR_LIMIT)
-    assertTrue(stability.observe(frame(4, speedFraction = null), requireDocument = true, BLUR_LIMIT))
+    for (i in 1..3) stability.observe(frame(i, drift = null), requireDocument = true, BLUR_LIMIT)
+    assertTrue(stability.observe(frame(4, drift = null), requireDocument = true, BLUR_LIMIT))
   }
 
   @Test
@@ -159,7 +159,7 @@ class CaptureStabilityTest {
   }
 
   private fun frame(
-    index: Int, speedFraction: Double? = .01, status: FlowMotionStatus = FlowMotionStatus.MEASURED, flowLost: Int = 0,
+    index: Int, drift: Double? = .005, status: FlowMotionStatus = FlowMotionStatus.MEASURED, flowLost: Int = 0,
     blur: Double? = .001, flowSpeed: Double = .01, guide: DocumentCorners? = page, result: Boolean = true,
     acceleration: Double? = .1,
   ) = FrameRecord(
@@ -168,7 +168,7 @@ class CaptureStabilityTest {
     FlowMotionEstimate(status, if (status == FlowMotionStatus.MEASURED) flowSpeed * WIDTH else null, WIDTH,
       (index - 1) * FRAME_NS, index * FRAME_NS, 1.0, 40, flowLost),
     blur?.let { GateMotion(it, MotionSource.GYRO) },
-    speedFraction, acceleration, guide,
+    drift, acceleration, guide,
   )
 
   private fun rect(l: Double, t: Double, r: Double, b: Double) = DocumentCorners(

@@ -74,6 +74,7 @@ class ScanSessionStateTest {
       resources.lease(original).use {
         assertEquals(SessionResources.Kind.ORIGINAL, original.kind)
         renderError?.let { throw it }
+        order.add("render")
         val image = source(SessionResources.Kind.RENDER)
         val thumbnail = source(SessionResources.Kind.THUMBNAIL)
         try {
@@ -85,8 +86,13 @@ class ScanSessionStateTest {
           throw error
         }
       }
+    override fun photoSharpness(source: SessionResources.Lease, sample: PhotoSample) =
+      photoEdges.also { order.add("measure") }
     override fun close() { actionsClosed++ }
   }
+  private var photoEdges: com.margelo.nitro.documentscanner.processing.EdgeWidth? =
+    com.margelo.nitro.documentscanner.processing.EdgeWidth(6.4, 6.4, 6.2, 1300)
+  private val order = mutableListOf<String>()
   private val main = ManualExecutor()
   private val models = ModelStatusStub()
   private val selections = mutableListOf<CornerModelStore.Selection?>()
@@ -104,6 +110,34 @@ class ScanSessionStateTest {
   private fun drain() { worker.drain(); cleanup.drain(); assertTrue(callbackErrors.toString(), callbackErrors.isEmpty()) }
   private fun options(filter: DocumentFilter, shadows: Boolean = false) =
     DocumentRenderOptions(shadows, null, filter, null, null, null, false)
+
+  private fun admitCapture(id: String = "page") {
+    duringAnalysis = { order.add("analysis") }
+    state.admit(id, source(), source(SessionResources.Kind.FRAME), null, null,
+      capture = CaptureQuality(true, null), photo = PhotoSample(DocumentPoint(.3, .3), 6))
+  }
+
+  @Test fun aCapturesSoftnessFollowsItsFirstRender() {
+    admitCapture()
+    // Admitted at once, unmeasured; the unconfirmed focus is there from the start.
+    assertEquals(CaptureQuality(true, null), meta().capture)
+    drain()
+    assertEquals(listOf("analysis", "render", "measure"), order)
+    assertEquals(CaptureQuality(true, true), meta().capture)
+  }
+
+  @Test fun removalOrCloseBeforeTheMeasureSuppressesIt() {
+    admitCapture()
+    state.removePage("page")
+    drain()
+    assertFalse("measure" in order)
+    admitCapture(id = "other")
+    val closed = state.close()
+    drain()
+    assertFalse("measure" in order)
+    assertTrue(closed.isDone)
+    assertTrue(files.existing.isEmpty())
+  }
 
   @Test fun orderPublicationIsImmutableIncrementalAndRejectsPartialOrders() {
     admit(id = "a"); admit(id = "b")

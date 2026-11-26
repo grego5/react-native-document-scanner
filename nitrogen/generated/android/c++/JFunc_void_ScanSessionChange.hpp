@@ -39,6 +39,8 @@
 #include "JScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
 #include "JScannerErrorCode.hpp"
+#include "CaptureQuality.hpp"
+#include "JCaptureQuality.hpp"
 #include <vector>
 
 namespace margelo::nitro::documentscanner {

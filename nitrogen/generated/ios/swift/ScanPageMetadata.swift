@@ -18,7 +18,7 @@ public extension ScanPageMetadata {
   /**
    * Create a new instance of `ScanPageMetadata`.
    */
-  init(id: String, revision: Double, readyRevision: Double?, analyzing: Bool, rendering: Bool, ready: Bool, analysis: DocumentAnalysis?, corners: DocumentCorners, options: DocumentRenderOptions, analysisFailure: ScannerFailure?, renderFailure: ScannerFailure?) {
+  init(id: String, revision: Double, readyRevision: Double?, analyzing: Bool, rendering: Bool, ready: Bool, analysis: DocumentAnalysis?, corners: DocumentCorners, options: DocumentRenderOptions, analysisFailure: ScannerFailure?, renderFailure: ScannerFailure?, capture: CaptureQuality?) {
     self.init(std.string(id), revision, { () -> bridge.std__optional_double_ in
       if let __unwrappedValue = readyRevision {
         return bridge.create_std__optional_double_(__unwrappedValue)
@@ -40,6 +40,12 @@ public extension ScanPageMetadata {
     }(), { () -> bridge.std__optional_ScannerFailure_ in
       if let __unwrappedValue = renderFailure {
         return bridge.create_std__optional_ScannerFailure_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_CaptureQuality_ in
+      if let __unwrappedValue = capture {
+        return bridge.create_std__optional_CaptureQuality_(__unwrappedValue)
       } else {
         return .init()
       }
@@ -106,5 +112,10 @@ public extension ScanPageMetadata {
   @inline(__always)
   var renderFailure: ScannerFailure? {
     return self.__renderFailure.value
+  }
+  
+  @inline(__always)
+  var capture: CaptureQuality? {
+    return self.__capture.value
   }
 }

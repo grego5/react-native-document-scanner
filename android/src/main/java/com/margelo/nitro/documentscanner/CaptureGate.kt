@@ -11,9 +11,9 @@ internal enum class StabilityBreak { MOVING, SMEARED, TRACKING_LOST, NO_DOCUMENT
 
 /**
  * Framing stability for a capture, built from consecutive analyzed frames fed in order, one [FrameRecord] each. Three
- * separate questions decide whether a frame continues the sequence: the gyroscope turns the phone under [MAX_SPEED]
- * frame widths per second and the accelerometer reads under [MAX_ACCELERATION] over the frame interval, whatever the
- * exposure (framing), since a quiet gyroscope cannot show the phone kept its distance; its own gyroscope smear stays within
+ * separate questions decide whether a frame continues the sequence: the phone's net turn over the span before it stays
+ * under [MAX_DRIFT] frame widths and the accelerometer reads under [MAX_ACCELERATION] over the frame interval, whatever
+ * the exposure (framing), since a quiet gyroscope cannot show the phone kept its distance; its own gyroscope smear stays within
  * the blur limit (exposure); and, when a page is required, the page keeps its position, scale and shape within
  * [MAX_SHIFT], [MAX_SCALE] and [MAX_SHAPE] of where the sequence began (geometry). The motion sensors judge motion,
  * since optical flow over soft or noisy frames, out of focus or in the dark, reads motion a still hand does not make;
@@ -60,10 +60,10 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
   fun observe(frame: FrameRecord, requireDocument: Boolean, blurLimit: Double, motionSensors: Boolean = false): Boolean {
     // A frame that does not follow the sequence's last one skipped a frame.
     if (count > 0 && frame.sequence != chainSequence + 1) restart(StabilityBreak.TRACKING_LOST)
-    val speed = frame.gyroSpeed
+    val drift = frame.gyroDrift
     val acceleration = frame.acceleration
-    if (motionSensors && (speed == null || acceleration == null)) return restart(StabilityBreak.TRACKING_LOST)
-    if (speed != null && speed > MAX_SPEED) return restart(StabilityBreak.MOVING)
+    if (motionSensors && (drift == null || acceleration == null)) return restart(StabilityBreak.TRACKING_LOST)
+    if (drift != null && drift > MAX_DRIFT) return restart(StabilityBreak.MOVING)
     if (acceleration != null && acceleration > MAX_ACCELERATION) return restart(StabilityBreak.MOVING)
     val smearUnknown = blurLimit > 0 && frame.frame == null
     if (blurLimit > 0 && !smearUnknown) {
@@ -96,13 +96,15 @@ internal class CaptureStability(private val required: Int = REQUIRED_FRAMES) {
   companion object {
     /** Consecutive analyzed frames, about 130 ms at 30 fps. A starting setting. */
     const val REQUIRED_FRAMES = 4
-    /** Frame widths per second. Recorded steady A4 captures had at most 0.09% flow blur and moving ones at least
-     * 0.31%; at a 30 ms exposure those are 3% and 10% of the width per second. A starting setting.
-     */
-    const val MAX_SPEED = 0.05
-    /** Peak linear acceleration in m/s² over a frame interval; a resting hand stays under it, past sensor noise and
-     * tremor, as the focus cycle's quiet hand does. A starting setting. */
-    const val MAX_ACCELERATION = 0.5
+    /** Frame widths the view may drift by over the span before a frame
+     * ([com.margelo.nitro.documentscanner.processing.DRIFT_SPAN_NS]), about the delay to the still's exposure. A net
+     * turn, not a peak rate: a hand's tremor peaks at 0.2 to 0.4 rad/s but turns back within the span, moving the view a
+     * fraction of a percent, while a pan of 3% of the width a second passes it. The photo's corners are found again
+     * within 10% around the live outline, so the drift only has to keep the page there. */
+    const val MAX_DRIFT = 0.01
+    /** Peak linear acceleration in m/s² over a frame interval, as the focus cycle's quiet hand
+     * ([FocusRules.QUIET_ACCELERATION]): a handheld phone's tremor reads up to about 0.9 and a deliberate move 2 to 4. */
+    const val MAX_ACCELERATION = FocusRules.QUIET_ACCELERATION
     /** Normalized centroid travel, relative scale change and residual corner travel allowed over a sequence. Starting
      * settings above the guide's frame-to-frame model noise.
      */
@@ -201,9 +203,11 @@ internal data class CaptureState(
   val ownScan: OwnScan = OwnScan.NONE,
   val frameSinceFocusChange: Boolean = true,
   val postFocusInferenceFinished: Boolean? = null,
-  /** Until when the scanner focus cycle still works for this press, or waits for a frame after its accepted lock; the
-   * page and focus waits hold until then rather than fail at their own deadline. Null without it or once exhausted. */
-  val cycleHoldsUntilMs: Long? = null,
+  /** The scanner focus cycle keeps the page and focus waits open past their deadlines. */
+  val cycleHoldsFocus: Boolean = false,
+  /** The scanner focus cycle owns the press, which waits for steadiness as long as the cycle works: a moving hand only
+   * pauses it. */
+  val cycleHoldsSteady: Boolean = false,
 )
 
 /**
@@ -223,7 +227,8 @@ internal data class CaptureState(
  * [settledFrameWaitMs] for fresh frame evidence. The focus controller's own timeout bounds a scan.
  *
  * While the scanner focus cycle owns a press's focus, the gate starts no scan: the cycle's result arrives as [focused],
- * and its budget as [CaptureState.cycleHoldsUntilMs], which holds the page and focus waits past their deadline.
+ * and while it works [CaptureState.cycleHoldsFocus] holds the page and focus waits past their deadline and
+ * [CaptureState.cycleHoldsSteady] the steady wait.
  */
 internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLowQualityControl: Boolean = false,
   private val maxScans: Int = 2, private val settledFrameWaitMs: Long = 500) {
@@ -261,8 +266,9 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
     // Autofocus still moving is waited out, until it stops or its evidence goes stale; only a settled miss fails. The
     // capture's own scan also holds a page wait: the page may be too blurred to detect until the scan settles.
     fun focusingUntil(reason: WaitReason?): Long? {
+      if (reason == WaitReason.STEADY && captureState.cycleHoldsSteady) return Long.MAX_VALUE
       if (reason != WaitReason.DOCUMENT && reason != WaitReason.FOCUS) return null
-      captureState.cycleHoldsUntilMs?.takeIf { it > now }?.let { return it }
+      if (captureState.cycleHoldsFocus) return Long.MAX_VALUE
       if (ownScan == OwnScan.SCANNING) return Long.MAX_VALUE
       scanSettledMs?.let { settled ->
         val until = settled + settledFrameWaitMs
@@ -282,12 +288,8 @@ internal class CaptureGate(private val steadyTimeoutMs: Long, private val skipLo
     }
     if (blocker() == WaitReason.DOCUMENT && captureState.requireFocus) {
       when (captureState.postFocusInferenceFinished) {
-        // The scanner focus cycle's budget bounds the wait for inference after its lock, as nothing else does.
-        false -> {
-          val until = captureState.cycleHoldsUntilMs ?: Long.MAX_VALUE
-          if (until <= now) return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT)
-          return CaptureDecision.Wait(WaitReason.DOCUMENT, until)
-        }
+        // Fresh inference after the capture's own scan decides whether a page is present.
+        false -> return CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE)
         true -> return CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT)
         null -> Unit
       }

@@ -41,6 +41,8 @@
 #include "JScannerFailure.hpp"
 #include "ScannerErrorCode.hpp"
 #include "JScannerErrorCode.hpp"
+#include "CaptureQuality.hpp"
+#include "JCaptureQuality.hpp"
 #include <functional>
 #include "JFunc_void.hpp"
 #include <NitroModules/JNICallable.hpp>

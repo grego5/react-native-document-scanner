@@ -17,6 +17,8 @@ internal data class CameraFrameState(
   val awbState: Int? = null,
   /** The torch lit this frame, from FLASH_STATE; null when unreported. */
   val torchFired: Boolean? = null,
+  /** The lens moved during this frame, from LENS_STATE. */
+  val lensMoving: Boolean = false,
 )
 
 /** Recent capture results keyed by SENSOR_TIMESTAMP, which equals the timestamp of the frame's image buffers. */
@@ -53,8 +55,11 @@ internal fun motionBlur(gyro: GyroHistory, optics: LiveCameraOptics, fromNs: Lon
 /** One 200 Hz gyroscope period, so a short exposure still spans at least one sample. */
 internal const val GYRO_MARGIN_NS = 5_000_000L
 
-/** The span before a frame whose peak gyroscope rate is its framing speed: one frame interval at 30 fps. */
+/** The span before a frame whose peak acceleration is its framing's: one frame interval at 30 fps. */
 internal const val SPEED_SPAN_NS = 33_333_333L
+/** The span before a frame over which the phone's net turn is its framing drift: about the delay from the frames a
+ * capture judges to the still's exposure. */
+internal const val DRIFT_SPAN_NS = 300_000_000L
 
 /** Which estimate a motion gate judged. */
 internal enum class MotionSource { FLOW, GYRO }

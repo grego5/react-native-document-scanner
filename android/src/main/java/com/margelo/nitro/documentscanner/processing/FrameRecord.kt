@@ -8,10 +8,11 @@ import com.margelo.nitro.documentscanner.DocumentCorners
  * [realtimeSensorNs] is the same instant on elapsedRealtimeNanos() when camera timestamps are REALTIME, else null.
  * [arrivalNs] is System.nanoTime() when analysis received it. [frame] is its own capture result, null when that had
  * not arrived. [flow] is the motion from the previous analyzed frame, null without flow; it carries the guide only.
- * [motion] is this exposure's gyroscope blur, null when unknown. [gyroSpeed] is the gyroscope's peak rotation speed
- * over the frame interval before it, as frame widths per second, null without the gyroscope. [acceleration] is the
- * accelerometer's peak linear acceleration (m/s²) over that span, null without its samples.
- * [guide] is the confirmed, in-frame page outline after this frame, null while none is tracked.
+ * [motion] is this exposure's gyroscope blur, null when unknown. [gyroDrift] is the phone's net turn over the
+ * [DRIFT_SPAN_NS] before it, as frame widths, null without the gyroscope. [acceleration] is the
+ * accelerometer's peak linear acceleration (m/s²) over the frame interval before it, null without its samples.
+ * [guide] is the confirmed, in-frame page outline after this frame, null while none is tracked. [focus] is its focus by
+ * its print edges ([FocusEvidence]), null when it was not judged.
  */
 internal data class FrameRecord(
   val sequence: Long,
@@ -21,10 +22,11 @@ internal data class FrameRecord(
   val frame: CameraFrameState?,
   val flow: FlowMotionEstimate?,
   val motion: GateMotion?,
-  val gyroSpeed: Double?,
+  val gyroDrift: Double?,
   val acceleration: Double?,
   val guide: DocumentCorners?,
   val inferenceFinished: Boolean = false,
+  val focus: FocusReading? = null,
 ) {
   /** Age of the image itself: from exposure on REALTIME cameras, otherwise from arrival at analysis. */
   fun ageNanos(nowNs: Long, nowRealtimeNs: Long): Long = realtimeSensorNs?.let { nowRealtimeNs - it } ?: (nowNs - arrivalNs)

@@ -36,6 +36,8 @@ namespace margelo::nitro::documentscanner { struct DocumentCorners; }
 namespace margelo::nitro::documentscanner { struct DocumentRenderOptions; }
 // Forward declaration of `ScannerFailure` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScannerFailure; }
+// Forward declaration of `CaptureQuality` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CaptureQuality; }
 
 #include <string>
 #include <optional>
@@ -43,6 +45,7 @@ namespace margelo::nitro::documentscanner { struct ScannerFailure; }
 #include "DocumentCorners.hpp"
 #include "DocumentRenderOptions.hpp"
 #include "ScannerFailure.hpp"
+#include "CaptureQuality.hpp"
 
 namespace margelo::nitro::documentscanner {
 
@@ -62,10 +65,11 @@ namespace margelo::nitro::documentscanner {
     DocumentRenderOptions options     SWIFT_PRIVATE;
     std::optional<ScannerFailure> analysisFailure     SWIFT_PRIVATE;
     std::optional<ScannerFailure> renderFailure     SWIFT_PRIVATE;
+    std::optional<CaptureQuality> capture     SWIFT_PRIVATE;
 
   public:
     ScanPageMetadata() = default;
-    explicit ScanPageMetadata(std::string id, double revision, std::optional<double> readyRevision, bool analyzing, bool rendering, bool ready, std::optional<DocumentAnalysis> analysis, DocumentCorners corners, DocumentRenderOptions options, std::optional<ScannerFailure> analysisFailure, std::optional<ScannerFailure> renderFailure): id(id), revision(revision), readyRevision(readyRevision), analyzing(analyzing), rendering(rendering), ready(ready), analysis(analysis), corners(corners), options(options), analysisFailure(analysisFailure), renderFailure(renderFailure) {}
+    explicit ScanPageMetadata(std::string id, double revision, std::optional<double> readyRevision, bool analyzing, bool rendering, bool ready, std::optional<DocumentAnalysis> analysis, DocumentCorners corners, DocumentRenderOptions options, std::optional<ScannerFailure> analysisFailure, std::optional<ScannerFailure> renderFailure, std::optional<CaptureQuality> capture): id(id), revision(revision), readyRevision(readyRevision), analyzing(analyzing), rendering(rendering), ready(ready), analysis(analysis), corners(corners), options(options), analysisFailure(analysisFailure), renderFailure(renderFailure), capture(capture) {}
 
   public:
     #if !defined(DOCUMENT_SCANNER_SWIFT_IMPORT)
@@ -93,7 +97,8 @@ namespace margelo::nitro {
         JSIConverter<margelo::nitro::documentscanner::DocumentCorners>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "corners"))),
         JSIConverter<margelo::nitro::documentscanner::DocumentRenderOptions>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "options"))),
         JSIConverter<std::optional<margelo::nitro::documentscanner::ScannerFailure>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "analysisFailure"))),
-        JSIConverter<std::optional<margelo::nitro::documentscanner::ScannerFailure>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "renderFailure")))
+        JSIConverter<std::optional<margelo::nitro::documentscanner::ScannerFailure>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "renderFailure"))),
+        JSIConverter<std::optional<margelo::nitro::documentscanner::CaptureQuality>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "capture")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::documentscanner::ScanPageMetadata& arg) {
@@ -109,6 +114,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "options"), JSIConverter<margelo::nitro::documentscanner::DocumentRenderOptions>::toJSI(runtime, arg.options));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "analysisFailure"), JSIConverter<std::optional<margelo::nitro::documentscanner::ScannerFailure>>::toJSI(runtime, arg.analysisFailure));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "renderFailure"), JSIConverter<std::optional<margelo::nitro::documentscanner::ScannerFailure>>::toJSI(runtime, arg.renderFailure));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "capture"), JSIConverter<std::optional<margelo::nitro::documentscanner::CaptureQuality>>::toJSI(runtime, arg.capture));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -130,6 +136,7 @@ namespace margelo::nitro {
       if (!JSIConverter<margelo::nitro::documentscanner::DocumentRenderOptions>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "options")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::documentscanner::ScannerFailure>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "analysisFailure")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::documentscanner::ScannerFailure>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "renderFailure")))) return false;
+      if (!JSIConverter<std::optional<margelo::nitro::documentscanner::CaptureQuality>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "capture")))) return false;
       return true;
     }
   };

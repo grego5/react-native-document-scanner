@@ -4,6 +4,7 @@ import com.margelo.nitro.documentscanner.processing.DocumentRenderer
 import com.margelo.nitro.documentscanner.processing.CornerModelStatus
 import com.margelo.nitro.documentscanner.processing.CornerModelStore
 import com.margelo.nitro.documentscanner.processing.CornerTensorModelLoader
+import com.margelo.nitro.documentscanner.processing.EdgeWidth
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 
@@ -28,6 +29,9 @@ internal class ScanSessionState(
       prepareAnalysis(source.resource, liveCorners, selection)
     fun renderSnapshot(source: SessionResources.Lease, key: ScanPage.RenderKey): ScanPage.Artifact = render(source.resource, key)
     fun render(original: SessionResources.Resource, key: ScanPage.RenderKey): ScanPage.Artifact
+    /** A camera page's photo measured at [sample]; null when it holds too little print or cannot be read. */
+    fun photoSharpness(source: SessionResources.Lease, sample: PhotoSample): EdgeWidth? =
+      com.margelo.nitro.documentscanner.photoSharpness(source.file, sample.orientation, sample.spot)
     override fun close()
   }
 
@@ -136,7 +140,7 @@ internal class ScanSessionState(
     val value = page.metadata()
     events.updatePage(ScanPageMetadata(value.id, value.requestedRevision.toDouble(), value.readyRevision?.toDouble(),
       value.analyzing, value.rendering, value.readyRevision == value.requestedRevision,
-      value.analysis, value.corners, value.options, value.analysisFailure, value.renderFailure))
+      value.analysis, value.corners, value.options, value.analysisFailure, value.renderFailure, value.capture))
   }
 
   /**
@@ -155,7 +159,13 @@ internal class ScanSessionState(
     autoCrop: Boolean = true,
     /** True only when [options] already came from [DocumentRenderer.effectiveOptions], as a reservation's do. */
     normalized: Boolean = false,
-  ) = admitPage(id, original, frame, liveCorners, options, autoCrop, normalized) { page -> analyze(page, selection) }
+    capture: CaptureQuality? = null,
+    /** Where the camera's photo is measured for [CaptureQuality.soft], after analysis; null to leave it unmeasured. */
+    photo: PhotoSample? = null,
+  ) = admitPage(id, original, frame, liveCorners, options, autoCrop, normalized, capture) { page ->
+    analyze(page, selection)
+    page.photo = photo
+  }
 
   /**
    * Admits an imported [original], which has no frame or live corners, with already effective [options]. The page
@@ -182,6 +192,7 @@ internal class ScanSessionState(
     options: DocumentRenderOptions?,
     autoCrop: Boolean,
     normalized: Boolean,
+    capture: CaptureQuality? = null,
     startAnalysis: (ScanPage) -> Unit,
   ) = transition {
     requireOpen()
@@ -192,7 +203,7 @@ internal class ScanSessionState(
     requireInput(pages.values.none { it.original === original || (frame != null && it.frame === frame) }) { "Source already belongs to a page." }
     resources.lease(original).close()
     frame?.let { resources.lease(it).close() }
-    val page = ScanPage(id, original, frame, effective, liveCorners)
+    val page = ScanPage(id, original, frame, effective, liveCorners, capture)
     page.explicitGeometry = !autoCrop
     startAnalysis(page)
     pages[id] = page
@@ -244,6 +255,37 @@ internal class ScanSessionState(
     }
   }
 
+  /**
+   * Pins the original and queues its photo's measure once analysis has requested the first render, so neither the
+   * capture nor its first render waits for it; the page's [CaptureQuality.soft] follows in a later change. A page removed
+   * or a session closed first is never measured or updated. Under lock.
+   */
+  private fun measurePhoto(page: ScanPage, sample: PhotoSample) {
+    val source = resources.lease(page.original)
+    queue.submit(resources.workOwner, ScannerWorkQueue.Kind.CAPTURE, page.id,
+      operation = {
+        synchronized(lock) { requireCurrent(page) }
+        val started = System.nanoTime()
+        val edges = actions.photoSharpness(source, sample)
+        Triple(edges, edges?.let(::photoSoft) ?: false, (System.nanoTime() - started) / 1_000_000)
+      },
+      onSuccess = { (edges, soft, ms) ->
+        source.close()
+        recordSoft(page, soft)
+        sample.measured?.invoke(edges, soft, ms)
+      },
+      onFailure = { source.close() },
+      onDiscard = { source.close() })
+  }
+
+  private fun recordSoft(page: ScanPage, soft: Boolean) = transition {
+    if (!current(page)) return@transition
+    val capture = page.capture ?: return@transition
+    if (capture.soft == soft) return@transition
+    page.capture = CaptureQuality(capture.focusUnconfirmed, soft)
+    changed(page)
+  }
+
   fun setDocumentCrop(id: String, corners: DocumentCorners) = transition {
     val page = page(id)
     val issue = NativeCornerGeometry.renderIssue(NativeCornerGeometry.coordinates(corners))
@@ -288,6 +330,11 @@ internal class ScanSessionState(
     changed(page)
     // A page displayed while it waited already rendered its current geometry.
     if (page.analysisGatesRender || cropped) requestRender(page)
+    // The photo's measure follows the first render it would otherwise hold up on the one worker.
+    page.photo?.let {
+      page.photo = null
+      measurePhoto(page, it)
+    }
   }
 
   private fun requestRender(page: ScanPage) {

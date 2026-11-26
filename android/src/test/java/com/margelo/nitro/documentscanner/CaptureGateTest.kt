@@ -156,26 +156,15 @@ class CaptureGateTest {
 
   @Test
   fun theFocusCyclesHoldOutlastsTheFocusDeadlineUntilItEnds() {
-    val waiting = ready.copy(focused = false, documentFound = false, cycleHoldsUntilMs = 8_000)
+    val waiting = ready.copy(focused = false, documentFound = false, cycleHoldsFocus = true)
     val gate = CaptureGate(1_500)
     gate.next(waiting)
     // No fresh frame after the scanner's lock ended: the press still waits for the cycle rather than fail.
-    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 8_000), gate.next(waiting.copy(nowMs = 3_000)))
-    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, 8_000),
+    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, Long.MAX_VALUE), gate.next(waiting.copy(nowMs = 3_000)))
+    assertEquals(CaptureDecision.Wait(WaitReason.FOCUS, Long.MAX_VALUE),
       gate.next(waiting.copy(nowMs = 6_000, documentFound = true)))
     assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_FOCUS_TIMEOUT, WaitReason.FOCUS),
-      gate.next(waiting.copy(nowMs = 8_000, documentFound = true, cycleHoldsUntilMs = null)))
-  }
-
-  @Test
-  fun inferenceAfterTheCyclesFinalScanWaitsOnlyWithinItsBudget() {
-    val locked = ready.copy(documentFound = false, focused = true, postFocusInferenceFinished = false,
-      cycleHoldsUntilMs = 8_000)
-    val gate = CaptureGate(1_500)
-    assertEquals(CaptureDecision.Wait(WaitReason.DOCUMENT, 8_000), gate.next(locked.copy(nowMs = 6_500)))
-    // No more frames: the budget's wakeup rejects rather than wait for inference that never comes.
-    assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_DOCUMENT_TIMEOUT, WaitReason.DOCUMENT),
-      gate.next(locked.copy(nowMs = 8_000)))
+      gate.next(waiting.copy(nowMs = 8_000, documentFound = true, cycleHoldsFocus = false)))
   }
 
   @Test
@@ -245,6 +234,15 @@ class CaptureGateTest {
     shaky.next(ready.copy(steady = false))
     assertEquals(CaptureDecision.Reject(ScannerErrorCode.CAPTURE_MOTION_TIMEOUT, WaitReason.STEADY),
       shaky.next(ready.copy(nowMs = 1_500, steady = false)))
+  }
+
+  @Test
+  fun aPressTheFocusCycleOwnsWaitsOutMotionAndShootsOnceSteady() {
+    val cycle = ready.copy(cycleHoldsSteady = true, cycleHoldsFocus = true)
+    val gate = CaptureGate(1_500)
+    gate.next(cycle.copy(steady = false))
+    assertEquals(CaptureDecision.Wait(WaitReason.STEADY, Long.MAX_VALUE), gate.next(cycle.copy(nowMs = 60_000, steady = false)))
+    assertEquals(CaptureDecision.Shoot, gate.next(cycle.copy(nowMs = 61_000)))
   }
 
   @Test

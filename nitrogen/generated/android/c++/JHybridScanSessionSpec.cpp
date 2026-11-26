@@ -31,6 +31,8 @@ namespace margelo::nitro::documentscanner { enum class DocumentFilter; }
 namespace margelo::nitro::documentscanner { enum class DocumentImageFormat; }
 // Forward declaration of `PaperSize` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct PaperSize; }
+// Forward declaration of `CaptureQuality` to properly resolve imports.
+namespace margelo::nitro::documentscanner { struct CaptureQuality; }
 // Forward declaration of `ScanSessionObservation` to properly resolve imports.
 namespace margelo::nitro::documentscanner { struct ScanSessionObservation; }
 // Forward declaration of `SessionPdfOptions` to properly resolve imports.
@@ -80,6 +82,8 @@ namespace margelo::nitro::documentscanner { struct ScanSessionChange; }
 #include "JDocumentImageFormat.hpp"
 #include "PaperSize.hpp"
 #include "JPaperSize.hpp"
+#include "CaptureQuality.hpp"
+#include "JCaptureQuality.hpp"
 #include "ScanSessionObservation.hpp"
 #include "JVariant_ScanSessionObservation_ScannerFailure.hpp"
 #include "JScanSessionObservation.hpp"

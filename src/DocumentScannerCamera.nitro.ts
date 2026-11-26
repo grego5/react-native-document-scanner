@@ -65,14 +65,16 @@ export interface LowQualityControl {
   /** Enables capture quality checks; defaults to true. */
   enabled?: boolean
   /**
-   * Maximum exposure blur as a percentage of frame width; defaults to 0.2. Zero disables motion and stability checks.
+   * Maximum exposure blur as a percentage of frame width, by the gyroscope before optical stabilization; defaults to
+   * 0.35 on Android and 0.2 on iOS. Zero disables motion and stability checks.
    * After focus, capture waits up to one second for stable framing. A ZSL capture may use a different buffered frame.
    */
   captureBlurPercent?: number
   /**
    * Wait for autofocus and require focus; defaults to true. A scan in progress can extend the four-second wait.
-   * With `focusLock` and live corners on, the scanner's focus cycle owns the wait instead, for up to eight seconds from
-   * the press, including the torch step and one final autofocus scan, whether or not a scan is running.
+   * With `focusLock` and live corners on, the scanner's focus cycle owns the wait instead, with no time limit: the press
+   * waits while the cycle works and the hand moves, and shoots on the focus the lens holds once the cycle has nothing
+   * left to try.
    * With live guidance, capture also waits for a page. When false, focus is not required and capture may proceed
    * without a page after the wait. ZSL can still wait for an acceptable buffered frame.
    */
@@ -151,21 +153,21 @@ export interface DocumentScannerCameraProps extends HybridViewProps {
    */
   tapToFocus?: boolean
   /**
-   * Manages focus while the camera holds steady: each steady hold runs one camera locking scan, without waiting for
-   * continuous autofocus's report, which may claim focus on a nearer object or never settle. The scan aims at print: a
-   * detected page's print, or without a page the most textured spot of the guide area around the frame's centre, held
-   * for 5 seconds; a page found under that lock keeps it when the lock's point lies on the page, and otherwise locks its
-   * own print. A page that grows or shrinks past the lens's depth of field, as moving nearer or farther does, locks
-   * again once steady, from where the lens is. A page lock holds until the page is out of view for a second or the
-   * phone turns; a guide lock also ends when the phone moves. A photo of a page always waits for a
-   * lock, and shoots at once on a held one. A hold gets two locks: no page found within a second of a guide lock, or a
-   * lock failing, takes the second, with the torch lit first when `torch` is `auto` (it then stays lit like the auto
-   * torch) and the scene is dark or the lock failed; then the cycle gives up until the phone turns, moves and holds
-   * steady again, or a page arrives anew. A tap
-   * takes over meanwhile. A gated photo that requires focus
-   * waits for the cycle: an accepted lock, or continuous focus outside the dark when no page is required, within the budget `requireFocus` describes; when
-   * the cycle gives up, the photo runs one final autofocus scan. Android only; the native view defaults to false,
-   * and `Camera` turns it on in document mode.
+   * Manages focus while the camera holds steady. Continuous autofocus comes first, judged by the print's edge width in
+   * the analysis frames, since it can report focus on a nearer object: a page whose print reads sharp keeps it, and a
+   * photo then shoots at once, as long as the lens stays within the depth of field of where the print read sharp. A
+   * camera locking scan is the last resort: on a steady hold whose print reads blurred, never reads sharp once the lens
+   * settles, or in the dark. The scan aims at print: a detected page's print, or without a page the most textured spot
+   * of the guide area around the frame's centre; a page found under that lock keeps it when the lock's point lies on
+   * the page, and otherwise locks its own print. A page that grows or shrinks past the lens's depth of field, as moving
+   * nearer or farther does, locks again once steady, from where the lens is. A page lock holds until the page is out of
+   * view for a second or the phone turns; a guide lock also ends when the phone moves. A lock that fails or finds
+   * nothing lights the torch first when `torch` is `auto` (it then stays lit like the auto torch) and the scene is dark
+   * or the lock failed, and locks again; otherwise the cycle ends until something changes: the phone moves and holds
+   * steady again or turns, a page arrives anew, the light changes, or print comes into view. A tap takes over meanwhile.
+   * A gated photo that requires focus waits for the cycle as `requireFocus` describes, and once the cycle has ended
+   * without focus, shoots on what the lens holds. Android only; the native view defaults to false, and `Camera` turns
+   * it on in document mode.
    */
   focusLock?: boolean
   /**
