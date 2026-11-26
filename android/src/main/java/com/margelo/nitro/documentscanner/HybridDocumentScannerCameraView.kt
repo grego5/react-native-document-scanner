@@ -378,7 +378,7 @@ open class HybridDocumentScannerCameraView(
       scheduleCaptureEvaluation()
     }
     override fun scannerLockFailed(owner: FocusOwner) {
-      if (props.focusLock) follow(cycle.failed(canLightTorch()), null)
+      if (props.focusLock) follow(cycle.failed(canLightTorch() && darkForAutofocus()), null)
     }
     override val confirmsLockFrames get() = hasSingleShotAutofocus
   })
