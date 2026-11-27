@@ -4,6 +4,7 @@ import com.margelo.nitro.documentscanner.DocumentCorners
 import com.margelo.nitro.documentscanner.DocumentPoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
@@ -44,6 +45,12 @@ class PrintSpotTest {
     // Print in the guide area's lower right only; the spot is there, in frame fractions.
     val spot = pickGuideSpot(frame(36, 27, 42, 32, true), width, 1, 0, 0, width, height, 0)!!
     assertTrue("$spot", spot.x > .55 && spot.x < .65 && spot.y > .55 && spot.y < .65)
+  }
+
+  @Test fun aFeaturelessFrameHasNoPrintOrGuideSpot() {
+    val blank = frame(0, 0, 0, 0, false)
+    assertNull(pickPrintSpot(blank, width, 1, 0, 0, width, height, 0, whole, requireTexture = true))
+    assertNull(pickGuideSpot(blank, width, 1, 0, 0, width, height, 0))
   }
 
   @Test fun pageCoordinatesInvertPagePoints() {

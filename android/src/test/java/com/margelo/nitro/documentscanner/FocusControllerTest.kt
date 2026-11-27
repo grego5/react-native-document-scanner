@@ -50,6 +50,8 @@ class FocusControllerTest {
     var cancels = 0
     var resumes = 0
     var shot = false
+    var resendScannerTrigger = true
+    var managedFocus = false
     val failed = mutableListOf<FocusOwner>()
     private val queue = ArrayDeque<Runnable>()
     private var frameNumber = 0L
@@ -77,6 +79,8 @@ class FocusControllerTest {
         events += "failed"
       }
       override val confirmsLockFrames get() = true
+      override fun resendLostTrigger(owner: FocusOwner) = resendScannerTrigger || !owner.scanners
+      override val holdLensBetweenScans get() = managedFocus
       override fun uptimeNs() = 0L
     })
 
@@ -176,6 +180,59 @@ class FocusControllerTest {
     rig.completeLast(true)
     rig.drain()
     assertEquals(true, rig.focus.snapshot.locked)
+  }
+
+  @Test fun changingATargetReplacesTheLockWithoutCancellingIt() {
+    val rig = Rig()
+    rig.pageLock()
+    rig.frame(CONTROL_AF_STATE_INACTIVE, trigger = true)
+    rig.frame(CONTROL_AF_STATE_FOCUSED_LOCKED)
+    rig.completeLast(true)
+    rig.drain()
+    assertTrue(rig.focus.relock(rig.camera, rig.point, owner = FocusOwner.GUIDE))
+    assertEquals(FocusOwner.GUIDE, rig.focus.snapshot.owner)
+    assertEquals(0, rig.cancels)
+    assertEquals(2, rig.triggers.size)
+  }
+
+  @Test fun aManagedGuideAcquisitionHasAScanDeadlineAndNoTimedRelease() {
+    val policy = FocusPolicy()
+    val token = policy.start(FocusOwner.GUIDE, 0, timed = false)
+    assertNull(policy.tapDeadline())
+    assertEquals(FocusPolicy.SCAN_TIMEOUT_NS, policy.scanDeadline())
+    assertTrue(policy.complete(token, true))
+    assertFalse(policy.expireTap(token, FocusPolicy.TAP_HOLD_NS * 2, false))
+    assertEquals(FocusOwner.GUIDE, policy.owner)
+  }
+
+  @Test fun aManagedScanFailureKeepsLensOwnershipForTheNextScene() {
+    val rig = Rig()
+    rig.managedFocus = true
+    rig.resendScannerTrigger = false
+    rig.pageLock()
+    rig.frame(CONTROL_AF_STATE_FOCUSED_LOCKED, trigger = true, mode = CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+    rig.frame(CONTROL_AF_STATE_INACTIVE)
+    rig.drain()
+    assertEquals(listOf(FocusOwner.PAGE), rig.failed)
+    assertEquals(FocusOwner.PAGE, rig.focus.snapshot.owner)
+    assertEquals(false, rig.focus.snapshot.locked)
+    assertEquals(0, rig.cancels)
+    assertEquals(0, rig.resumes)
+    assertTrue(rig.focus.relock(rig.camera, rig.point))
+    assertEquals(2, rig.triggers.size)
+    assertEquals(0, rig.cancels)
+  }
+
+  @Test fun aDocumentLockCanFailOnTheFirstLostTrigger() {
+    val rig = Rig()
+    rig.resendScannerTrigger = false
+    rig.pageLock()
+    rig.frame(CONTROL_AF_STATE_FOCUSED_LOCKED, trigger = true, mode = CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+    rig.frame(CONTROL_AF_STATE_INACTIVE)
+    rig.drain()
+    assertEquals(1, rig.triggers.size)
+    assertEquals(listOf(FocusOwner.PAGE), rig.failed)
+    assertNull(rig.focus.snapshot.owner)
   }
 
   @Test fun aTriggerLostTwiceFailsTheLockAfterOneResend() {

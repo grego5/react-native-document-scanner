@@ -22,6 +22,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.camera.camera2.interop.applyCamera2InteropAsync
 import androidx.camera.camera2.interop.cameraCharacteristics
+import androidx.camera.camera2.interop.cameraId
 import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraState
@@ -34,6 +35,7 @@ import androidx.camera.core.SessionConfig
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
@@ -51,6 +53,8 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.margelo.nitro.documentscanner.processing.pagePoint
 import com.margelo.nitro.documentscanner.processing.pickPrintSpot
 import com.margelo.nitro.documentscanner.processing.EdgeWidth
+import com.margelo.nitro.documentscanner.processing.CameraFrameHistory
+import com.margelo.nitro.documentscanner.processing.CameraFrameState
 import com.margelo.nitro.documentscanner.processing.regionEdgeWidth
 import com.margelo.nitro.documentscanner.processing.regionSharpness
 import com.margelo.nitro.documentscanner.processing.regionThumbnail
@@ -170,8 +174,15 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   /** Main thread, `focusLock`: when the camera's own locking scan runs, or null while continuous autofocus alone
    * follows the region. */
   private var textCycle: TextFocusCycle? = null
-  /** Main thread: the nearest distance the bound camera's lens focuses, in diopters; null when it reports none. */
-  private var nearestDiopters: Float? = null
+  private var startupFocus: TextStartupFocus? = null
+  private var managedFocusPropAtBind = false
+  @Volatile private var singleShotOnly = false
+  @Volatile private var latestFocusMode: Int? = null
+  private var seedTried = false
+  private var seedDisabled = false
+  private var verifiedGeneration: Long? = null
+  private var focusBoundAtMs = 0L
+  private val lensFrames = CameraFrameHistory()
   /** Main thread: the bound camera, as [focus] holds it. */
   private var boundCamera: BoundCamera? = null
   /** Main thread: whether the bound camera offers single-shot autofocus, which locks are confirmed in. */
@@ -187,6 +198,8 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     override fun focusChanged(snapshot: FocusSnapshot) = updateAutofocus()
     override fun scannerLockFailed(owner: FocusOwner) { textCycle?.failed() }
     override val confirmsLockFrames get() = hasSingleShotAutofocus
+    override fun resendLostTrigger(owner: FocusOwner) = !owner.scanners
+    override val holdLensBetweenScans get() = singleShotOnly
   })
   private val zoomRequests = TextZoom()
   /** Logging only: when the pending zoom was requested, on the sensor clock. */
@@ -268,9 +281,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private var shot: TextShot? = null
   /** Analysis thread: captures waiting for a read frame. */
   private val captures = mutableListOf<PendingCapture>()
-  /** Analysis thread: whether the waiting captures requested a lock of their own, and the focus whose read they
+  /** Analysis thread: whether the waiting captures checked current reads, and the focus whose read they
    * turned down for finding no text, so the lock's read, whatever it finds, is the one returned. */
-  private var captureLockRequested = false
+  private var captureCheckedRead = false
   private var captureRejected: Long? = null
   /** Analysis thread: tells when the view moves or changes, which the motion sensors cannot see. */
   private val viewWatch = ViewWatch()
@@ -334,19 +347,18 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     syncSession()
     val region = clampedRegion(textRegion)
     if (region != snapshot.region) {
-      snapshot = snapshot.copy(region = region, revision = snapshot.revision + 1, regionRevision = snapshot.regionRevision + 1)
-      // Other text, maybe at another distance: continuous autofocus follows it again.
-      val release = textCycle?.let {
-        it.reset()
-        focus.releaseScannerLock()
-      } ?: FocusController.Release.NONE
-      // A released lock's cancellation re-aims continuous autofocus at the new region once it completes.
-      if (release == FocusController.Release.NONE) aimFocus()
+      snapshot = snapshot.copy(region = region, revision = snapshot.revision + 1, regionRevision = snapshot.regionRevision + 1,
+        focusPending = textCycle != null)
+      // An established lock is replaced at the new region once the view is steady.
+      textCycle?.reset() ?: aimFocus()
       updateAutofocus()
     }
     overlay.update(region, guide)
     val width = requestedWidth()
-    if (controller != null && width != boundWidth) stopCamera("analysis width")
+    if (controller != null) {
+      if (width != boundWidth) stopCamera("analysis width")
+      else if (managedFocusPropAtBind != (focusLock == true)) stopCamera("focus mode changed")
+    }
     if (active == false) stopCamera("inactive") else startCamera()
     applyTorch()
     applyZoom()
@@ -380,6 +392,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     val next = requestedSession
     if (next === checkedSession) return
     checkedSession = next
+    handoffTextSeed("session changed")
+    verifiedGeneration = focus.snapshot.generation
+    textCycle?.reset()
     attachedSession?.let { previous ->
       previous.detach(sessionCamera)
       // Its waiting captures, all of them its own until the next session asks, settle now from what the camera kept
@@ -449,8 +464,16 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         next.initializationFuture.get()
         val rotation = previewView.display?.rotation ?: Surface.ROTATION_0
         val width = requestedWidth()
+        val selector = CameraSelector.DEFAULT_BACK_CAMERA
+        val characteristics = ProcessCameraProvider.getInstance(themedContext).get().getCameraInfo(selector)
+          .cameraCharacteristics
+        managedFocusPropAtBind = focusLock == true
+        val supportsSingleShot = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
+          ?.contains(CaptureRequest.CONTROL_AF_MODE_AUTO) == true
+        singleShotOnly = managedFocusPropAtBind && supportsSingleShot
         // 4:3 like the analysis frames, so both streams see the same field of view.
         val preview = Preview.Builder()
+          .singleShotFocus(singleShotOnly)
           .setResolutionSelector(ResolutionSelector.Builder()
             .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY).build())
           .setTargetRotation(rotation)
@@ -471,7 +494,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         // The preview's viewport crops every use case to what the view shows, so the region maps through cropRect.
         val viewPort = previewView.viewPort
         if (viewPort == null) log("no viewport; analysis crop is the full frame")
-        next.setSessionConfig(SessionConfig(listOf(preview, useCase), viewPort), CameraSelector.DEFAULT_BACK_CAMERA)
+        next.setSessionConfig(SessionConfig(listOf(preview, useCase), viewPort), selector)
         previewView.controller = next
         next.bindToLifecycle(owner)
         controller = next
@@ -485,6 +508,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         } catch (_: Exception) { false }
         observeCameraState(next, bindGeneration)
         boundWidth = width
+        focusBoundAtMs = SystemClock.uptimeMillis()
         layoutChildren()
         log("bound analysis=${useCase.resolutionInfo?.resolution} rotation=$rotation")
         try {
@@ -492,7 +516,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         } catch (error: Exception) {
           log("camera option failed ${error.javaClass.simpleName}")
         }
-        aimFocus()
+        if (focusLock != true) aimFocus()
         applyTorch()
         applyZoom()
         syncTextFocus()
@@ -551,6 +575,14 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       // Opening, without an error, is still startup, which captures wait out; a repeat while unavailable is a duplicate.
       wasOpen || (state.error != null && !interrupted) -> {
         interrupted = true
+        if (wasOpen) {
+          stopTextFocus(bound = false)
+          discardTextSeed()
+          focus.unbind()
+          lensFrames.clear()
+          seedTried = false
+          verifiedGeneration = null
+        }
         makeUnavailable()
       }
     }
@@ -559,7 +591,11 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   /** Main: a frame of this start, counted after the last unavailable transition, arrived. */
   private fun onFreshFrame(bindGeneration: Long, token: Long) {
     if (bindGeneration != generation || token != availability || !cameraOpen) return
-    interrupted = false
+    if (interrupted) {
+      interrupted = false
+      focusBoundAtMs = SystemClock.uptimeMillis()
+      syncTextFocus()
+    }
     updateStatus()
   }
 
@@ -582,7 +618,13 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     cameraOpen = false
     interrupted = false
     stopTextFocus(bound = false)
+    discardTextSeed()
     focus.unbind()
+    lensFrames.clear()
+    latestFocusMode = null
+    singleShotOnly = false
+    seedTried = false
+    verifiedGeneration = null
     boundCamera = null
     hasSingleShotAutofocus = false
     zoomRequests.reset()
@@ -640,13 +682,17 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       val edges = if (box == null || frame.scanning) null
       else regionEdgeWidth(plane.buffer, plane.rowStride, plane.pixelStride, box[0], box[1], box[2], box[3])
       if (frame.focusSession != 0L) {
+        if (!frame.scanning) lockAim = textureAim(image, region)
         val judged = edges?.median.takeUnless { sweeping }
         mainHandler.post { onFocusFrame(frame.focusSession, frame.regionRevision, sensorNs, still, judged) }
       }
       if (frame.scanning) return
-      if (frame.focusSession != 0L) lockAim = textureAim(image, region)
+      if (singleShotOnly) {
+        val mode = lensFrames.at(sensorNs)?.afMode ?: latestFocusMode
+        if (mode != CaptureResult.CONTROL_AF_MODE_OFF && mode != CaptureResult.CONTROL_AF_MODE_AUTO) return
+      }
       // Frames queued while a focus began were exposed before it.
-      val inFocus = if (sensorNs >= frame.focusFromNs) frame.focus else 0L
+      val inFocus = if (!frame.focusPending && sensorNs >= frame.focusFromNs) frame.focus else 0L
       // A read belongs to the focus it was taken in: once that focus ends, a capture waits for the next one's.
       if (shot?.let { it.focus != frame.focus } == true) shot = null
       if (box == null) return
@@ -664,6 +710,10 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         // The page moved, or the lens no longer suits the view, as after moving nearer or farther: the read no longer
         // shows it. Whether the lens refocuses is the print's blur to tell.
         if (debugLogging) log("text view changed under the focus: sharpness %.0f, read at %.0f".format(score, shot?.sharpness ?: 0.0))
+        if (frame.focusSession != 0L && BlurWatch.sharp(edges?.median)) mainHandler.post {
+          if (snapshot.focusSession == frame.focusSession && snapshot.focus == inFocus &&
+            snapshot.regionRevision == frame.regionRevision) textCycle?.sceneChanged()
+        }
         shot = null
       }
       if (focusedRead.sampled(inFocus)) readFocused(inFocus, region, thumb)
@@ -775,32 +825,30 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
    * Analysis thread: the capture workflow. A press first looks at what it already has. The current focus's read
    * serves it at once when it is readable, text found with edges no wider than [BlurWatch.CUT], is under a second
    * old, and no kept frame of the last second is clearly sharper. Otherwise the sharpest kept frame is read now when
-   * its edges are that sharp, which serves it when it finds text. Without either, the press locks the lens once, from
-   * where it is, and waits for a readable read of that lock or of the focus cycle's next; a scan already running is
-   * that lock. Past a capture's deadline the sharpest kept frame is read then, sharp or not; without a frame the
+   * its edges are that sharp, which serves it when it finds text. Otherwise the press waits for the focus cycle's
+   * next readable result. Past a capture's deadline the sharpest kept frame is read then, sharp or not; without a frame the
    * capture fails.
    */
   private fun serveCaptures() {
     if (captures.isEmpty()) {
-      resetCaptureLock()
+      resetCaptureRead()
       return
     }
     val now = SystemClock.uptimeMillis()
     var how = "the focus's read"
     var result: TextShot? = null
-    if (!captureLockRequested) {
+    if (!captureCheckedRead) {
       result = firstLook()
       if (result == null) {
-        captureLockRequested = true
+        captureCheckedRead = true
         captureRejected = snapshot.focus
-        if (debugLogging) log("text capture: nothing readable kept; locking")
-        mainHandler.post { lockForCapture() }
+        if (debugLogging) log("text capture: waiting for readable frames")
       } else if (result !== shot) {
         how = "the sharpest kept frame, read now"
       }
     } else {
       result = lockRead()
-      how = "the capture's lock"
+      how = "a later focus read"
     }
     if (result == null) {
       if (captures.none { now >= it.deadline }) return
@@ -810,7 +858,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
         captures.removeAll(expired)
         val code = if (frames.sharpest() == null) ScannerErrorCode.CAPTURE_NOT_READY else ScannerErrorCode.CAPTURE_FAILED
         expired.forEach { it.fail(code) }
-        if (captures.isEmpty()) resetCaptureLock()
+        if (captures.isEmpty()) resetCaptureRead()
         return
       }
       // Only the presses whose time is up take a frame that may show no text; the others keep waiting for a readable
@@ -836,7 +884,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   }
 
   /** Analysis thread: the current focus's read, when readable and not the one the waiting captures turned down. */
-  private fun lockRead(): TextShot? = shot?.takeIf { it.focus != captureRejected && it.focus != 0L && it.readable }
+  private fun lockRead(): TextShot? = shot?.takeIf {
+    !snapshot.focusPending && it.focus != captureRejected && it.focus != 0L && it.readable
+  }
 
   /** Analysis thread: the sharpest kept frame, read now; null without a frame, or when the recognizer reads nothing. */
   private fun sharpestRead(): TextShot? {
@@ -848,7 +898,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   /** Analysis thread: resolves [waiting], every waiting capture by default, with [result], got by [how], encoded once. */
   private fun deliver(result: TextShot, how: String, waiting: List<PendingCapture> = captures.toList()) {
     captures.removeAll(waiting)
-    if (captures.isEmpty()) resetCaptureLock()
+    if (captures.isEmpty()) resetCaptureRead()
     val crop = result.crop
     val bitmap = bitmapOf(crop)
     val uri = try { captureUri(bitmap) } finally { bitmap.recycle() }
@@ -864,8 +914,8 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   }
 
   /** Analysis thread: no capture waits, so the next press looks first again. */
-  private fun resetCaptureLock() {
-    captureLockRequested = false
+  private fun resetCaptureRead() {
+    captureCheckedRead = false
     captureRejected = null
   }
 
@@ -873,7 +923,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
    * frame read now when it is sharp and finds text; null when neither does, or while a lock's scan runs, whose read is
    * coming. */
   private fun firstLook(): TextShot? {
-    if (snapshot.scanning) return null
+    val currentFocus = snapshot
+    if (currentFocus.scanning || currentFocus.focusPending ||
+      (currentFocus.focusSession != 0L && currentFocus.focus == 0L)) return null
     val best = frames.sharpest() ?: return null
     val current = shot?.takeIf { it.focus != 0L }
     if (current != null && current.readable && newestNs - current.sensorNs <= FrameRing.KEEP_NS &&
@@ -890,7 +942,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private fun failCaptures(code: ScannerErrorCode) {
     val waiting = captures.toList()
     captures.clear()
-    resetCaptureLock()
+    resetCaptureRead()
     waiting.forEach { it.fail(code) }
   }
 
@@ -966,7 +1018,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     if (motion == null) {
       if (sensorlessSinceNs == 0L) sensorlessSinceNs = sensorNs
       if (sensorNs - sensorlessSinceNs > SENSOR_GRACE_NS) {
-        log("text focus lock: no motion samples; camera autofocus")
+        log("text focus lock paused: no motion samples")
         focusSensorsFailed = true
         stopTextFocus(bound = true)
         return
@@ -986,54 +1038,126 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     val held = focus.snapshot
     if (held.owner == FocusOwner.TAP) return
     val lens = when {
-      held.owner == null -> TextFocusCycle.Lens.FREE
-      held.locked == null -> TextFocusCycle.Lens.SCANNING
-      else -> TextFocusCycle.Lens.LOCKED
+      held.owner == null -> FocusCycle.Lens.FREE
+      held.locked == null -> FocusCycle.Lens.SCANNING
+      else -> FocusCycle.Lens.LOCKED
     }
-    // The lens distance pins at its near limit for anything nearer, which is exactly when a blurred lock stays.
-    val near = nearestDiopters
-    val atNearLimit = near != null && (lensDiopters ?: 0f) >= near - TextFocusCycle.NEAR_LIMIT_DIOPTERS
-    cycle.motion(sensorNs, quiet)
-    follow(cycle.next(TextFocusCycle.Frame(sensorNs, quiet, turned, lens, edges, atNearLimit)))
-  }
-
-  /** Main thread: carries out the focus cycle's [step]. */
-  private fun follow(step: TextFocusCycle.Step) {
-    when (step) {
-      TextFocusCycle.Step.None -> Unit
-      is TextFocusCycle.Step.Release -> {
-        // Continuous autofocus follows the region again once the cancellation completes.
-        log("text focus lock released: ${step.why}${lensNote()}")
-        focus.releaseScannerLock()
+    val metadata = lensFrames.at(sensorNs)
+    val seed = startupFocus
+    if (seed != null && !seed.settled && !seed.clearing && metadata?.afMode == CaptureResult.CONTROL_AF_MODE_OFF &&
+      !metadata.lensMoving && metadata.focusDiopters?.let { abs(it - seed.distance) <= .35f } == true) {
+      seed.settled = true
+      log("text startup focus seed settled diopters=${metadata.focusDiopters} elapsed=${focusElapsed()}ms")
+    }
+    val lockEdges = edges.takeIf { !current.focusPending && sensorNs >= current.focusFromNs && current.focus != 0L }
+    val wantsScan = cycle.wantsScan(sensorNs, quiet, turned, lens, held.generation, lockEdges)
+    if (cycle.verified && held.owner == FocusOwner.PAGE && verifiedGeneration != held.generation &&
+      metadata?.afMode == CaptureResult.CONTROL_AF_MODE_AUTO && !metadata.lensMoving) {
+      val distance = metadata.focusDiopters
+      if (distance != null && distance.isFinite() && distance >= 0f) {
+        verifiedGeneration = held.generation
+        focusSeedKey()?.let { key -> attachedSession?.rememberFocusSeed(key, distance) }
+        log("text verified lock diopters=$distance elapsed=${focusElapsed()}ms")
       }
-      is TextFocusCycle.Step.Lock -> lockText(step.why)
     }
+    if (cycle.awaitingScan && !current.focusPending && current.focus != 0L) {
+      snapshot = snapshot.copy(focusPending = true, revision = snapshot.revision + 1)
+    }
+    if (!wantsScan || focus.resuming) return
+    if (seed != null) {
+      if (seed.settled || focusElapsed() - seed.requestedAtMs >= STARTUP_SEED_SETTLE_MS) handoffTextSeed("steady scan")
+      return
+    }
+    if (latestFocusMode == CaptureResult.CONTROL_AF_MODE_AUTO) lockText(cycle)
   }
 
-  /** Main thread: a capture without a usable read locks the lens, from where it is when a lock holds it; a scan already
-   * running is the one it waits for, and a tap's hold is left alone. Only the focus cycle locks, since it alone
-   * releases a lock again; without it continuous autofocus's next focus serves the capture. */
-  private fun lockForCapture() {
-    if (disposed || controller == null || textCycle == null) return
-    val held = focus.snapshot
-    if (held.owner == FocusOwner.TAP || (held.owner != null && held.locked == null)) return
-    lockText("a capture")
-  }
-
-  /** Main thread: the camera's own locking scan at [lockAim], focusing and metering there: the region's most textured
-   * spot, else its centre. A settled lock scans again without a release, so the lens starts the sweep where it was;
-   * anything else holding the lens is released first. */
-  private fun lockText(why: String) {
+  /** Start a scan on texture inside the read region. A held lock stays in place until its replacement. */
+  private fun lockText(cycle: TextFocusCycle) {
     val camera = boundCamera ?: return
     val aim = lockAim
     val point = aim?.let(::aimPoint) ?: regionPoint() ?: return
     val accepted = {
-      textCycle?.started()
+      val why = cycle.started()
+      snapshot = snapshot.copy(focusPending = false)
       log("text focus lock at ${if (aim != null) "texture" else "the centre"} for $why")
     }
-    if (focus.relock(camera, point, meterExposure = true, accepted = accepted)) return
-    if (focus.snapshot.owner != null) focus.releaseScannerLock()
-    focus.lock(camera, point, FocusOwner.PAGE, meterExposure = true, accepted = accepted)
+    if (focus.snapshot.owner != null) focus.relock(camera, point, meterExposure = true, accepted = accepted)
+    else focus.lock(camera, point, FocusOwner.PAGE, meterExposure = true, accepted = accepted)
+  }
+
+  private fun focusElapsed() = SystemClock.uptimeMillis() - focusBoundAtMs
+
+  private fun focusSeedKey(): TextFocusSeedKey? {
+    val cameraId = boundCamera?.info?.cameraId ?: return null
+    val ratio = zoomRequests.settled ?: return null
+    return TextFocusSeedKey(cameraId, ratio)
+  }
+
+  private fun startWithTextSeed(camera2: CameraCharacteristics) {
+    if (seedTried || seedDisabled) return
+    val camera = boundCamera ?: return
+    val session = attachedSession ?: return
+    if (session.getSnapshot().closed) return
+    val key = focusSeedKey() ?: return
+    seedTried = true
+    val remembered = session.focusSeed(key)
+    val distance = startupFocusDistance(camera2, remembered ?: INITIAL_TEXT_FOCUS_SEED) ?: return
+    val seed = TextStartupFocus(camera, session, distance, focusElapsed())
+    startupFocus = seed
+    log("text startup focus seed requested diopters=$distance zoom=${key.zoom} source=${if (remembered == null) "default" else "session"}")
+    try {
+      val applied = camera.control.applyStartupFocus(distance)
+      applied.addListener({
+        if (startupFocus === seed && !seed.clearing && runCatching { applied.get() }.isFailure) {
+          seedDisabled = true
+          handoffTextSeed("request failed")
+        }
+      }, ContextCompat.getMainExecutor(themedContext))
+    } catch (_: Exception) {
+      seedDisabled = true
+      handoffTextSeed("request failed")
+    }
+  }
+
+  private fun handoffTextSeed(reason: String, afterClear: (() -> Unit)? = null) {
+    val seed = startupFocus ?: return
+    if (afterClear != null) seed.afterClear = afterClear
+    if (seed.clearing) return
+    seed.clearing = true
+    log("text startup focus handoff reason=$reason settled=${seed.settled} elapsed=${focusElapsed()}ms")
+    mainHandler.postAtTime({ failTextSeed(seed) }, seed, SystemClock.uptimeMillis() + STARTUP_SEED_CLEAR_MS)
+    try {
+      val cleared = seed.camera.control.enableSingleShotFocus()
+      cleared.addListener({
+        if (startupFocus === seed) {
+          if (runCatching { cleared.get() }.isFailure) {
+            failTextSeed(seed)
+          } else {
+            mainHandler.removeCallbacksAndMessages(seed)
+            startupFocus = null
+            val next = seed.afterClear
+            if (next != null && seed.session === attachedSession) next()
+            else if (!singleShotOnly && textCycle == null) aimFocus()
+          }
+        }
+      }, ContextCompat.getMainExecutor(themedContext))
+    } catch (_: Exception) {
+      mainHandler.post { failTextSeed(seed) }
+    }
+  }
+
+  private fun failTextSeed(seed: TextStartupFocus) {
+    if (startupFocus !== seed) return
+    seedDisabled = true
+    log("text startup focus handoff failed; rebinding in single-shot mode")
+    stopCamera("startup-focus-handoff")
+    startCamera()
+  }
+
+  private fun discardTextSeed() {
+    startupFocus?.let { mainHandler.removeCallbacksAndMessages(it) }
+    startupFocus = null
+    if (singleShotOnly) boundCamera?.let { runCatching { it.control.clearStartupFocus() } }
   }
 
   /**
@@ -1047,33 +1171,39 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       zoomRequests.settled != null
     if (want && textCycle != null) return
     if (textCycle != null) stopTextFocus(bound = true)
-    if (!want) return
+    if (!want) {
+      if (zoomRequests.settled != null) aimFocus()
+      return
+    }
     val info = controller?.cameraInfo ?: return
-    val camera2 = try { info.cameraCharacteristics } catch (_: Exception) { return }
+    val camera2 = try { info.cameraCharacteristics } catch (_: Exception) {
+      aimFocus()
+      return
+    }
     val realtime = try {
       camera2.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE) ==
         CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
     } catch (_: Exception) { false }
     if (!hasSingleShotAutofocus || !realtime) {
-      log("text focus lock unavailable: singleShot=$hasSingleShotAutofocus realtime=$realtime; camera autofocus")
+      log("text focus lock unavailable: singleShot=$hasSingleShotAutofocus realtime=$realtime")
+      aimFocus()
       return
     }
     if (!gyroscope.hasAcceleration) {
-      log("text focus lock unavailable: no linear acceleration sensor; camera autofocus")
+      log("text focus lock unavailable: no linear acceleration sensor")
+      aimFocus()
       return
     }
     gyroscope.start()
     if (!gyroscope.isRunning) {
-      log("text focus lock unavailable: no gyroscope; camera autofocus")
+      log("text focus lock unavailable: no gyroscope")
+      aimFocus()
       return
     }
     sensorlessSinceNs = 0L
-    nearestDiopters = try {
-      camera2.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.takeIf { it > 0f }
-    } catch (_: Exception) { null }
     textCycle = TextFocusCycle()
-    snapshot = snapshot.copy(focusSession = ++focusSessions)
-    aimFocus()
+    snapshot = snapshot.copy(focusSession = ++focusSessions, focusPending = true)
+    startWithTextSeed(camera2)
     updateAutofocus()
   }
 
@@ -1081,9 +1211,12 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private fun stopTextFocus(bound: Boolean) {
     if (textCycle == null) return
     textCycle = null
-    snapshot = snapshot.copy(focusSession = 0L, scanning = false)
+    snapshot = snapshot.copy(focusSession = 0L, scanning = false, focusPending = false)
     gyroscope.stop()
-    if (bound && focus.releaseScannerLock() == FocusController.Release.NONE) aimFocus()
+    if (bound) {
+      handoffTextSeed("focus cycle paused")
+      if (!singleShotOnly && focus.releaseScannerLock() == FocusController.Release.NONE) aimFocus()
+    }
     updateAutofocus()
   }
 
@@ -1157,8 +1290,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
       if (bindGeneration != generation) return
       val afState = result.get(CaptureResult.CONTROL_AF_STATE)
-      focus.observeFrame(result.frameNumber, request.get(CaptureRequest.CONTROL_AF_TRIGGER),
-        result.get(CaptureResult.CONTROL_AF_MODE), afState)
+      val afMode = result.get(CaptureResult.CONTROL_AF_MODE)
+      latestFocusMode = afMode
+      focus.observeFrame(result.frameNumber, request.get(CaptureRequest.CONTROL_AF_TRIGGER), afMode, afState)
       if (afState != cameraAfState) {
         cameraAfState = afState
         mainHandler.post { if (bindGeneration == generation) updateAutofocus() }
@@ -1166,6 +1300,10 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
       lensDiopters = result.get(CaptureResult.LENS_FOCUS_DISTANCE)
       passiveScanning = afState == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN
       val timestampNs = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: return
+      lensFrames.add(timestampNs, CameraFrameState(result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L,
+        result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW) ?: 0L, passiveScanning, afState,
+        focusDiopters = lensDiopters, lensMoving = result.get(CaptureResult.LENS_STATE) == CaptureResult.LENS_STATE_MOVING,
+        afMode = afMode))
       if (timestampNs > latestCaptureNs) latestCaptureNs = timestampNs
       if (debugLogging) capturedFrames.incrementAndGet()
       zoomMetadata?.ratio(result)?.let { applied ->
@@ -1202,7 +1340,8 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
   private fun aimFocus() {
     val control = cameraControl ?: return
     // A pending cancellation aims it once it completes.
-    if (focus.snapshot.owner != null || focus.resuming) return
+    if (singleShotOnly || focus.snapshot.owner != null || focus.resuming || startupFocus != null || textCycle != null ||
+      (focusLock == true && zoomRequests.settled == null)) return
     val point = regionPoint() ?: return
     val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
       .setLockingMode(0).disableAutoCancel().build()
@@ -1227,13 +1366,18 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     )
   }
 
-  /** Main thread: a tap's own scan focuses and meters there for its hold, then continuous autofocus resumes on the
-   * region and the focus cycle starts over. */
+  /** A tap uses its own focus hold. The managed cycle takes over again after it ends. */
   private fun onTap(x: Float, y: Float) {
     val camera = boundCamera ?: return
     if (tapToFocus == false) return
+    if (startupFocus != null) {
+      handoffTextSeed("tap focus") { onTap(x, y) }
+      return
+    }
+    if (singleShotOnly && latestFocusMode != CaptureResult.CONTROL_AF_MODE_AUTO) return
     val point = previewView.meteringPointFactory.createPoint(x, y, FocusRules.TAP_AREA)
     textCycle?.reset()
+    snapshot = snapshot.copy(focusPending = false)
     focus.tap(camera, point, point)
   }
 
@@ -1269,7 +1413,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     val holder: Any? = when {
       controller == null -> null
       held.owner != null && held.locked == true -> held.generation
-      held.owner == null && state == AutofocusState.FOCUSED -> ContinuousFocus
+      !singleShotOnly && held.owner == null && textCycle == null && state == AutofocusState.FOCUSED -> ContinuousFocus
       else -> null
     }
     if (holder != focusHolder) {
@@ -1358,6 +1502,9 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     const val EDGE_LOG_FRAMES = 10
     /** How long a running focus cycle waits for motion samples before leaving focus to continuous autofocus. */
     const val SENSOR_GRACE_NS = 1_000_000_000L
+    const val INITIAL_TEXT_FOCUS_SEED = 5.0f
+    const val STARTUP_SEED_SETTLE_MS = 500L
+    const val STARTUP_SEED_CLEAR_MS = 1_000L
     /** A capture result's zoom within this fraction of a request's ratio shows it, past the crop region's rounding. */
     const val ZOOM_TOLERANCE = .01f
     /** How long after the camera applies a zoom its capture results may take to show it before frames count anyway. */
@@ -1367,6 +1514,14 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
     /** A gap between analyzed frames this long starts a new analysis report. */
     const val STAT_GAP_NS = 1_000_000_000L
   }
+}
+
+private class TextStartupFocus(val camera: BoundCamera, val session: HybridTextSession, val distance: Float,
+  val requestedAtMs: Long,
+) {
+  var settled = false
+  var clearing = false
+  var afterClear: (() -> Unit)? = null
 }
 
 /**
@@ -1379,7 +1534,7 @@ class HybridTextCameraView(private val themedContext: ThemedReactContext) : Hybr
  */
 private data class AnalysisSnapshot(
   val region: TextRegion, val revision: Long, val readFromNs: Long, val focusSession: Long, val regionRevision: Long,
-  val focus: Long = 0L, val focusFromNs: Long = 0L, val scanning: Boolean = false,
+  val focus: Long = 0L, val focusFromNs: Long = 0L, val scanning: Boolean = false, val focusPending: Boolean = false,
 )
 
 /**

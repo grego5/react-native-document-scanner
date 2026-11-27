@@ -33,11 +33,11 @@ internal fun pagePoint(corners: DocumentCorners, s: Double, t: Double): Document
  * most gradient energy, which crisp print has and blank paper or creases have little of, so contrast autofocus finds edges
  * there. Cells within [SPOT_TIE] of the best prefer the page's centre, where the focus box
  * fits without moving. The page's border is left out, since past an imprecise outline it is background. Null when no
- * cell could be sampled.
+ * cell could be sampled, or when [requireTexture] and the sampled area is flat.
  */
 internal fun pickPrintSpot(
   buffer: ByteBuffer, rowStride: Int, pixelStride: Int, left: Int, top: Int, right: Int, bottom: Int, rotation: Int,
-  corners: DocumentCorners,
+  corners: DocumentCorners, requireTexture: Boolean = false,
 ): DocumentPoint? {
   val width = right - left
   val height = bottom - top
@@ -69,7 +69,7 @@ internal fun pickPrintSpot(
     if (samples > 0) scores[cell] = energy / samples
   }
   val best = scores.max()
-  if (best < 0) return null
+  if (best < 0 || requireTexture && best == 0.0) return null
   val chosen = (0 until 9).filter { scores[it] >= best * (1 - SPOT_TIE) }
     .minBy { (it % 3 - 1) * (it % 3 - 1) + (it / 3 - 1) * (it / 3 - 1) }
   return DocumentPoint(SPOT_BORDER + (1 - 2 * SPOT_BORDER) * (chosen % 3 + .5) / 3,
@@ -251,7 +251,7 @@ internal val GUIDE_AREA: DocumentCorners = (FocusAim.CENTRE - FocusAim.AREA / 2)
  * blurred frame keeps more contrast over print than over blank paper, so the spot is found before focus is. */
 internal fun pickGuideSpot(
   buffer: ByteBuffer, rowStride: Int, pixelStride: Int, left: Int, top: Int, right: Int, bottom: Int, rotation: Int,
-): DocumentPoint? = pickPrintSpot(buffer, rowStride, pixelStride, left, top, right, bottom, rotation, GUIDE_AREA)
+): DocumentPoint? = pickPrintSpot(buffer, rowStride, pixelStride, left, top, right, bottom, rotation, GUIDE_AREA, requireTexture = true)
   ?.let { pagePoint(GUIDE_AREA, it.x, it.y) }
 
 /** [point] lies inside the convex outline [corners]. */

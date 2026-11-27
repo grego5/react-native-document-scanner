@@ -27,6 +27,15 @@ class HybridTextSession : HybridTextSessionSpec() {
   /** Captures not yet settled; close fails them, so a later result finds them gone. */
   private val waiting = mutableSetOf<Promise<Variant_ScannerFailure_TextSessionSnapshot>>()
 
+  /** The most recent verified position, usable at the same camera and zoom within this session. */
+  private var focusSeed: Pair<TextFocusSeedKey, Float>? = null
+  internal fun focusSeed(key: TextFocusSeedKey): Float? = synchronized(lock) {
+    focusSeed?.takeIf { !closed && it.first == key }?.second
+  }
+  internal fun rememberFocusSeed(key: TextFocusSeedKey, diopters: Float) = synchronized(lock) {
+    if (!closed && diopters.isFinite() && diopters >= 0f) focusSeed = key to diopters
+  }
+
   /** Shows the session in [camera]; false while another camera shows it. */
   internal fun attach(camera: Camera): Boolean {
     change {
@@ -104,6 +113,7 @@ class HybridTextSession : HybridTextSessionSpec() {
     val (failed, delivery) = synchronized(lock) {
       if (closed) return Promise.resolved(Variant_Boolean_ScannerFailure.create(true))
       closed = true
+      focusSeed = null
       capture = null
       camera = null
       status = TextScanStatus.OFF
@@ -134,3 +144,5 @@ class HybridTextSession : HybridTextSessionSpec() {
 
   private fun failure(code: ScannerErrorCode) = Variant_ScannerFailure_TextSessionSnapshot.create(ScannerFailure(code))
 }
+
+internal data class TextFocusSeedKey(val cameraId: String, val zoom: Float)

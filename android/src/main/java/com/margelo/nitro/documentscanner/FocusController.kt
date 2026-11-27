@@ -22,7 +22,7 @@ internal enum class FocusOwner(val timed: Boolean) {
 /**
  * Focus as everything else reads it. [generation] changes whenever a scan starts, settles or ends, and [changedNs] and
  * [changedRealtimeNs] are that moment on System.nanoTime() and elapsedRealtimeNanos(). [owner] is null while nothing
- * holds the lens and continuous autofocus runs. [locked] is null while a scan scans.
+ * has an active focus owner. [locked] is null during a scan.
  */
 internal data class FocusSnapshot(
   val generation: Long,
@@ -63,6 +63,9 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     fun focusChanged(snapshot: FocusSnapshot)
     /** A page or recovery lock's scan failed and was released. */
     fun scannerLockFailed(owner: FocusOwner) {}
+    fun resendLostTrigger(owner: FocusOwner): Boolean = true
+    /** Managed cameras keep the lens at its last position until another single-shot request. */
+    val holdLensBetweenScans: Boolean get() = false
     /** The bound camera offers single-shot autofocus, whose frames [observeFrame] reads: a lock counts once a frame shows
      * it. Without it CameraX's report stands. */
     val confirmsLockFrames: Boolean get() = false
@@ -120,9 +123,10 @@ internal class FocusController(private val host: Host) : AutoCloseable {
    * on a settled scanner lock with no shot in flight or cancellation pending; false otherwise. [accepted] runs as for
    * [lock].
    */
-  fun relock(camera: BoundCamera, point: MeteringPoint, meterExposure: Boolean = false, accepted: () -> Unit = {}): Boolean {
-    val owner = policy.owner
-    if (closed || host.shotInFlight() || owner?.scanners != true || policy.pending || pendingCancel != null) return false
+  fun relock(camera: BoundCamera, point: MeteringPoint, meterExposure: Boolean = false,
+    owner: FocusOwner? = policy.owner, accepted: () -> Unit = {}): Boolean {
+    if (closed || host.shotInFlight() || policy.owner?.scanners != true || owner?.scanners != true ||
+      policy.pending || pendingCancel != null) return false
     submitScannerScan(camera, point, owner, meterExposure, accepted)
     return true
   }
@@ -219,12 +223,12 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     if (current.token != token || !pending(current)) return
     host.log("${owner.name.lowercase()} focus trigger lost")
     if (host.shotInFlight()) return
-    if (!current.resent) {
+    if (!current.resent && host.resendLostTrigger(owner)) {
       host.log("focus trigger resent")
       trigger(start(current.camera, owner, current.action, resent = true))
       return
     }
-    host.log("${owner.name.lowercase()} focus trigger lost twice")
+    if (current.resent) host.log("${owner.name.lowercase()} focus trigger lost twice")
     settle(current, false)
   }
   /** Main thread: a frame showed scan [token]'s lock in single-shot autofocus; settles a lock CameraX already reported. */
@@ -238,7 +242,8 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     unconfirmed = null
     deferredRelease = null
     deferredFailed = false
-    val next = Scan(camera, policy.start(owner, host.uptimeNs()), action, resent)
+    val timed = owner.timed && !(owner.scanners && host.holdLensBetweenScans)
+    val next = Scan(camera, policy.start(owner, host.uptimeNs(), timed), action, resent)
     // Armed before the request is sent, so its trigger frame is watched for this scan.
     synchronized(frames) { frames.arm(next.token) }
     host.log("${owner.name.lowercase()} focus scan started")
@@ -271,7 +276,7 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     }, host.mainExecutor)
   }
   /** A success counts once a frame shows the lock in single-shot autofocus; until then the scan stays pending, bounded by
-   * its deadline, and a lost trigger is resent. A failed scanner lock is released, after the shot in flight if one is. */
+   * its deadline, and a lost trigger follows the host's retry policy. Managed cameras can keep a failed lock for replacement. */
   private fun settle(target: Scan, success: Boolean) {
     if (!pending(target)) return
     if (success && !lockFrameReported(target)) {
@@ -285,7 +290,8 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     val owner = snapshot.owner
     host.log("${owner?.name?.lowercase()} focus settled success=$success")
     if (!success && owner != null && owner.scanners) {
-      if (host.shotInFlight()) deferRelease(target, failed = true)
+      if (host.holdLensBetweenScans) host.scannerLockFailed(owner)
+      else if (host.shotInFlight()) deferRelease(target, failed = true)
       else if (policy.releaseScannerLock()) {
         released()
         host.scannerLockFailed(owner)
@@ -297,6 +303,7 @@ internal class FocusController(private val host: Host) : AutoCloseable {
     val ended = scan
     scan = null
     publish()
+    if (host.holdLensBetweenScans) return
     val camera = host.camera
     if (ended == null || ended.camera !== camera) {
       host.resumeContinuousFocus()

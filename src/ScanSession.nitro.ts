@@ -33,7 +33,7 @@ export interface ImportImageOptions {
  * imports and on iOS.
  */
 export interface CaptureQuality {
-  /** The focus cycle ended without confirming focus, and the photo used the focus the lens held. */
+  /** Focus was unconfirmed when the photo was taken. */
   readonly focusUnconfirmed: boolean
   /**
    * The photo's own print measured soft around the page's print spot; false when too little print could be measured.

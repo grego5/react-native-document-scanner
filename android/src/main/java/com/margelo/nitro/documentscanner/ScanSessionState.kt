@@ -49,6 +49,15 @@ internal class ScanSessionState(
   private var model: CornerModelStatus = CornerModelStatus.Absent
   private val stopObservingModel = observeModel(::modelChanged)
 
+  /** Session-local lens position from a verified document lock. */
+  private var focusSeed: Pair<String, Float>? = null
+  fun rememberFocusSeed(cameraId: String, diopters: Float) = synchronized(lock) {
+    if (!closed && diopters.isFinite() && diopters >= 0f) focusSeed = cameraId to diopters
+  }
+  fun focusSeed(cameraId: String): Float? = synchronized(lock) {
+    focusSeed?.takeIf { !closed && it.first == cameraId }?.second
+  }
+
   // One recent capture placeholder; displayed views retain their own bitmap reference.
   private var capturePlaceholder: Pair<String, android.graphics.Bitmap>? = null
   fun retainCapturePlaceholder(id: String, bitmap: android.graphics.Bitmap) = synchronized(lock) {
@@ -473,6 +482,7 @@ internal class ScanSessionState(
       closeCancellations.clear()
       pages.clear()
       capturePlaceholder = null
+      focusSeed = null
       events.close()
       // Install before cancellation callbacks can reenter this state.
       completion = CompletableFuture()

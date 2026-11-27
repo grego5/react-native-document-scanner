@@ -32,12 +32,10 @@ internal enum class LiveGuideStatus { SEARCHING, DETECTED, TRACKING, HELD, UNAVA
 internal data class LiveFocusCandidate(
   val corners: DocumentCorners?, val source: OutputTransform, val width: Int, val height: Int, val confirmed: Boolean,
   val sensorNs: Long, val sampled: SampledSpot? = null,
-) {
-  val spot: DocumentPoint? get() = sampled?.point
-}
+)
 
 /** The answer to spot request [request]: the spot picked, or null when it could not be. */
-internal data class SampledSpot(val request: Long, val point: DocumentPoint?)
+internal data class SampledSpot(val request: Long, val point: DocumentPoint?, val guideFallback: DocumentPoint? = null)
 
 /** The detector's spot requests: [pending], the one the next analysed frame answers, 0 for none, and [taken], the last
  * one a frame answered, at sensor time [takenNs], 0 before any. One value, so a reader never sees a request between
@@ -578,10 +576,10 @@ internal class LiveDocumentDetector(
           guideEligible = !scoreRejected, flowRetained = flowRetained,
         ))
       }
-      postFocusCandidate(token, startedAt,
-        LiveFocusCandidate(if (flowRetained) output.accepted else candidate?.corners, sourceTransform, width, height,
-          output.status == GuideTrackingStatus.TRACKING, sensorTimestampNs,
-          spot(image, if (flowRetained) output.accepted else candidate?.corners, sensorTimestampNs)))
+      val focusCorners = if (flowRetained) output.accepted else candidate?.corners
+      val focusConfirmed = output.status == GuideTrackingStatus.TRACKING
+      postFocusCandidate(token, startedAt, LiveFocusCandidate(focusCorners, sourceTransform, width, height,
+        focusConfirmed, sensorTimestampNs, spot(image, focusCorners.takeIf { focusConfirmed }, sensorTimestampNs)))
       tracking = output.status != GuideTrackingStatus.SEARCHING
       if (!flowRetained) {
         if (output.status == GuideTrackingStatus.TRACKING) {
@@ -677,20 +675,16 @@ internal class LiveDocumentDetector(
   private fun spot(image: ImageProxy, corners: DocumentCorners?, sensorNs: Long): SampledSpot? {
     val request = spotRequest.getAndUpdate { it.take(sensorNs) }.pending
     if (request == 0L) return null
-    return SampledSpot(request, pickSpot(image, corners))
-  }
-
-  private fun pickSpot(image: ImageProxy, corners: DocumentCorners?): DocumentPoint? {
     val plane = image.planes[0]
     val crop = image.cropRect
     val rotation = image.imageInfo.rotationDegrees
-    return if (corners != null) {
+    val page = corners?.let {
       pickPrintSpot(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
-        rotation, corners)
-    } else {
-      pickGuideSpot(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right, crop.bottom,
-        rotation)
+        rotation, it, requireTexture = true)
     }
+    val fallback = pickGuideSpot(plane.buffer, plane.rowStride, plane.pixelStride, crop.left, crop.top, crop.right,
+      crop.bottom, rotation)
+    return if (corners == null) SampledSpot(request, fallback) else SampledSpot(request, page, fallback)
   }
 
   private fun postFocusCandidate(token: Long, startedAt: Long, hint: LiveFocusCandidate) {

@@ -2,7 +2,7 @@ package com.margelo.nitro.documentscanner
 
 /**
  * Focus ownership, without hardware or a clock: who holds the lens, the current scan's token and result, the tap's
- * hold, and a generation that rises on every change. Without an owner, continuous autofocus runs. Times are monotonic
+ * hold, and a generation that rises on every change. Times are monotonic
  * uptime nanoseconds. Main thread.
  */
 internal class FocusPolicy {
@@ -22,14 +22,16 @@ internal class FocusPolicy {
   var pending = false
     private set
   private var scanDeadlineNs = 0L
+  private var timedHold = false
 
   /** Gives the lens to [owner] and returns the new scan's token. */
-  fun start(owner: FocusOwner, nowNs: Long): Long {
+  fun start(owner: FocusOwner, nowNs: Long, timed: Boolean = owner.timed): Long {
     scanToken = ++generation
     this.owner = owner
     locked = null
     pending = true
-    heldUntilNs = if (owner.timed) nowNs + TAP_HOLD_NS else Long.MAX_VALUE
+    timedHold = timed
+    heldUntilNs = if (timedHold) nowNs + TAP_HOLD_NS else Long.MAX_VALUE
     scanDeadlineNs = nowNs + SCAN_TIMEOUT_NS
     return scanToken
   }
@@ -44,7 +46,7 @@ internal class FocusPolicy {
   }
 
   fun expireTap(token: Long, nowNs: Long, shot: Boolean): Boolean {
-    if (shot || owner?.timed != true || token != scanToken || nowNs < heldUntilNs) return false
+    if (shot || !timedHold || token != scanToken || nowNs < heldUntilNs) return false
     release()
     return true
   }
@@ -60,6 +62,7 @@ internal class FocusPolicy {
   fun adoptGuideLock(): Boolean {
     if (owner != FocusOwner.GUIDE || locked != true) return false
     owner = FocusOwner.PAGE
+    timedHold = false
     heldUntilNs = Long.MAX_VALUE
     ++generation
     return true
@@ -74,13 +77,14 @@ internal class FocusPolicy {
 
   fun unbind() = release()
 
-  fun tapDeadline(): Long? = heldUntilNs.takeIf { owner?.timed == true }
-  fun scanDeadline(): Long? = scanDeadlineNs.takeIf { owner != null && owner?.timed == false && pending }
+  fun tapDeadline(): Long? = heldUntilNs.takeIf { timedHold }
+  fun scanDeadline(): Long? = scanDeadlineNs.takeIf { owner != null && !timedHold && pending }
 
   private fun release() {
     owner = null
     locked = null
     heldUntilNs = 0
+    timedHold = false
     pending = false
     ++generation
   }

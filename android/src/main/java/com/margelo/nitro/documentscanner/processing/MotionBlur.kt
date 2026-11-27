@@ -19,6 +19,7 @@ internal data class CameraFrameState(
   val torchFired: Boolean? = null,
   /** The lens moved during this frame, from LENS_STATE. */
   val lensMoving: Boolean = false,
+  val afMode: Int? = null,
 )
 
 /** Recent capture results keyed by SENSOR_TIMESTAMP, which equals the timestamp of the frame's image buffers. */

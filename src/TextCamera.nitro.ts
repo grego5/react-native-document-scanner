@@ -127,8 +127,8 @@ export interface TextCameraProps extends HybridViewProps {
   /** Tapping the preview focuses there for 5 s, then focus returns to the region; defaults to true. */
   tapToFocus?: boolean
   /**
-   * Enables managed focus recovery on Android. Continuous autofocus follows the region and can supply readable
-   * frames. With single-shot autofocus and motion sensors, a steady blurred region can trigger a locking scan.
+   * Enables managed focus on Android. With single-shot autofocus and motion sensors, a steady region gets a locking
+   * scan and focus is verified from the text edges. Supported lenses can start the preview from a manual distance.
    * The native view defaults to false and the `TextCamera` wrapper enables it by default.
    * See the Android text-camera reference for recovery and capture selection.
    */

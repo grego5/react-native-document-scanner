@@ -117,6 +117,20 @@ class ScanSessionStateTest {
       capture = CaptureQuality(true, null), photo = PhotoSample(DocumentPoint(.3, .3), 6))
   }
 
+  @Test fun focusSeedIsScopedToTheCameraAndOpenSession() {
+    assertNull(state.focusSeed("back"))
+    state.rememberFocusSeed("back", 4.2f)
+    assertEquals(4.2f, state.focusSeed("back"))
+    assertNull(state.focusSeed("other"))
+    state.rememberFocusSeed("back", Float.NaN)
+    assertEquals(4.2f, state.focusSeed("back"))
+    val closed = state.close()
+    state.rememberFocusSeed("back", 3.5f)
+    assertNull(state.focusSeed("back"))
+    drain()
+    assertTrue(closed.isDone)
+  }
+
   @Test fun aCapturesSoftnessFollowsItsFirstRender() {
     admitCapture()
     // Admitted at once, unmeasured; the unconfirmed focus is there from the start.

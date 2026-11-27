@@ -149,6 +149,11 @@ function PreviewMode({
         />
         {page?.analyzing && <Text style={styles.imageHint}>Finding the page…</Text>}
         {page?.rendering && <Text style={styles.imageHint}>Updating…</Text>}
+        {page?.capture?.soft === true && (
+          <Text style={styles.imageHint} accessibilityLiveRegion="polite">
+            This photo looks blurry. Retake it if the text is hard to read.
+          </Text>
+        )}
         {(page?.renderFailure ?? page?.analysisFailure) && (
           <Text style={styles.imageHint}>
             {errorMessage(
