@@ -112,20 +112,24 @@ try {
 
     $variant = if ($Release) { 'release' } else { 'debug' }
     Write-Output "Preparing Android $variant host for $androidAbi"
-    & npx expo prebuild --platform android --no-install
-    if ($LASTEXITCODE -ne 0) {
-        Stop-AndroidBuild 'Expo Android prebuild failed' $LASTEXITCODE
+    if (-not $Release) {
+        & npx expo prebuild --platform android --no-install
+        if ($LASTEXITCODE -ne 0) {
+            Stop-AndroidBuild 'Expo Android prebuild failed' $LASTEXITCODE
+        }
     }
 
     $androidRoot = Join-Path $exampleRoot 'android'
+    if (-not (Test-Path -LiteralPath (Join-Path $androidRoot 'gradlew.bat') -PathType Leaf)) {
+        Stop-AndroidBuild 'Android project is not prepared; run npm run android:prebuild in example first'
+    }
     Set-Location -LiteralPath $androidRoot
     $buildTask = if ($Release) { ':app:assembleRelease' } else { ':app:assembleDebug' }
-    # Unit tests use the debug variant, as in test-native.ps1; the host may omit release test tasks.
-    $testTask = ':react-native-document-scanner:testDebugUnitTest'
-    # One Gradle run verifies native unit tests and generated bindings as part of the app build.
-    # Compile debug device tests too; running them remains an explicit test-device.ps1 operation.
-    $buildTasks = @($testTask)
-    if (-not $Release) { $buildTasks += ':react-native-document-scanner:compileDebugAndroidTestKotlin' }
+    $buildTasks = @()
+    if (-not $Release) {
+        $buildTasks += ':react-native-document-scanner:testDebugUnitTest'
+        $buildTasks += ':react-native-document-scanner:compileDebugAndroidTestKotlin'
+    }
     $buildTasks += $buildTask
     & .\gradlew.bat @buildTasks "-PreactNativeArchitectures=$androidAbi"
     if ($LASTEXITCODE -ne 0) {
